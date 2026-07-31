@@ -411,6 +411,28 @@ inline qint64 kalshi_bot_newest_ts_ms(const QJsonArray& rows) {
     return newest;
 }
 
+/// The three ledger event kinds a paper tick's BOOK REPLAY must see: an open
+/// decision, a real settlement, and a paper void (the orphan-retirement rung
+/// that voids a position with no settlement record left in the retained
+/// window). One predicate for both of `run_tick()`'s disk reads (the stopped
+/// path and the main path) so they cannot drift apart the way they did before:
+/// the settlement kind was in both from the start, but the void kind was added
+/// later and only reached the in-memory replay call sites, never this shared
+/// reader — so a void journaled on one tick was invisible to the very next
+/// tick's fresh read from disk, the position it retired reappeared in
+/// `book.positions`, and `settle_paper()` voided it again, forever, on an
+/// append-only ledger.
+///
+/// The sealed promotion gate's own reads are deliberately NOT built on this:
+/// the gate counts settlements exclusively (`kalshi bot gate`'s promotion
+/// tally) and must keep excluding voids from it.
+inline bool kalshi_bot_is_replay_event(const QJsonObject& row) {
+    const QString event = row.value(QStringLiteral("event")).toString();
+    return event == QLatin1String("kalshi_bot_decision") ||
+           event == QLatin1String("kalshi_bot_paper_settlement") ||
+           event == QLatin1String("kalshi_bot_paper_void");
+}
+
 /// EVERY row of the record, oldest generation first — the one whole-record
 /// reader (issue #152). The tick's replay, the stopped tick's book and the gate
 /// all go through this, so none of them can be looking at a different record

@@ -309,6 +309,13 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
                     const KalshiBotStopFile& stop, double session_opened_usd) {
     const QString ledger_path = bot_ledger_path();
 
+    // The lifetime session budget (issue #125) is a LIVE bounded-run safety;
+    // the perpetual paper loop must not be bricked by it once cumulative paper
+    // all-in reaches the cap. Paper is bounded by max_open_exposure_usd (open
+    // risk) instead. Live keeps the budget (run_live_tick, default true).
+    KalshiBotDecision::Config paper_config = config;
+    paper_config.enforce_session_budget = false;
+
     // The switch short-circuits the whole tick: no settlement pass, no order
     // lifecycle pass, no report read, no bid — only the journaled refusal.
     // KalshiBotDecision::decide() checks it again (it is the layer that owns
@@ -325,18 +332,17 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
         // Carried, not reset: a stop/resume must not hand the run a fresh
         // session budget (issue #125's "a re-arm resets lifetime exposure").
         stopped.session_opened_usd = session_opened_usd;
-        const QJsonArray rows = KalshiBotDecision::decide({}, {}, {}, now_ms, config, stop);
+        const QJsonArray rows = KalshiBotDecision::decide({}, {}, {}, now_ms, paper_config, stop);
         for (const auto& value : rows) {
             journal_ledger_row(ledger_path, value.toObject());
             ++stopped.passes;
         }
         // The book is still out there while the bot is stopped; report it
-        // rather than printing zeros the ledger does not support.
-        const QJsonArray record = read_ledger(ledger_path, [](const QJsonObject& row) {
-            const QString event = row.value(QStringLiteral("event")).toString();
-            return event == QLatin1String(kDecisionEvent) ||
-                   event == QLatin1String(kSettlementEvent);
-        });
+        // rather than printing zeros the ledger does not support. Shared with
+        // the main path below (kalshi_bot_is_replay_event) so the two reads
+        // cannot drift the way they did before (issue #189's void kind reached
+        // one and not the other).
+        const QJsonArray record = read_ledger(ledger_path, kalshi_bot_is_replay_event);
         const KalshiBotOrders::Book book = KalshiBotOrders::replay(record);
         stopped.still_open = static_cast<int>(book.positions.size());
         stopped.resting = static_cast<int>(book.resting.size());
@@ -356,10 +362,7 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
         return stopped;
     }
 
-    QJsonArray ledger = read_ledger(ledger_path, [](const QJsonObject& row) {
-        const QString event = row.value(QStringLiteral("event")).toString();
-        return event == QLatin1String(kDecisionEvent) || event == QLatin1String(kSettlementEvent);
-    });
+    QJsonArray ledger = read_ledger(ledger_path, kalshi_bot_is_replay_event);
     const auto journal = [&ledger, &ledger_path](const QJsonObject& row) {
         journal_ledger_row(ledger_path, row);
         ledger.append(row);
@@ -400,7 +403,7 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     // --- then manage what is still working (rung 6) ------------------------
     const QJsonObject report = read_calibrator_report();
     const QJsonArray lifecycle =
-        KalshiBotOrders::reconcile(book, report, settlements, now_ms, config, paper_cancel);
+        KalshiBotOrders::reconcile(book, report, settlements, now_ms, paper_config, paper_cancel);
     for (const auto& value : lifecycle) {
         const QJsonObject row = value.toObject();
         journal(row);
@@ -426,7 +429,7 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     // settlement row, and without its CANCELED_MARKET_SETTLED the contract
     // would be quoted again on the next tick.
     const QJsonArray rows = KalshiBotDecision::decide(report, book.positions, book.settled,
-                                                      now_ms, config, stop, exposure);
+                                                      now_ms, paper_config, stop, exposure);
     for (const auto& value : rows) {
         const QJsonObject row = value.toObject();
         journal(row);

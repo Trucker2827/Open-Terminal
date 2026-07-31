@@ -1,8 +1,12 @@
 #include "services/prediction/kalshi/KalshiBotDecision.h"
 #include "services/prediction/kalshi/KalshiBotOrders.h"
+#include "services/prediction/kalshi/KalshiBotRuntime.h"
 
+#include <QFile>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
+#include <QTemporaryDir>
 #include <QtTest>
 
 #include <cmath>
@@ -10,6 +14,8 @@
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotDecision;
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotOrders;
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotStopFile;
+using openmarketterminal::services::prediction::kalshi_ns::kalshi_bot_is_replay_event;
+using openmarketterminal::services::prediction::kalshi_ns::kalshi_bot_read_ledger;
 
 namespace {
 
@@ -82,6 +88,22 @@ QString reason(const QJsonArray& rows) {
 QString action(const QJsonArray& rows) {
     return only_row(rows).value(QStringLiteral("action")).toString();
 }
+
+// A filled paper position as KalshiBotOrders::replay hands it to settle_paper.
+QJsonObject open_position(const QString& ticker, qint64 placed_ms) {
+    return QJsonObject{
+        {QStringLiteral("action"), QStringLiteral("bid")},
+        {QStringLiteral("ticker"), ticker},
+        {QStringLiteral("side"), QStringLiteral("YES")},
+        {QStringLiteral("contracts"), 3},
+        {QStringLiteral("price"), 0.63},
+        {QStringLiteral("stake_usd"), 1.89},
+        {QStringLiteral("fee_usd"), 0.02},
+        {QStringLiteral("ts_ms"), static_cast<double>(placed_ms)},
+        {QStringLiteral("position_id"), ticker + QStringLiteral("@") + QString::number(placed_ms)}};
+}
+constexpr qint64 k49h = 49LL * 60 * 60 * 1000;
+constexpr qint64 k1h = 60LL * 60 * 1000;
 
 } // namespace
 
@@ -427,6 +449,43 @@ class TestKalshiBotDecision : public QObject {
         // different fact from refused at the mid.
         QCOMPARE(row.value(QStringLiteral("quote_style")).toString(), QStringLiteral("cross"));
         QCOMPARE(row.value(QStringLiteral("price")).toDouble(), 0.84);
+    }
+
+    // --- Fix 1: the paper loop is not bricked by the lifetime session budget --
+
+    /// With the budget exempted (paper), a bid still fires even though the
+    /// session's cumulative all-in is already at the cap. Neuter below proves the
+    /// flag is what gates it and live is unchanged.
+    void paper_accumulates_past_the_session_budget() {
+        const QJsonObject bidding = report(0.98, 0.83, 10.0);
+
+        KalshiBotDecision::Exposure at_cap;                 // cumulative opens at the cap
+        at_cap.session_opened_usd = 120.00;
+
+        KalshiBotDecision::Config paper;                    // paper: budget exempt
+        paper.enforce_session_budget = false;
+        const QJsonArray bids = KalshiBotDecision::decide(bidding, {}, {}, kNow, paper, {}, at_cap);
+        QCOMPARE(action(bids), QStringLiteral("bid"));
+
+        // Neuter: default config (live semantics) refuses the very same inputs.
+        const QJsonArray blocked = KalshiBotDecision::decide(bidding, {}, {}, kNow, {}, {}, at_cap);
+        QCOMPARE(action(blocked), QStringLiteral("pass"));
+        QCOMPARE(reason(blocked), QStringLiteral("SESSION_BUDGET_BLOCKS_BID"));
+    }
+
+    /// Exempting the session budget must NOT make paper unbounded: the current
+    /// open-exposure fence still refuses a bid that would breach it.
+    void paper_still_respects_the_open_exposure_cap() {
+        const QJsonObject bidding = report(0.98, 0.83, 10.0);
+
+        KalshiBotDecision::Exposure at_open_cap;            // open risk already at the cap
+        at_open_cap.at_risk_usd = 120.00;
+
+        KalshiBotDecision::Config paper;
+        paper.enforce_session_budget = false;
+        const QJsonArray rows = KalshiBotDecision::decide(bidding, {}, {}, kNow, paper, {}, at_open_cap);
+        QCOMPARE(action(rows), QStringLiteral("pass"));
+        QCOMPARE(reason(rows), QStringLiteral("EXPOSURE_CAP_BLOCKS_BID"));
     }
 
     // --- sizing ----------------------------------------------------------
@@ -788,6 +847,160 @@ class TestKalshiBotDecision : public QObject {
             kNow);
         QCOMPARE(lost.first().toObject().value(QStringLiteral("won")).toBool(), false);
         QCOMPARE(lost.first().toObject().value(QStringLiteral("realized_pnl")).toDouble(), -stake - fee);
+    }
+
+    // --- Fix 2: an aged orphan with no settlement record is voided, not held ---
+
+    void an_aged_orphan_with_no_settlement_is_voided_and_retired() {
+        const QString ticker = QStringLiteral("KXBTCD-26JUL2808-T63499.99");
+        const QJsonArray open{open_position(ticker, kNow)};
+
+        // No settlement records at all, position is 49h old (> 48h horizon).
+        const QJsonArray voids = KalshiBotDecision::settle_paper(open, {}, kNow + k49h);
+        QCOMPARE(voids.size(), 1);
+        const QJsonObject v = voids.first().toObject();
+        QCOMPARE(v.value(QStringLiteral("event")).toString(), QStringLiteral("kalshi_bot_paper_void"));
+        QCOMPARE(v.value(QStringLiteral("resolution")).toString(), QStringLiteral("unresolved_expired"));
+        QVERIFY(v.value(QStringLiteral("won")).isNull());
+        QCOMPARE(v.value(QStringLiteral("realized_pnl")).toDouble(), 0.0);
+
+        // Replaying [bid, fill, void] retires the FILLED position: nothing left
+        // open, no exposure. The bid row is the ledger shape KalshiBotOrders::replay
+        // consumes (event:kalshi_bot_decision, action:bid, carrying order_state so
+        // it registers as an ORDER rather than rung 1's assumed-fill shape); the
+        // fill row (action:fill) advances that same order, matched by the
+        // position_id the bid and fill share. Positive control first: [bid, fill]
+        // alone leaves ONE open position with non-zero exposure, so the drop below
+        // is the void's doing, not an empty ledger.
+        const QJsonObject bid_row{
+            {QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
+            {QStringLiteral("action"), QStringLiteral("bid")},
+            {QStringLiteral("ticker"), ticker},
+            {QStringLiteral("side"), QStringLiteral("YES")},
+            {QStringLiteral("contracts"), 3},
+            {QStringLiteral("price"), 0.63},
+            {QStringLiteral("order_state"), QStringLiteral("resting")},
+            {QStringLiteral("ts_ms"), static_cast<double>(kNow)},
+            {QStringLiteral("position_id"),
+             ticker + QStringLiteral("@") + QString::number(kNow)}};
+        const QJsonObject fill_row{
+            {QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
+            {QStringLiteral("action"), QStringLiteral("fill")},
+            {QStringLiteral("position_id"), bid_row.value(QStringLiteral("position_id"))},
+            {QStringLiteral("contracts"), 3},
+            {QStringLiteral("price"), 0.63},
+            {QStringLiteral("fee_usd"), 0.02}};
+        const QJsonArray filled_only{bid_row, fill_row};
+        const KalshiBotOrders::Book before = KalshiBotOrders::replay(filled_only);
+        QCOMPARE(before.positions.size(), 1);
+        QVERIFY(before.exposure_usd > 0.0);
+
+        QJsonArray with_void = filled_only;
+        with_void.append(v);
+        const KalshiBotOrders::Book after = KalshiBotOrders::replay(with_void);
+        QCOMPARE(after.positions.size(), 0);   // the void retired it
+        QCOMPARE(after.exposure_usd, 0.0);
+    }
+
+    void a_matching_settlement_settles_and_never_voids_even_when_old() {
+        const QString ticker = QStringLiteral("KXBTCD-26JUL2808-T63499.99");
+        const QJsonArray open{open_position(ticker, kNow)};
+        const QJsonArray settlements{QJsonObject{{QStringLiteral("ticker"), ticker},
+                                                 {QStringLiteral("market_result"), QStringLiteral("YES")},
+                                                 {QStringLiteral("settled_time"), QStringLiteral("t")},
+                                                 {QStringLiteral("source"), QStringLiteral("kalshi-settlements.jsonl")}}};
+        const QJsonArray rows = KalshiBotDecision::settle_paper(open, settlements, kNow + k49h);
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows.first().toObject().value(QStringLiteral("event")).toString(),
+                 QStringLiteral("kalshi_bot_paper_settlement"));   // settled, not voided
+    }
+
+    void a_young_orphan_is_not_voided() {
+        const QString ticker = QStringLiteral("KXBTCD-26JUL2808-T63499.99");
+        const QJsonArray open{open_position(ticker, kNow)};
+        const QJsonArray rows = KalshiBotDecision::settle_paper(open, {}, kNow + k1h);  // 1h < 48h
+        QCOMPARE(rows.size(), 0);   // stays open, no void
+    }
+
+    /// The gate and funnel count only kalshi_bot_paper_settlement
+    /// (KalshiBotGate.cpp:323, KalshiBotFunnel.cpp:84), so a void is a distinct
+    /// event and is never scored as a settled bid. Lock the event name in.
+    void a_void_is_not_a_settlement_event() {
+        const QString ticker = QStringLiteral("KXBTCD-26JUL2808-T63499.99");
+        const QJsonArray voids = KalshiBotDecision::settle_paper({open_position(ticker, kNow)}, {}, kNow + k49h);
+        QVERIFY(voids.first().toObject().value(QStringLiteral("event")).toString() !=
+                QStringLiteral("kalshi_bot_paper_settlement"));
+    }
+
+    // --- Fix 2's DISK-READ seam (whole-branch review, Important): a void must
+    // retire its position DURABLY once journaled, not just in the in-memory
+    // arrays the tests above hand settle_paper()/replay() directly ----------
+    //
+    // `run_tick()` (KalshiBotCommands.cpp) does not replay whatever array a
+    // caller built in memory: every tick it re-reads the WHOLE ledger from
+    // disk through `kalshi_bot_read_ledger()` with a predicate that decides
+    // which event kinds survive the read. That predicate used to keep only
+    // kalshi_bot_decision and kalshi_bot_paper_settlement, silently dropping
+    // kalshi_bot_paper_void on the way off disk. The tests above never catch
+    // that: they construct `[bid, fill, void]` as one in-memory QJsonArray and
+    // hand it straight to KalshiBotOrders::replay(), so the disk-read
+    // predicate is simply never in the path. This test drives the real seam —
+    // a void written to an actual file, read back through the same
+    // `kalshi_bot_read_ledger()` + predicate `run_tick()` uses — so a
+    // regression in that predicate (this one, or a future one) fails here.
+    void a_void_read_back_from_disk_retires_the_position_durably() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString ledger_path = dir.filePath(QStringLiteral("kalshi-bot-decisions.jsonl"));
+        const QString ticker = QStringLiteral("KXBTCD-26JUL2808-T63499.99");
+        const qint64 placed_ms = kNow - k49h;
+
+        // A "rung 1" legacy bid row (no order_state key): KalshiBotOrders::replay
+        // treats it as already filled at its own price/contracts/fee — the
+        // ledger shape a real open position was recorded in.
+        const QJsonObject bid_row = open_position(ticker, placed_ms);
+        // The void a PRIOR tick already journaled for this exact orphan: the
+        // real row settle_paper() emits for an aged position with no
+        // settlement record, not a hand-built stand-in.
+        const QJsonObject void_row =
+            KalshiBotDecision::settle_paper({bid_row}, {}, kNow).first().toObject();
+        QCOMPARE(void_row.value(QStringLiteral("event")).toString(),
+                 QStringLiteral("kalshi_bot_paper_void"));
+
+        QFile file(ledger_path);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        QJsonObject raw_bid_row{
+            {QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
+            {QStringLiteral("ts_ms"), static_cast<double>(placed_ms)},
+            {QStringLiteral("action"), QStringLiteral("bid")},
+            {QStringLiteral("ticker"), ticker},
+            {QStringLiteral("side"), QStringLiteral("YES")},
+            {QStringLiteral("contracts"), 3},
+            {QStringLiteral("price"), 0.63},
+            {QStringLiteral("fee_usd"), 0.02},
+            {QStringLiteral("position_id"), bid_row.value(QStringLiteral("position_id"))}};
+        for (const QJsonObject& row : {raw_bid_row, void_row})
+            file.write(QJsonDocument(row).toJson(QJsonDocument::Compact) + "\n");
+        file.close();
+
+        // Read the ledger back exactly as run_tick() does: through the shared
+        // predicate, off a real file — not the in-memory array the tests
+        // above build by hand.
+        const QJsonArray from_disk = kalshi_bot_read_ledger(ledger_path, kalshi_bot_is_replay_event);
+        const KalshiBotOrders::Book book = KalshiBotOrders::replay(from_disk);
+        // The void retired the position DURABLY: nothing open, no exposure.
+        QCOMPARE(book.positions.size(), 0);
+        QCOMPARE(book.exposure_usd, 0.0);
+
+        // And a second settle pass over that same re-read record must not
+        // mint a second void for an orphan it already closed out — the
+        // durability claim this whole test exists to prove. run_tick() only
+        // calls settle_paper() when book.positions is non-empty; asserting
+        // that directly is the load-bearing check, and calling settle_paper()
+        // here too (on the now-empty book) confirms there is nothing left to
+        // re-void even if that guard were ever removed.
+        const QJsonArray revoided = KalshiBotDecision::settle_paper(book.positions, {}, kNow + 1000);
+        QCOMPARE(revoided.size(), 0);
     }
 
 };

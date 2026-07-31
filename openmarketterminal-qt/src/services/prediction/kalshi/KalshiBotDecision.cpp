@@ -21,6 +21,10 @@ namespace {
 
 constexpr auto kDecisionEvent = "kalshi_bot_decision";
 constexpr auto kSettlementEvent = "kalshi_bot_paper_settlement";
+constexpr auto kVoidEvent = "kalshi_bot_paper_void";
+// 48h > any KXBTCD (~1h) / KXBTC15M (~15m) contract lifetime + the ~1-day
+// settlement-record retention, so only a genuine orphan reaches the void.
+constexpr qint64 kOrphanVoidAgeMs = 48LL * 60 * 60 * 1000;
 
 /// Money is written to the ledger in whole cents. Kalshi quotes in cents, so
 /// a rounded value here is exact rather than a convenience.
@@ -396,7 +400,8 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
             refuse_on_cap(kExposureCapBlocksBid, at_risk_usd, config.max_open_exposure_usd);
             continue;
         }
-        if (session_opened_usd + all_in > config.session_budget_usd + 1e-9) {
+        if (config.enforce_session_budget &&
+            session_opened_usd + all_in > config.session_budget_usd + 1e-9) {
             refuse_on_cap(kSessionBudgetBlocksBid, session_opened_usd, config.session_budget_usd);
             continue;
         }
@@ -507,9 +512,37 @@ QJsonArray KalshiBotDecision::settle_paper(const QJsonArray& open_positions,
         if (position.value(QStringLiteral("action")).toString() != QStringLiteral("bid")) continue;
         const QString ticker = position.value(QStringLiteral("ticker")).toString();
         const auto found = by_ticker.constFind(ticker);
-        // No real settlement record → no row. The position stays open; there
-        // is no simulated outcome anywhere in this path.
-        if (found == by_ticker.constEnd()) continue;
+        if (found == by_ticker.constEnd()) {
+            // No settlement record. Young: a real settlement may still arrive
+            // (matched first, above) — leave it open. Old past the horizon: a
+            // genuine orphan whose market resolved long ago in a retained
+            // window that rotated out. Retire it UNRESOLVED (never a fabricated
+            // win/loss) so its exposure is released. Age is placement age
+            // (TZ-free), not a ticker-parsed close.
+            const qint64 placed_ms =
+                static_cast<qint64>(position.value(QStringLiteral("ts_ms")).toDouble());
+            if (placed_ms <= 0 || now_ms - placed_ms < kOrphanVoidAgeMs) continue;
+            out.append(QJsonObject{
+                {QStringLiteral("event"), QString::fromLatin1(kVoidEvent)},
+                {QStringLiteral("ts_ms"), static_cast<double>(now_ms)},
+                {QStringLiteral("ts"), iso(now_ms)},
+                {QStringLiteral("mode"), QStringLiteral("paper")},
+                {QStringLiteral("live_eligible"), false},
+                {QStringLiteral("position_id"), position.value(QStringLiteral("position_id"))},
+                {QStringLiteral("ticker"), ticker},
+                {QStringLiteral("side"), position.value(QStringLiteral("side"))},
+                {QStringLiteral("contracts"), position.value(QStringLiteral("contracts"))},
+                {QStringLiteral("stake_usd"), position.value(QStringLiteral("stake_usd"))},
+                {QStringLiteral("fee_usd"), position.value(QStringLiteral("fee_usd"))},
+                {QStringLiteral("resolution"), QStringLiteral("unresolved_expired")},
+                {QStringLiteral("reason"),
+                 QStringLiteral("position aged out with no settlement record in the retained window")},
+                {QStringLiteral("placed_ms"), static_cast<double>(placed_ms)},
+                {QStringLiteral("age_ms"), static_cast<double>(now_ms - placed_ms)},
+                {QStringLiteral("won"), QJsonValue::Null},
+                {QStringLiteral("realized_pnl"), 0.0}});
+            continue;
+        }
 
         const QString side = position.value(QStringLiteral("side")).toString();
         const QString result = found->value(QStringLiteral("market_result")).toString();

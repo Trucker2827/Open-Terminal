@@ -17,6 +17,7 @@ namespace {
 
 constexpr auto kDecisionEvent = "kalshi_bot_decision";
 constexpr auto kSettlementEvent = "kalshi_bot_paper_settlement";
+constexpr auto kVoidEvent = "kalshi_bot_paper_void";
 
 double round_cents(double dollars) { return std::round(dollars * 100.0) / 100.0; }
 
@@ -133,7 +134,7 @@ KalshiBotOrders::Book KalshiBotOrders::replay(const QJsonArray& ledger_rows) {
         const QString id = str(row, "position_id");
         if (id.isEmpty()) continue;
 
-        if (event == QLatin1String(kSettlementEvent)) {
+        if (event == QLatin1String(kSettlementEvent) || event == QLatin1String(kVoidEvent)) {
             auto it = orders.find(id);
             if (it != orders.end()) it->settled = true;
             resolved.insert(str(row, "ticker"));

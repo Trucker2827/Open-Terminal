@@ -195,6 +195,14 @@ class KalshiBotDecision {
         /// half of that bound. Defaults to the same ceiling, so it constrains
         /// only once a session tightens it.
         double session_budget_usd = 120.00;
+        /// The session budget (issue #125) is a LIVE bounded-run safety: an
+        /// armed run may commit at most this all-in before a human re-arms,
+        /// and stop/resume does not reset it. The perpetual paper loop has no
+        /// arming boundary, so enforcing a lifetime cap there is a deadlock —
+        /// it bricks accumulation once cumulative paper all-in reaches the cap,
+        /// long before the 300-settled gate. The paper loop (run_tick) sets
+        /// this false; live (run_live_tick) leaves it true.
+        bool enforce_session_budget = true;
     };
 
     /// What the bot already has at risk when `decide()` is called, and what
