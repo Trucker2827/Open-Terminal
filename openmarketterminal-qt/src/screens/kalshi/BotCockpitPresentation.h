@@ -974,7 +974,11 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
 
 /// The scene as the screen renders it: the four evidence files, read through
 /// the one path module, and the BOT panel view built from three of them.
-inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qint64 now_ms) {
+/// `feed` is supplied by the caller (the view, from kalshi-ws-engine.json and
+/// the newest retained ticker event) — this function does no socket-health
+/// I/O of its own, it only forwards what it is given to the pure presenter.
+inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qint64 now_ms,
+                                              const BotCockpitFeedHealth& feed = {}) {
     const QJsonArray ledger = read_kalshi_bot_ledger_tail();
     const QJsonObject gate = read_kalshi_bot_gate();
     // The lessons artifact is read here and handed to the panel presenter, so
@@ -996,7 +1000,7 @@ inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qi
         QStringLiteral("kalshi-strategy-grid-latest.json")));
     if (grid_file.open(QIODevice::ReadOnly)) grid_json = grid_file.readAll();
     return present_bot_cockpit(panel, report, gate, ledger, live_status, now_ms,
-                               grid_json);
+                               grid_json, kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed);
 }
 
 } // namespace openmarketterminal::screens::kalshi

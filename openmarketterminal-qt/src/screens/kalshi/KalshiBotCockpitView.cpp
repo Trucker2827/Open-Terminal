@@ -4,8 +4,10 @@
 
 #include <QColor>
 #include <QDateTime>
+#include <QFile>
 #include <QFont>
 #include <QFontMetrics>
+#include <QJsonDocument>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPaintEvent>
@@ -30,6 +32,13 @@ constexpr int kFrameIntervalMs = 33;
 constexpr int kFlashFrames = 45;
 
 constexpr int kMargin = 14;
+// The health-first strip (HARVEST -> CALIBRATE -> DECIDE -> SETTLE): a
+// headline line and a row of coloured-dot stage chips, drawn above the mood
+// banner so a dead feed cannot hide behind a ticking paper loop.
+constexpr int kHealthHeadlineHeight = 16;
+constexpr int kHealthStageRowHeight = 16;
+constexpr int kHealthStripGap = 6;
+constexpr int kHealthStripHeight = kHealthHeadlineHeight + kHealthStageRowHeight;
 constexpr int kBannerHeight = 46;
 constexpr int kCensusHeight = 20;
 constexpr int kNodeRowHeight = 104;
@@ -52,6 +61,53 @@ double column_offset(const QString& ticker) {
 
 QString elide(const QFontMetrics& metrics, const QString& text, int width) {
     return metrics.elidedText(text, Qt::ElideRight, width);
+}
+
+/// The age of the newest row in kalshi-tickers.jsonl, the harvest's fallback
+/// clock when kalshi-ws-engine.json has no `last_event_at` of its own (e.g. an
+/// engine that has connected but not yet ticked). Only the tail of the file is
+/// read — the file grows without bound and only the newest row matters here.
+qint64 newest_ticker_event_age_ms(qint64 now_ms) {
+    QFile file(cli::kalshi_evidence_path(QStringLiteral("kalshi-tickers.jsonl")));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text) || file.size() <= 0) return -1;
+    constexpr qint64 kTailBytes = 64 * 1024;
+    if (file.size() > kTailBytes) file.seek(file.size() - kTailBytes);
+    const QList<QByteArray> lines = file.readAll().split('\n');
+    for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
+        const QByteArray line = it->trimmed();
+        if (line.isEmpty()) continue;
+        const QJsonDocument document = QJsonDocument::fromJson(line);
+        if (!document.isObject()) continue;
+        const QDateTime ts = QDateTime::fromString(
+            document.object().value(QStringLiteral("received_ts")).toString(), Qt::ISODateWithMs);
+        if (ts.isValid()) return qMax<qint64>(0, now_ms - ts.toMSecsSinceEpoch());
+    }
+    return -1;
+}
+
+/// Feed/harvest health from kalshi-ws-engine.json, read at the same cadence
+/// (and through the same evidence-path helper) as calibrator.json, the gate,
+/// and the ledger already are in `load_bot_cockpit_scene`. Read-only: this
+/// never writes an evidence file.
+BotCockpitFeedHealth read_bot_cockpit_feed_health(qint64 now_ms) {
+    BotCockpitFeedHealth feed;
+    QFile engine_file(cli::kalshi_evidence_path(QStringLiteral("kalshi-ws-engine.json")));
+    QJsonObject engine;
+    if (engine_file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QJsonDocument document = QJsonDocument::fromJson(engine_file.readAll());
+        feed.readable = document.isObject();
+        if (feed.readable) engine = document.object();
+    }
+    feed.ws_connected = engine.value(QStringLiteral("connected")).toBool();
+    feed.credentials_ok = engine.value(QStringLiteral("credentials")).toBool();
+    feed.last_error = engine.value(QStringLiteral("last_error")).toString();
+
+    const QDateTime last_event = QDateTime::fromString(
+        engine.value(QStringLiteral("last_event_at")).toString(), Qt::ISODateWithMs);
+    feed.newest_event_age_ms = last_event.isValid()
+        ? qMax<qint64>(0, now_ms - last_event.toMSecsSinceEpoch())
+        : newest_ticker_event_age_ms(now_ms);
+    return feed;
 }
 
 /// The head of a column: enough of the ticker to identify the contract in a
@@ -92,7 +148,8 @@ void KalshiBotCockpitView::set_live_status_provider(std::function<QJsonObject()>
 
 void KalshiBotCockpitView::reload() {
     const QJsonObject live_status = live_status_provider_ ? live_status_provider_() : QJsonObject();
-    apply_scene(load_bot_cockpit_scene(live_status, QDateTime::currentMSecsSinceEpoch()));
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    apply_scene(load_bot_cockpit_scene(live_status, now_ms, read_bot_cockpit_feed_health(now_ms)));
 }
 
 void KalshiBotCockpitView::apply_scene(const BotCockpitScene& scene) {
@@ -162,8 +219,51 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
     const QFontMetrics body_metrics(body_font);
     const QFontMetrics small_metrics(small_font);
 
+    // ── health-first strip (issue: HARVEST -> CALIBRATE -> DECIDE -> SETTLE) ─
+    // Above everything else, including the mood banner: this line answers "is
+    // the pipeline that feeds the loop healthy", which a ticking paper loop
+    // must never be able to hide behind.
+    const QRect health_strip(kMargin, kMargin, width() - (2 * kMargin), kHealthStripHeight);
+    {
+        const QColor headline_ink = role_color(scene_.health_role);
+        painter.setFont(body_font);
+        painter.setPen(headline_ink);
+        const QRect headline_rect(health_strip.left(), health_strip.top(),
+                                  health_strip.width(), kHealthHeadlineHeight);
+        painter.drawText(headline_rect, Qt::AlignVCenter | Qt::AlignLeft,
+                         elide(body_metrics, scene_.health_banner, headline_rect.width()));
+
+        const QRect stage_row(health_strip.left(), headline_rect.bottom(), health_strip.width(),
+                              kHealthStageRowHeight);
+        const int stage_count = static_cast<int>(scene_.health_stages.size());
+        if (stage_count > 0) {
+            const double stage_width = static_cast<double>(stage_row.width()) / stage_count;
+            constexpr int kDotDiameter = 8;
+            painter.setFont(small_font);
+            for (int i = 0; i < stage_count; ++i) {
+                const BotCockpitHealthStage& stage = scene_.health_stages.at(i);
+                const QColor ink = role_color(stage.role);
+                const double x = stage_row.left() + (i * stage_width);
+                const QRectF dot(x, stage_row.top() + (stage_row.height() - kDotDiameter) / 2.0,
+                                 kDotDiameter, kDotDiameter);
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(ink);
+                painter.drawEllipse(dot);
+                painter.setBrush(Qt::NoBrush);
+                painter.setPen(ink);
+                const QRectF label(dot.right() + 4, stage_row.top(),
+                                   stage_width - (dot.width() + 8), stage_row.height());
+                painter.drawText(label, Qt::AlignVCenter | Qt::AlignLeft,
+                                 elide(small_metrics,
+                                       QStringLiteral("%1 %2").arg(stage.label, stage.value),
+                                       qMax(0, static_cast<int>(label.width()))));
+            }
+        }
+    }
+
     // ── banner ─────────────────────────────────────────────────────────────
-    const QRect banner(kMargin, kMargin, width() - (2 * kMargin), kBannerHeight);
+    const QRect banner(kMargin, health_strip.bottom() + kHealthStripGap,
+                       width() - (2 * kMargin), kBannerHeight);
     painter.fillRect(banner, with_alpha(mood, dormant ? 20 : 46));
     painter.setPen(QPen(mood, scene_.live ? 3 : 1));
     painter.drawRect(banner);
