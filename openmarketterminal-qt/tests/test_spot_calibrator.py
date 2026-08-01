@@ -92,11 +92,53 @@ class OnlineLogitTest(unittest.TestCase):
         # new FULL_FEATURES with the physics weights preserved and the four new
         # weights zero-initialized.
         old = cal.OnlineLogit(cal.PHYSICS_FEATURES)  # the pre-ensemble tuple
-        old.w = [1.0] * (len(cal.PHYSICS_FEATURES) + 1)
+        # Distinguishable weights per feature (not all 1.0): an `old_index`
+        # off-by-one or a swapped mapping would land a weight on the wrong
+        # feature, which a uniform 1.0 fixture could never catch.
+        old_weights = [1.1, 2.2, 3.3, 4.4, 5.5, 6.6]
+        old_bias = 9.9
+        self.assertEqual(len(old_weights), len(cal.PHYSICS_FEATURES))
+        old.w = old_weights + [old_bias]
         migrated = cal.reconcile_full_model(old.to_json())
         self.assertEqual(tuple(migrated.features), cal.FULL_FEATURES)
+        # Each physics weight lands at its OWN feature's new index, not just
+        # somewhere nonzero.
+        for f, expected in zip(cal.PHYSICS_FEATURES, old_weights):
+            self.assertEqual(migrated.w[migrated.features.index(f)], expected)
+        self.assertEqual(migrated.w[-1], old_bias)
         for f in ("book_imbalance", "trade_flow", "spot_drift", "news_forecast"):
             self.assertEqual(migrated.w[migrated.features.index(f)], 0.0)
+
+    def test_migration_reaches_disk_through_settle_cycle(self):
+        # reconcile_full_model() is correct in isolation, but only settle_cycle
+        # PERSISTS state["full"] back to state (observe_cycle's copy is
+        # predict-only and never saved). This drives an old 6-feature model
+        # through the real observe_cycle -> settle_cycle pair and checks the
+        # migration actually stuck on the state that would be written to disk,
+        # not just on a local OnlineLogit that gets thrown away.
+        state = cal.default_state()
+        old_model = cal.OnlineLogit(cal.PHYSICS_FEATURES)
+        old_weights = [1.1, 2.2, 3.3, 4.4, 5.5, 6.6]
+        old_model.w = old_weights + [9.9]
+        state["full"] = old_model.to_json()
+        self.assertEqual(state["full"]["features"], list(cal.PHYSICS_FEATURES))
+
+        evidence = {"snapshots": {"KXBTC-T1": snapshot()}}
+        now = 1_000_000
+        predictions = cal.observe_cycle(state, evidence, now)  # (a) no crash
+        self.assertIn("KXBTC-T1", predictions)
+        self.assertIn("p_yes_full", predictions["KXBTC-T1"])          # (c)
+        self.assertIn("p_yes_market_baseline", predictions["KXBTC-T1"])
+
+        later = now + 900 * 1000 + 121_000
+        cal.settle_cycle(state, later, resolver=lambda t: True)      # (a) no crash
+
+        # (b) the persisted model — the one settle_cycle just wrote back into
+        # state["full"] for saving — now carries all ten features. If the
+        # reconcile_full_model() call were removed from settle_cycle, this
+        # would still read PHYSICS_FEATURES (6 features), not FULL_FEATURES.
+        self.assertEqual(state["full"]["features"], list(cal.FULL_FEATURES))
+        self.assertEqual(len(state["full"]["w"]), len(cal.FULL_FEATURES) + 1)
 
 
 class BookPassthroughTest(unittest.TestCase):
