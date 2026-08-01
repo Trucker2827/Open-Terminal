@@ -556,5 +556,101 @@ class MigrationTest(unittest.TestCase):
         self.assertIs(cal.migrate_state(state), state)
 
 
+def fixture_resolved_observations(n=20):
+    """A handful of ordinary resolved contracts -- one observation each, no
+    constructed signal. Enough to exercise ablation_report's plumbing (every
+    feature gets a real float delta), not to prove any feature helps."""
+    contracts = []
+    for i in range(n):
+        outcome = i % 2 == 0
+        obs = [cal.extract_features(snapshot(realized_move=(5.0 if outcome else -5.0)))]
+        contracts.append((obs, outcome))
+    return contracts
+
+
+def fixture_where(feature_name, n=240):
+    """`n` resolved contracts where `feature_name` is pinned to +1.0/-1.0 and
+    PERFECTLY predicts the outcome (True/False respectively); every other
+    feature is held constant (snapshot()'s defaults), so it carries zero
+    variance and the online logit's standardizer gives it z=0 always (see
+    OnlineLogit._standardize) -- the only feature the model can possibly
+    learn from is the one under test. Mirrors the same separable-signal setup
+    OnlineLogitTest.test_learns_separable_signal uses, just wrapped as
+    resolved contracts instead of raw update() calls."""
+    base = cal.extract_features(snapshot())
+    contracts = []
+    for i in range(n):
+        outcome = i % 2 == 0
+        features = dict(base)
+        features[feature_name] = 1.0 if outcome else -1.0
+        contracts.append(([features], outcome))
+    return contracts
+
+
+class AblationReportTest(unittest.TestCase):
+    """Task 3: per-signal ablation. `ablation_report` walk-forwards over
+    already-resolved contracts (predict-before-train, no look-ahead -- the
+    same discipline settle_cycle uses for the live scorer) and reports, per
+    ENSEMBLE_FEATURE, the Brier of an otherwise-identical model trained with
+    that feature pinned to 0.0 vs the real full model.
+
+    Sign convention (stated once, checked everywhere): brier_delta_vs_full =
+    ablated_brier - full_brier. Positive means the feature HELPS -- removing
+    it (pinning to neutral) made the Brier worse.
+    """
+
+    def test_ablation_reports_a_delta_per_feature(self):
+        report = cal.ablation_report(fixture_resolved_observations())
+        for f in cal.ENSEMBLE_FEATURES:
+            self.assertIn(f, report)
+            self.assertIsInstance(report[f]["brier_delta_vs_full"], float)
+
+    def test_ablation_positive_when_feature_is_constructed_to_help(self):
+        # spot_drift perfectly separates the outcome here; the full model
+        # (which sees it) must land a materially lower Brier than the
+        # ablated model (which cannot), so delta = ablated - full > 0.
+        report = cal.ablation_report(fixture_where("spot_drift"))
+        self.assertGreater(report["spot_drift"]["brier_delta_vs_full"], 0.0)
+        self.assertLess(report["spot_drift"]["full_brier"], report["spot_drift"]["ablated_brier"])
+
+    def test_ablation_empty_record_is_honest_not_false(self):
+        # No contracts retained yet: every Brier is None, not a fabricated
+        # number, and beats_market is False for lack of evidence, not
+        # because the market won.
+        report = cal.ablation_report([])
+        for f in cal.ENSEMBLE_FEATURES:
+            self.assertIsNone(report[f]["brier_delta_vs_full"])
+        self.assertFalse(report["beats_market"])
+        self.assertEqual(report["scored_contracts"], 0)
+
+    def test_settle_cycle_retains_resolved_observations_for_ablation(self):
+        # settle_cycle is where a contract's (observations, outcome) become
+        # available -- the ablation walk-forward has no other source of
+        # ground truth, so this has to be captured there, not reconstructed
+        # after the fact.
+        state = cal.default_state()
+        cal.observe_cycle(state, {"snapshots": {"KXBTC-T1": snapshot()}}, 0)
+        cal.settle_cycle(state, 900 * 1000 + 121_000, resolver=lambda t: True)
+        self.assertEqual(len(state["resolved_record"]), 1)
+        self.assertEqual(state["resolved_record"][0]["outcome"], True)
+        self.assertEqual(len(state["resolved_record"][0]["observations"]), 1)
+
+    def test_build_report_surfaces_ablation_additively(self):
+        # New "ablation" block; every existing field from before this task
+        # must still be present and untouched.
+        state = cal.default_state()
+        cal.observe_cycle(state, {"snapshots": {"KXBTC-T1": snapshot()}}, 0)
+        cal.settle_cycle(state, 900 * 1000 + 121_000, resolver=lambda t: True)
+        report = cal.build_report(state, {}, 0)
+        self.assertIn("ablation", report)
+        for f in cal.ENSEMBLE_FEATURES:
+            self.assertIn(f, report["ablation"])
+        self.assertIn("beats_market", report["ablation"])
+        for field in ("schema", "event", "resolved_contracts", "scored_contracts",
+                      "brier_full", "brier_market_mid_raw", "brier_market_trained_logit",
+                      "adds_value_over_market", "beats_trained_logit_baseline", "predictions"):
+            self.assertIn(field, report)
+
+
 if __name__ == "__main__":
     unittest.main()

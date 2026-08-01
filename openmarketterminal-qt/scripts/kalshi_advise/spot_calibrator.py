@@ -558,6 +558,88 @@ def mean_or_none(values):
     return sum(values) / len(values)
 
 
+def ablation_report(resolved_observations):
+    """Per-signal ablation over already-resolved contracts: proves whether
+    each ENSEMBLE_FEATURE earns its place, plus an overall beats-market
+    verdict, using ONLY out-of-sample predictions.
+
+    `resolved_observations` is a list of `(observations, outcome)` pairs, one
+    per resolved contract, IN THE ORDER THE CONTRACTS RESOLVED — the same
+    shape `settle_cycle` now appends to `state["resolved_record"]`
+    (`observations` a list of feature dicts carrying every FULL_FEATURES key,
+    `outcome` a bool).
+
+    Walk-forward, no-look-ahead, mirroring settle_cycle's own discipline
+    exactly: for each contract, in order, every model SCORES it first with
+    `predict()` (so the score reflects only contracts that resolved earlier,
+    never this one or a later one) and only THEN trains on it observation by
+    observation. Contract-weighted, not observation-weighted, for the same
+    reason the live scorer is (issue #171): one Brier per contract, meaned
+    across contracts.
+
+    Two model families are walked simultaneously, from cold, over the same
+    contracts in the same order:
+      - "full": one OnlineLogit(FULL_FEATURES), trained normally.
+      - one "ablated" OnlineLogit(FULL_FEATURES) PER ENSEMBLE_FEATURE, trained
+        and scored on a copy of every observation with that one feature
+        pinned to its neutral value (0.0) — otherwise identical, including
+        the same L2 as the live "full" model, so the comparison isolates
+        exactly that feature's contribution, nothing else.
+
+    Reports, per feature: `full_brier`, `ablated_brier`, and
+    `brier_delta_vs_full = ablated_brier - full_brier` — POSITIVE means the
+    feature HELPS (removing it made the Brier worse), matched consistently
+    here, in the docstring, and in the test suite. `None` for all three
+    (never a fabricated number) when there are no resolved contracts to
+    replay yet.
+
+    `beats_market`: whether the full model's contract-weighted Brier beats
+    the untrained raw-mid Brier over these same contracts. `False` when there
+    is no data is "no evidence", not "the market won" — callers that need to
+    tell the two apart should check `scored_contracts` too.
+    """
+    full = OnlineLogit(FULL_FEATURES)
+    ablated_models = {f: OnlineLogit(FULL_FEATURES) for f in ENSEMBLE_FEATURES}
+    full_scores = []
+    market_scores = []
+    ablated_scores = {f: [] for f in ENSEMBLE_FEATURES}
+    for observations, outcome in resolved_observations:
+        if not observations:
+            continue
+        # --- score pass: every model predicts BEFORE any of them trains on
+        # this contract, so every score here is out-of-sample. ---
+        full_scores.append(brier([(full.predict(f), outcome) for f in observations]))
+        market_scores.append(brier([(f["yes_mid"], outcome) for f in observations]))
+        for feature_name, model in ablated_models.items():
+            pinned = [dict(f, **{feature_name: 0.0}) for f in observations]
+            ablated_scores[feature_name].append(
+                brier([(model.predict(p), outcome) for p in pinned]))
+        # --- train pass: now let every model learn this contract. ---
+        for f in observations:
+            full.update(f, outcome, l2=L2)
+        for feature_name, model in ablated_models.items():
+            for f in observations:
+                model.update(dict(f, **{feature_name: 0.0}), outcome, l2=L2)
+    full_brier = mean_or_none(full_scores)
+    market_brier = mean_or_none(market_scores)
+    report = {}
+    for feature_name in ENSEMBLE_FEATURES:
+        ablated_brier = mean_or_none(ablated_scores[feature_name])
+        delta = (ablated_brier - full_brier
+                 if ablated_brier is not None and full_brier is not None else None)
+        report[feature_name] = {
+            "full_brier": full_brier,
+            "ablated_brier": ablated_brier,
+            "brier_delta_vs_full": delta,
+        }
+    report["full_brier"] = full_brier
+    report["market_mid_brier"] = market_brier
+    report["scored_contracts"] = len(full_scores)
+    report["beats_market"] = (full_brier is not None and market_brier is not None
+                              and full_brier < market_brier)
+    return report
+
+
 def resolve_outcome_kalshi(ticker, fetcher=None):
     """True/False once the market settled, None while open or on any error."""
     try:
@@ -586,6 +668,13 @@ def default_state():
             "contract_scores_full": [],
             "contract_scores_market_trained_logit": [],
             "contract_scores_market_mid_raw": [],
+            # One {"observations": [features...], "outcome": bool} per resolved
+            # contract, same window/order as the contract_scores_* lists above.
+            # This is the ONLY place a contract's raw (features, outcome) survive
+            # past settle_cycle -- ablation_report's walk-forward has no other
+            # source of ground truth to replay. Bounded the same way for the
+            # same reason (issue #171: this module stays frugal on purpose).
+            "resolved_record": [],
             "resolved": 0, "skipped_unmodeled": 0}
 
 
@@ -605,7 +694,7 @@ def migrate_state(state):
     if int(state.get("schema") or 0) >= STATE_SCHEMA:
         return state
     fresh = default_state()
-    for key in ("full", "market", "pending", "resolved", "skipped_unmodeled"):
+    for key in ("full", "market", "pending", "resolved", "skipped_unmodeled", "resolved_record"):
         if key in state:
             fresh[key] = state[key]
     fresh["migrated_from_schema"] = state.get("schema")
@@ -699,6 +788,10 @@ def settle_cycle(state, now_ms, resolver=resolve_outcome_kalshi):
     # feature tuple.
     full = reconcile_full_model(state["full"])
     market = OnlineLogit.from_json(state["market"])
+    # Guarded, not assumed: a state loaded from disk that predates this field
+    # (any already-schema-2 file — migrate_state only backfills schema-1
+    # states) would otherwise KeyError the first time a contract resolves.
+    state.setdefault("resolved_record", [])
     for ticker in list(state["pending"].keys()):
         entry = state["pending"][ticker]
         if now_ms < entry["close_ms"] + 120_000:   # grace for settlement to post
@@ -722,13 +815,17 @@ def settle_cycle(state, now_ms, resolver=resolve_outcome_kalshi):
             brier([(market.predict(f), outcome) for f in observations]))
         state["contract_scores_market_mid_raw"].append(
             brier([(f["yes_mid"], outcome) for f in observations]))
+        # The raw material ablation_report replays: this contract's own
+        # observations paired with its outcome, captured here (same place,
+        # same moment as the three scores above) because nowhere else keeps it.
+        state["resolved_record"].append({"observations": observations, "outcome": outcome})
         for features in observations:
             full.update(features, outcome, l2=L2)
             market.update(features, outcome)
         state["resolved"] += 1
         del state["pending"][ticker]
     for key in ("contract_scores_full", "contract_scores_market_trained_logit",
-                "contract_scores_market_mid_raw"):
+                "contract_scores_market_mid_raw", "resolved_record"):
         state[key] = state[key][-SCORED_CONTRACT_WINDOW:]
     state["full"] = full.to_json()
     state["market"] = market.to_json()
@@ -769,6 +866,12 @@ def build_report(state, predictions, now_ms):
         "beats_trained_logit_baseline": (b_full is not None and b_logit is not None
                                          and enough and b_full < b_logit),
         "predictions": predictions,
+        # Additive-only (Task 3): per-signal ablation over the retained
+        # resolved-contract record, plus its own beats-market verdict. Does
+        # not touch or gate any field above -- see ablation_report's docstring
+        # for the walk-forward discipline and the delta sign convention.
+        "ablation": ablation_report(
+            [(r["observations"], r["outcome"]) for r in (state.get("resolved_record") or [])]),
     }
 
 
