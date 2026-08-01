@@ -43,6 +43,8 @@ BOOKKEEPING is per contract.
 
 Commands:  once | run [--interval 60] | report
 """
+import collections
+import datetime
 import json
 import math
 import os
@@ -56,14 +58,35 @@ from openterminal_paths import evidence_file
 EVIDENCE_PATH = evidence_file("kalshi-ws-books.json")
 STATE_PATH = evidence_file("spot-calibrator-state.json")
 OUTPUT_PATH = evidence_file("calibrator.json")
+TRADES_PATH = evidence_file("kalshi-trades.jsonl")
+SPOT_SERIES_PATH = evidence_file("btc-intelligence.jsonl")
+INTEL_LATEST_PATH = evidence_file("btc-intelligence-latest.json")
 KALSHI_MARKET_URL = "https://api.elections.kalshi.com/trade-api/v2/markets/{ticker}"
+
+# trade_flow / spot_drift / news_forecast tuning (issue tracked in docs/research).
+# Real kalshi-trades.jsonl runs at several thousand rows / 5 minutes on an
+# active hour, so TRADES_TAIL_LINES is sized generously above that so the
+# window is never truncated by the tail read itself.
+TRADE_FLOW_WINDOW_MS = 5 * 60 * 1000
+TRADES_TAIL_LINES = 20000
+# btc-intelligence.jsonl's real cadence is ~hourly (confirmed against the live
+# file), not the "few minutes" the brief's docstring language suggests -- see
+# the module note on spot_drift_feature. The lookback stays at 15 minutes;
+# spot_prev_asof degrades gracefully to whatever the sparser real series has.
+SPOT_DRIFT_LOOKBACK_MS = 15 * 60 * 1000
+SPOT_SERIES_TAIL_LINES = 2000
 
 PHYSICS_FEATURES = ("signed_distance_bps", "per_min_vol_bps", "sqrt_minutes_left",
                     "required_move_sigma", "realized_move_bps", "yes_mid")
 # The hourly signal ensemble (issue tracked in docs/research): book_imbalance
-# is computed for real below; trade_flow/spot_drift/news_forecast are neutral
-# 0.0 stubs until Task 2 fills them in. All four round-trip through the saved
-# "full" model, hence PHYSICS_FEATURES staying named for `reconcile_full_model`.
+# is computed in extract_features from the daemon's own book; trade_flow,
+# spot_drift, and news_forecast are computed in observe_cycle from the
+# auxiliary sources (trade tape, spot series, btc-intelligence) and override
+# extract_features' neutral 0.0 stubs there -- extract_features alone (no aux
+# supplied) still returns those three as 0.0, so callers that only have a
+# snapshot keep getting an honest neutral read. All four round-trip through
+# the saved "full" model, hence PHYSICS_FEATURES staying named for
+# `reconcile_full_model`.
 ENSEMBLE_FEATURES = ("book_imbalance", "trade_flow", "spot_drift", "news_forecast")
 FULL_FEATURES = PHYSICS_FEATURES + ENSEMBLE_FEATURES
 MARKET_FEATURES = ("yes_mid",)
@@ -114,19 +137,24 @@ def extract_features(snapshot):
         "realized_move_bps": float(horizon.get("realized_move_30s_bps") or 0.0),
         "yes_mid": yes_mid,
     }
-    # Ensemble signals (hourly signal ensemble, Task 1 of 3). book_imbalance is
-    # real: the daemon's own top-of-book sizes. The other three are neutral
-    # 0.0 stubs until Task 2 fills them in — never guessed, never omitted, so
-    # FULL_FEATURES always has a value for every key it trains on.
+    # Ensemble signals (hourly signal ensemble). book_imbalance is real here:
+    # the daemon's own top-of-book sizes. trade_flow/spot_drift/news_forecast
+    # need auxiliary sources (trade tape, spot series, btc-intelligence) that
+    # extract_features does not have access to (it only sees one snapshot),
+    # so they start neutral here and observe_cycle overrides them with the
+    # real as-of reads once the aux sources are in hand — never guessed,
+    # never omitted, so FULL_FEATURES always has a value for every key it
+    # trains on, even when called standalone with no aux (as this function
+    # always is).
     execution = snapshot.get("execution") or {}
     yes = execution.get("yes") or {}
     bid_sz = float(yes.get("bid_size") or 0.0)
     ask_sz = float(yes.get("ask_size") or 0.0)
     denom = bid_sz + ask_sz
     result["book_imbalance"] = (bid_sz - ask_sz) / denom if denom > 0.0 else 0.0
-    result["trade_flow"] = 0.0      # Task 2
-    result["spot_drift"] = 0.0      # Task 2
-    result["news_forecast"] = 0.0   # Task 2
+    result["trade_flow"] = 0.0      # overridden in observe_cycle
+    result["spot_drift"] = 0.0      # overridden in observe_cycle
+    result["news_forecast"] = 0.0   # overridden in observe_cycle
     return result
 
 
@@ -156,6 +184,262 @@ def extract_book(snapshot):
             if 0.0 < price < 1.0:
                 book["market_%s_%s" % (side, level)] = price
     return book
+
+
+def trade_flow_feature(ticker, trades, now_ms, window_ms=TRADE_FLOW_WINDOW_MS):
+    """Signed taker volume for `ticker`'s yes-contract trades over
+    `(now_ms - window_ms, now_ms]`, normalized to roughly `[-1, 1]`.
+
+    A row counts only when its `asset_id` EXACTLY matches `f"{ticker}:yes"`
+    (never a prefix match -- ticker strings can be prefixes of one another,
+    e.g. two strike-suffixed tickers sharing a stem) and its `ts` falls in
+    the half-open window, strictly excluding `ts > now_ms`: that is the
+    no-look-ahead guard, and it is enforced here, not by the caller.
+
+    Side vocabulary: the real kalshi-trades.jsonl uses `BUY`/`SELL` (taker
+    aggressor, uppercase) -- confirmed against the live evidence file, not
+    assumed. `yes`/`no` is also accepted so any future producer using that
+    vocabulary still scores. BUY/`yes` is taker demand for the yes contract
+    (bullish, `+size`); SELL/`no` is taker supply (bearish, `-size`).
+
+    `0.0` when there is no in-window volume for this ticker at all -- that is
+    "no signal", not "flat signal", but they collapse to the same neutral
+    value here as elsewhere in this module.
+    """
+    asset_id = "%s:yes" % ticker
+    window_start = now_ms - window_ms
+    net = 0.0
+    denom = 0.0
+    for row in trades or []:
+        if row.get("asset_id") != asset_id:
+            continue
+        try:
+            ts = float(row.get("ts"))
+        except (TypeError, ValueError):
+            continue
+        if ts > now_ms or ts <= window_start:
+            continue
+        try:
+            size = float(row.get("size") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        side = row.get("side")
+        if side in ("yes", "BUY", "buy"):
+            signed = size
+        elif side in ("no", "SELL", "sell"):
+            signed = -size
+        else:
+            continue
+        net += signed
+        denom += abs(size)
+    if denom <= 0.0:
+        return 0.0
+    return net / (denom + 1.0)
+
+
+# 15 minutes, expressed the way `required_move_sigma` already expresses vol
+# lookback elsewhere in this module (per_min_vol_bps * sqrt(minutes)).
+SPOT_DRIFT_LOOKBACK_MINUTES = SPOT_DRIFT_LOOKBACK_MS / 60000.0
+
+
+def spot_drift_feature(spot_now, spot_prev, per_min_vol_bps,
+                        lookback_minutes=SPOT_DRIFT_LOOKBACK_MINUTES):
+    """Normalized recent spot move: the raw bps move from `spot_prev` to
+    `spot_now`, scaled by the ambient vol expected over `lookback_minutes`
+    (the same `per_min_vol_bps * sqrt(minutes)` convention `extract_features`
+    already uses for `required_move_sigma`), clamped to `[-1, 1]`.
+
+    `spot_prev` is meant to be a spot reading a short lookback before the
+    decision -- in the real wiring, btc-intelligence.jsonl's ~hourly
+    `current_spot` series, so this reads as the hourly directional move the
+    brief names. `0.0` whenever either spot or the vol is missing or
+    non-positive: there is no honest reading without both legs and a scale
+    to measure them against.
+    """
+    try:
+        spot_now = float(spot_now)
+        spot_prev = float(spot_prev)
+        per_min_vol_bps = float(per_min_vol_bps)
+    except (TypeError, ValueError):
+        return 0.0
+    if spot_now <= 0.0 or spot_prev <= 0.0 or per_min_vol_bps <= 0.0:
+        return 0.0
+    move_bps = (spot_now - spot_prev) / spot_prev * 10000.0
+    ambient_bps = per_min_vol_bps * math.sqrt(lookback_minutes)
+    if ambient_bps <= 0.0:
+        return 0.0
+    return max(-1.0, min(1.0, move_bps / ambient_bps))
+
+
+def news_forecast_feature(intel):
+    """Centered directional read from a btc-intelligence-latest.json snapshot.
+
+    The real payload (inspected against the live evidence file) has NO
+    `forecast`/`p_up` field anywhere in it -- `abstention`, `adaptive_weights`,
+    `calibration`, `as_of_ms` and siblings, none of them a per-decision
+    directional probability. `news_context.score` is the best-available
+    directional read instead: a signed "weighted narrative pressure" already
+    centered at 0, roughly on a -100..100 scale (bullish stories positive,
+    bearish negative, per the file's own `explanation` field), computed by
+    the news scan the field name is actually about. It is divided by 100 and
+    clamped to `[-1, 1]`; `0.0` when `intel` is `None`, unreadable, or the
+    field is absent -- never guessed.
+    """
+    if not intel:
+        return 0.0
+    try:
+        news_context = intel.get("news_context") or {}
+        score = news_context.get("score")
+        if score is None:
+            return 0.0
+        return max(-1.0, min(1.0, float(score) / 100.0))
+    except (AttributeError, TypeError, ValueError):
+        return 0.0
+
+
+def latest_spot_asof(spot_series, now_ms):
+    """The most recent `(ts_ms, spot)` pair from `spot_series` with
+    `ts_ms <= now_ms`; `None` when no such entry exists. Pure -- the disk
+    read lives only in `load_spot_series_tail`, never here, so this is
+    directly unit-testable against an injected series.
+    """
+    best = None
+    for ts_ms, spot in spot_series or []:
+        if ts_ms <= now_ms and (best is None or ts_ms > best[0]):
+            best = (ts_ms, spot)
+    return best[1] if best else None
+
+
+def spot_prev_asof(spot_series, now_ms, lookback_ms=SPOT_DRIFT_LOOKBACK_MS):
+    """The spot from `spot_series` for the lookback-target read, considering
+    only entries with `ts_ms <= now_ms` (no look-ahead). `None` when the
+    series has no such entry at all.
+
+    Picks the MOST RECENT entry at or before `now_ms - lookback_ms`, not the
+    entry with the smallest absolute distance to the target: on a sparse,
+    coarsely-cadenced series (the real btc-intelligence.jsonl runs ~hourly,
+    confirmed against the live file, not every 15 minutes) the nearest-by-
+    distance entry is usually the LATEST point in the series -- the one
+    `latest_spot_asof` already returns as `spot_now` -- which would make
+    `spot_prev == spot_now` and `spot_drift` silently 0.0 on every cycle.
+    Falls back to the OLDEST available entry only when nothing reaches back
+    to the target yet (series shorter than the lookback), so a young series
+    still yields a genuinely earlier reading instead of the newest one.
+    """
+    target = now_ms - lookback_ms
+    candidates = [(ts_ms, spot) for ts_ms, spot in (spot_series or []) if ts_ms <= now_ms]
+    if not candidates:
+        return None
+    at_or_before_target = [c for c in candidates if c[0] <= target]
+    if at_or_before_target:
+        return max(at_or_before_target, key=lambda c: c[0])[1]
+    return min(candidates, key=lambda c: c[0])[1]
+
+
+def _parse_trade_ts_ms(ts):
+    """Normalize a trade row's `ts` to an int epoch-ms.
+
+    The real kalshi-trades.jsonl carries an ISO-8601 string with a trailing
+    `Z` (e.g. `"2026-08-01T01:25:34.052Z"`), confirmed against the live
+    file -- not epoch seconds or ms as the brief's placeholder assumed. Test
+    fixtures pass an int/float ms directly and are returned unchanged.
+
+    The ISO string is parsed as UTC explicitly. A naive
+    `strptime(...).timestamp()` interprets the parsed (naive) datetime as
+    LOCAL time, which would skew every `ts` by the host's UTC offset --
+    silently breaking the no-look-ahead guard in `trade_flow_feature` (real
+    trades would look like they are from the future, or from hours in the
+    past, depending on which way the offset runs).
+    """
+    if isinstance(ts, (int, float)):
+        return int(ts)
+    try:
+        dt = datetime.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        return int(dt.timestamp() * 1000)
+    except (TypeError, ValueError):
+        return None
+
+
+def load_trades_tail(path=TRADES_PATH, max_lines=TRADES_TAIL_LINES):
+    """Read the last `max_lines` of the trade tape, `ts` normalized to
+    epoch-ms. Guarded: any read or parse failure yields `[]` (neutral),
+    never raises -- this runs once per cycle from `load_auxiliary_sources`
+    and must never crash the calibrator.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            lines = collections.deque(fh, maxlen=max_lines)
+    except OSError:
+        return []
+    trades = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        ts_ms = _parse_trade_ts_ms(row.get("ts"))
+        if ts_ms is None:
+            continue
+        row = dict(row)
+        row["ts"] = ts_ms
+        trades.append(row)
+    return trades
+
+
+def load_spot_series_tail(path=SPOT_SERIES_PATH, max_lines=SPOT_SERIES_TAIL_LINES):
+    """Read the last `max_lines` of btc-intelligence.jsonl as `(ts_ms, spot)`
+    pairs -- the same `as_of_ms`/`current_spot` fields -latest.json exposes
+    for one cycle, here with history. Guarded: `[]` on any failure.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            lines = collections.deque(fh, maxlen=max_lines)
+    except OSError:
+        return []
+    series = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+            ts_ms = int(row.get("as_of_ms"))
+            spot = float(row.get("current_spot"))
+        except (TypeError, ValueError):
+            continue
+        series.append((ts_ms, spot))
+    return series
+
+
+def load_intel_latest(path=INTEL_LATEST_PATH, now_ms=None):
+    """Load btc-intelligence-latest.json, guarded against a stale future
+    write (no look-ahead, checked via its own `as_of_ms`) and any read
+    failure. `None` on either -- `news_forecast_feature(None)` is `0.0`.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            intel = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if now_ms is not None:
+        try:
+            as_of_ms = int(intel.get("as_of_ms"))
+        except (TypeError, ValueError):
+            return None
+        if as_of_ms > now_ms:
+            return None
+    return intel
+
+
+def load_auxiliary_sources(now_ms):
+    """Read all three auxiliary sources once, as-of `now_ms`, guarded
+    end-to-end so a missing or malformed file degrades to neutral instead of
+    crashing the cycle. Called once per cycle from `run_once`; tests never
+    call this -- they inject `aux` directly into `observe_cycle`, so no disk
+    I/O happens under test.
+    """
+    return {
+        "trades": load_trades_tail(),
+        "spot_series": load_spot_series_tail(),
+        "intel": load_intel_latest(now_ms=now_ms),
+    }
 
 
 class OnlineLogit:
@@ -345,8 +629,25 @@ def save_json_atomic(payload, path):
     os.replace(tmp, path)
 
 
-def observe_cycle(state, evidence, now_ms):
-    """Record one observation per modeled active snapshot; predict for output."""
+def observe_cycle(state, evidence, now_ms, aux=None):
+    """Record one observation per modeled active snapshot; predict for output.
+
+    `aux` bundles the three auxiliary sources (see `load_auxiliary_sources`):
+    `trades`, `spot_series`, `intel`. It is optional and defaults to empty/
+    `None`, which reproduces the Task-1 neutral 0.0 stubs exactly -- every
+    caller from before this task (all pre-Task-2 tests, and any future one
+    that does not care about the ensemble signals) keeps working unchanged.
+    `spot_now`/`spot_prev`/the news read are resolved ONCE per cycle here
+    (they are market-wide, not per-contract); `trade_flow` is resolved per
+    ticker since it depends on which market's trades are being summed.
+    """
+    aux = aux or {}
+    trades = aux.get("trades") or []
+    spot_series = aux.get("spot_series") or []
+    intel = aux.get("intel")
+    spot_now = latest_spot_asof(spot_series, now_ms) or 0.0
+    spot_prev = spot_prev_asof(spot_series, now_ms) or 0.0
+    news_forecast = news_forecast_feature(intel)
     full = reconcile_full_model(state["full"])
     market = OnlineLogit.from_json(state["market"])
     predictions = {}
@@ -355,6 +656,12 @@ def observe_cycle(state, evidence, now_ms):
         if features is None:
             state["skipped_unmodeled"] += 1
             continue
+        # Replace the Task-1 neutral 0.0 stubs with the real, as-of reads
+        # BEFORE this goes into entry["obs"] -- that list is what
+        # settle_cycle trains the model on, so it must see real values.
+        features["trade_flow"] = trade_flow_feature(ticker, trades, now_ms)
+        features["spot_drift"] = spot_drift_feature(spot_now, spot_prev, features["per_min_vol_bps"])
+        features["news_forecast"] = news_forecast
         close_ms = now_ms + int((snapshot.get("contract") or {}).get("seconds_left") or 0) * 1000
         entry = state["pending"].setdefault(ticker, {"close_ms": close_ms, "obs": []})
         entry["close_ms"] = close_ms
@@ -473,7 +780,8 @@ def run_once(now_ms=None):
     except (OSError, ValueError):
         return {"error": "evidence file unavailable", "path": EVIDENCE_PATH}
     state = load_state()
-    predictions = observe_cycle(state, evidence, now_ms)
+    aux = load_auxiliary_sources(now_ms)
+    predictions = observe_cycle(state, evidence, now_ms, aux=aux)
     settle_cycle(state, now_ms)
     save_json_atomic(state, STATE_PATH)
     report = build_report(state, predictions, now_ms)

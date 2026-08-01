@@ -56,6 +56,170 @@ class FeatureExtractionTest(unittest.TestCase):
             self.assertIn(f, cal.FULL_FEATURES)
 
 
+class TradeFlowFeatureTest(unittest.TestCase):
+    def test_trade_flow_signed_taker_volume_yes_no_vocab(self):
+        # Placeholder yes/no side vocabulary (kept working alongside the real
+        # BUY/SELL one so any future producer using yes/no still scores).
+        trades = [
+            {"asset_id": "KXBTCD-X:yes", "side": "yes", "size": 300, "ts": 1000},
+            {"asset_id": "KXBTCD-X:yes", "side": "no",  "size": 100, "ts": 1005},
+            {"asset_id": "OTHER:yes",     "side": "yes", "size": 999, "ts": 1006},  # other market, ignored
+            {"asset_id": "KXBTCD-X:yes", "side": "yes", "size": 200, "ts": 9999},   # future, ignored
+        ]
+        tf = cal.trade_flow_feature("KXBTCD-X", trades, now_ms=2000, window_ms=5000)
+        self.assertGreater(tf, 0.0)   # net buy pressure (300 yes - 100 no = +200 in-window)
+
+    def test_trade_flow_signed_taker_volume_real_buy_sell_vocab(self):
+        # kalshi-trades.jsonl's actual side vocabulary is BUY/SELL (uppercase
+        # taker aggressor), not yes/no -- confirmed against the live evidence
+        # file. BUY = taker demand for yes (bullish, +size); SELL = taker
+        # supply (bearish, -size).
+        trades = [
+            {"asset_id": "KXBTC15M-X:yes", "side": "BUY",  "size": 300, "ts": 1000},
+            {"asset_id": "KXBTC15M-X:yes", "side": "SELL", "size": 100, "ts": 1005},
+        ]
+        tf = cal.trade_flow_feature("KXBTC15M-X", trades, now_ms=2000, window_ms=5000)
+        self.assertGreater(tf, 0.0)
+
+    def test_trade_flow_sell_heavy_is_negative(self):
+        trades = [
+            {"asset_id": "KXBTC15M-X:yes", "side": "SELL", "size": 300, "ts": 1000},
+            {"asset_id": "KXBTC15M-X:yes", "side": "BUY",  "size": 100, "ts": 1005},
+        ]
+        tf = cal.trade_flow_feature("KXBTC15M-X", trades, now_ms=2000, window_ms=5000)
+        self.assertLess(tf, 0.0)
+
+    def test_trade_flow_no_look_ahead(self):
+        trades = [{"asset_id": "KXBTCD-X:yes", "side": "yes", "size": 500, "ts": 5000}]
+        self.assertEqual(cal.trade_flow_feature("KXBTCD-X", trades, now_ms=1000, window_ms=5000), 0.0)
+
+    def test_trade_flow_other_market_ignored(self):
+        trades = [{"asset_id": "SOMETHING-ELSE:yes", "side": "BUY", "size": 500, "ts": 1000}]
+        self.assertEqual(cal.trade_flow_feature("KXBTCD-X", trades, now_ms=2000, window_ms=5000), 0.0)
+
+    def test_trade_flow_neutral_when_no_trades(self):
+        self.assertEqual(cal.trade_flow_feature("KXBTCD-X", [], now_ms=2000, window_ms=5000), 0.0)
+
+
+class SpotDriftFeatureTest(unittest.TestCase):
+    def test_spot_drift_normalized_recent_move(self):
+        # Positive drift when spot rose over the lookback, scaled by ambient vol.
+        drift = cal.spot_drift_feature(spot_now=100_100.0, spot_prev=100_000.0, per_min_vol_bps=8.0)
+        self.assertGreater(drift, 0.0)
+
+    def test_spot_drift_negative_move_is_negative(self):
+        drift = cal.spot_drift_feature(spot_now=99_900.0, spot_prev=100_000.0, per_min_vol_bps=8.0)
+        self.assertLess(drift, 0.0)
+
+    def test_spot_drift_neutral_on_missing_vol(self):
+        self.assertEqual(cal.spot_drift_feature(100_100.0, 100_000.0, 0.0), 0.0)
+
+    def test_spot_drift_neutral_on_missing_prev(self):
+        self.assertEqual(cal.spot_drift_feature(100_100.0, 0.0, 8.0), 0.0)
+
+    def test_spot_drift_bounded(self):
+        drift = cal.spot_drift_feature(spot_now=200_000.0, spot_prev=100_000.0, per_min_vol_bps=1.0)
+        self.assertLessEqual(drift, 1.0)
+
+
+class NewsForecastFeatureTest(unittest.TestCase):
+    def test_news_forecast_neutral_when_absent(self):
+        self.assertEqual(cal.news_forecast_feature(None), 0.0)
+
+    def test_news_forecast_directional_read(self):
+        # Real btc-intelligence-latest.json has no "forecast"/"p_up" field;
+        # its directional news read is news_context.score, a signed "weighted
+        # narrative pressure" on roughly a -100..100 scale (bullish stories
+        # positive, bearish negative) -- confirmed against the live evidence
+        # file. That is the best-available directional read, not a stand-in.
+        intel = {"news_context": {"score": 42.0}}
+        self.assertGreater(cal.news_forecast_feature(intel), 0.0)
+
+    def test_news_forecast_negative_score_is_negative(self):
+        intel = {"news_context": {"score": -42.0}}
+        self.assertLess(cal.news_forecast_feature(intel), 0.0)
+
+    def test_news_forecast_neutral_when_score_missing(self):
+        self.assertEqual(cal.news_forecast_feature({"news_context": {}}), 0.0)
+
+
+class SpotSeriesLookupTest(unittest.TestCase):
+    """Pure selection helpers over an injected (ts_ms, spot) series -- the
+    disk read (btc-intelligence.jsonl tail) lives only in load_spot_series_tail,
+    never here."""
+
+    def test_latest_spot_asof_ignores_future_rows(self):
+        series = [(1000, 100.0), (5000, 200.0)]
+        self.assertEqual(cal.latest_spot_asof(series, now_ms=2000), 100.0)
+
+    def test_latest_spot_asof_none_when_empty(self):
+        self.assertIsNone(cal.latest_spot_asof([], now_ms=2000))
+
+    def test_spot_prev_asof_picks_closest_past_entry(self):
+        series = [(0, 100.0), (600_000, 101.0), (900_000, 102.0)]
+        prev = cal.spot_prev_asof(series, now_ms=900_000, lookback_ms=900_000)
+        self.assertEqual(prev, 100.0)
+
+    def test_spot_prev_asof_none_when_empty(self):
+        self.assertIsNone(cal.spot_prev_asof([], now_ms=2000))
+
+    def test_spot_prev_asof_does_not_collapse_to_latest_on_hourly_cadence(self):
+        # Regression: btc-intelligence.jsonl's real cadence is ~hourly, so on
+        # a 15-min lookback the entry with the smallest ABSOLUTE distance to
+        # the target is almost always the newest point in the series (the
+        # gap to the one before it is ~60 min). A "closest by distance"
+        # picker would return that same newest point as spot_prev, making it
+        # equal to spot_now (from latest_spot_asof) and spot_drift silently
+        # 0.0 every cycle -- exactly what the live smoke run showed before
+        # this was fixed to prefer the most recent entry AT OR BEFORE the
+        # target instead.
+        hour_ms = 3600_000
+        series = [(0, 100.0), (hour_ms, 101.0), (2 * hour_ms, 102.0)]
+        now_ms = 2 * hour_ms
+        prev = cal.spot_prev_asof(series, now_ms=now_ms, lookback_ms=15 * 60 * 1000)
+        latest = cal.latest_spot_asof(series, now_ms=now_ms)
+        self.assertEqual(latest, 102.0)
+        self.assertNotEqual(prev, latest)
+        self.assertEqual(prev, 101.0)
+
+
+class ObserveCycleAuxiliaryWiringTest(unittest.TestCase):
+    def test_wires_real_trade_flow_spot_drift_news_forecast(self):
+        ticker = "KXBTC-T1"
+        trades = [{"asset_id": "%s:yes" % ticker, "side": "BUY", "size": 500, "ts": 900}]
+        aux = {
+            "trades": trades,
+            "spot_series": [(0, 64000.0), (1000, 65000.0)],
+            "intel": {"news_context": {"score": 30.0}},
+        }
+        predictions = cal.observe_cycle(cal.default_state(), {"snapshots": {ticker: snapshot()}},
+                                        now_ms=1000, aux=aux)
+        feats = predictions[ticker]["features"]
+        self.assertGreater(feats["trade_flow"], 0.0)
+        self.assertNotEqual(feats["spot_drift"], 0.0)
+        self.assertGreater(feats["news_forecast"], 0.0)
+
+    def test_neutral_when_aux_omitted(self):
+        # Existing observe_cycle callers (all pre-Task-2 tests) pass no aux --
+        # must keep behaving exactly as the Task-1 stubs did.
+        predictions = cal.observe_cycle(cal.default_state(), {"snapshots": {"KXBTC-T2": snapshot()}}, 1000)
+        feats = predictions["KXBTC-T2"]["features"]
+        self.assertEqual(feats["trade_flow"], 0.0)
+        self.assertEqual(feats["spot_drift"], 0.0)
+        self.assertEqual(feats["news_forecast"], 0.0)
+
+    def test_observe_cycle_trains_on_real_features_not_stubs(self):
+        # entry["obs"] is what settle_cycle trains the model on -- it must
+        # carry the overridden real values, not the pre-override 0.0 stubs.
+        ticker = "KXBTC-T3"
+        trades = [{"asset_id": "%s:yes" % ticker, "side": "BUY", "size": 500, "ts": 900}]
+        aux = {"trades": trades, "spot_series": [], "intel": None}
+        state = cal.default_state()
+        cal.observe_cycle(state, {"snapshots": {ticker: snapshot()}}, now_ms=1000, aux=aux)
+        obs = state["pending"][ticker]["obs"]
+        self.assertGreater(obs[0]["trade_flow"], 0.0)
+
+
 class OnlineLogitTest(unittest.TestCase):
     def test_learns_separable_signal(self):
         model = cal.OnlineLogit(("signed_distance_bps",), lr=0.3)
