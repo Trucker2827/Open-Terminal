@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include "cli/ServeCommand.h"
 #include "cli/BridgeDiscoveryFile.h"
+#include "services/edge_radar/KalshiAutoEngine.h"
 #include "services/prediction/kalshi/KalshiRestClient.h"
 
 using namespace openmarketterminal::cli;
@@ -127,6 +128,36 @@ private slots:
         QVERIFY(!kalshi_non_execution_process_timed_out(true, -1, 25000));
         QVERIFY(!kalshi_non_execution_process_timed_out(true, 25000, 25000));
         QVERIFY(kalshi_non_execution_process_timed_out(true, 25001, 25000));
+    }
+
+    void kalshi_position_exit_cuts_locks_and_holds() {
+        namespace es = openmarketterminal::services::edge_radar;
+        es::KalshiExitConstraints c;  // margin .02, streak 2, lock_fair .85, window 120s
+        auto in = [](const char* side, double fair, double bid, int secs, int streak) {
+            es::KalshiPositionExitInput i;
+            i.held_side = side; i.entry_price = 0.50; i.contracts = 5;
+            i.held_side_fair = fair; i.held_side_bid = bid; i.exit_fee_per_contract = 0.01;
+            i.seconds_left = secs; i.trigger_streak = streak;
+            return i;
+        };
+        // LOCK-WIN: near-sure win inside the decisive final window -> bank it.
+        auto lock = es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.90, 0.90, 60, 0), c);
+        QVERIFY(lock.sell);
+        QCOMPARE(lock.reason, QStringLiteral("LOCK_WIN"));
+        // Same win but OUTSIDE the window and not economically better -> HOLD.
+        auto holdw = es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.90, 0.90, 300, 5), c);
+        QVERIFY(!holdw.sell);
+        QCOMPARE(holdw.reason, QStringLiteral("HOLD_EDGE_INTACT"));
+        // ECONOMIC CUT: cash-out 0.41 beats fair 0.30 by >= margin, streak met.
+        auto cut = es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.30, 0.42, 300, 2), c);
+        QVERIFY(cut.sell);
+        QCOMPARE(cut.reason, QStringLiteral("CUT_EDGE_REVERSED"));
+        // Same economics but only ONE tick -> hysteresis blocks the churn.
+        QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.30, 0.42, 300, 1), c).sell);
+        // Uneconomic: cash-out 0.40 not >= fair 0.40 + margin -> HOLD.
+        QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.40, 0.41, 300, 5), c).sell);
+        // Guard: no live bid to sell into -> HOLD (fail closed).
+        QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.30, 0.0, 300, 5), c).sell);
     }
 
     void kalshi_event_cycle_paces_paper_but_not_armed_live() {
