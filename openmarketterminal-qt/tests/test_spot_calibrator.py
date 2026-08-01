@@ -779,6 +779,20 @@ class EventPressureTest(unittest.TestCase):
         finally:
             _o.remove(path)
 
+    def test_nonobject_json_file_is_none_not_crash(self):
+        # A file that is valid JSON but not an object (list/str/number) must
+        # degrade to None, not raise AttributeError out of load_auxiliary_sources
+        # and crash the whole cycle. (record.get(...) on a list would throw.)
+        import tempfile, json as _j, os as _o
+        for payload in ([1, 2, 3], "a string", 42):
+            fd, path = tempfile.mkstemp(suffix=".json"); _o.close(fd)
+            try:
+                with open(path, "w") as fh:
+                    _j.dump(payload, fh)
+                self.assertIsNone(cal.load_event_impact_latest(path=path, now_ms=self.NOW))
+            finally:
+                _o.remove(path)
+
     def test_neutral_on_missing_or_empty(self):
         self.assertEqual(cal.event_pressure_feature(None, self.NOW), 0.0)
         self.assertEqual(cal.event_pressure_feature(self._rec([]), self.NOW), 0.0)
