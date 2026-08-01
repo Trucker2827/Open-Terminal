@@ -1135,7 +1135,7 @@ Result<void> advance_prediction_exits(qint64 now_ms, CycleReport& report) {
     auto selected = db.execute(
         "SELECT position.position_id, position.side, position.limit_price, position.qty,"
         " position.entry_fee, position.notional_usd, position.opened_at, original.market_id,"
-        " strategy.params_json"
+        " strategy.params_json, position.expires_at"
         " FROM sandbox_position position"
         " JOIN edge_decision_journal original ON original.id=position.decision_id"
         " JOIN sandbox_strategy strategy ON strategy.strategy_id=position.strategy_id"
@@ -1147,7 +1147,7 @@ Result<void> advance_prediction_exits(qint64 now_ms, CycleReport& report) {
     struct Row {
         QString position_id, side, market_id;
         double entry = 0.0, qty = 0.0, entry_fee = 0.0, notional = 0.0;
-        qint64 opened_at = 0;
+        qint64 opened_at = 0, expires_at = 0;
         QJsonObject params;
     };
     QList<Row> rows;
@@ -1157,6 +1157,7 @@ Result<void> advance_prediction_exits(qint64 now_ms, CycleReport& report) {
                         query.value(7).toString(), query.value(2).toDouble(),
                         query.value(3).toDouble(), query.value(4).toDouble(),
                         query.value(5).toDouble(), query.value(6).toLongLong(),
+                        query.value(9).toLongLong(),
                         parse_object(query.value(8).toString())});
     }
 
@@ -1197,12 +1198,36 @@ Result<void> advance_prediction_exits(qint64 now_ms, CycleReport& report) {
                                       (row.notional > 0.0 ? exit_fee / row.notional : 0.0);
 
         QString reason;
-        if (move >= take_profit)
-            reason = QStringLiteral("take_profit");
-        else if (move <= -stop_loss)
-            reason = QStringLiteral("stop_loss");
-        else if (remaining_edge <= -0.02)
-            reason = QStringLiteral("edge_reversal");
+        // LOCK-WIN (cash-out engine, part 2): bank a near-certain win in the
+        // decisive final window before a last-second reversal, via the reviewed
+        // KalshiAutoEngine::evaluate_position_exit core. It is time-aware --
+        // the fixed take_profit (% move from entry) can never reach a high-fair
+        // position (entry 0.90 -> +20% needs bid 1.08) -- so LOCK_WIN is checked
+        // FIRST. We act ONLY on its LOCK_WIN verdict; cut-loss and hold stay with
+        // the existing take_profit / stop_loss / edge_reversal logic below
+        // (augment, never replace -- the % triggers protect losers the core holds).
+        if (row.expires_at > 0) {
+            edge_radar::KalshiPositionExitInput exit_input;
+            exit_input.held_side = row.side;
+            exit_input.entry_price = row.entry;
+            exit_input.contracts = static_cast<int>(row.qty);
+            exit_input.held_side_fair = held_model_probability;
+            exit_input.held_side_bid = exit_bid;
+            exit_input.exit_fee_per_contract = kalshi_prediction_fee_per_contract(exit_bid);
+            exit_input.seconds_left = static_cast<int>((row.expires_at - now_ms) / 1000);
+            exit_input.trigger_streak = 0;  // LOCK_WIN is time-gated, not streak-gated
+            const auto exit = edge_radar::KalshiAutoEngine::evaluate_position_exit(exit_input);
+            if (exit.reason == QStringLiteral("LOCK_WIN"))
+                reason = QStringLiteral("lock_win");
+        }
+        if (reason.isEmpty()) {
+            if (move >= take_profit)
+                reason = QStringLiteral("take_profit");
+            else if (move <= -stop_loss)
+                reason = QStringLiteral("stop_loss");
+            else if (remaining_edge <= -0.02)
+                reason = QStringLiteral("edge_reversal");
+        }
         if (reason.isEmpty())
             continue;
 
