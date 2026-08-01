@@ -1262,6 +1262,109 @@ class TstSandboxExecutor : public QObject {
         QVERIFY(!position.has_realized_pnl);
     }
 
+    // LOCK-WIN (cash-out engine, part 2): a near-certain win in the decisive
+    // final window is banked before it can reverse at settlement -- the case the
+    // fixed +20% take_profit can NEVER reach for a high-entry position (entry
+    // 0.86 -> +20% would need bid 1.03). Augments, never replaces, the existing
+    // take_profit / stop_loss / edge_reversal triggers, and reuses the reviewed
+    // KalshiAutoEngine::evaluate_position_exit core (acts only on its LOCK_WIN
+    // verdict). Without the augmentation this position rides to settlement.
+    void prediction_lock_win_banks_near_certain_final_window_winner() {
+        auto strategy = register_strategy(
+            QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
+            QJsonObject{{"notional_usd", 25.0}, {"source", "edge_journal"},
+                        {"journal_source", "kalshi-lockwin-test"}, {"max_age_sec", 3600},
+                        {"prediction", true}, {"horizon", "15m"}, {"horizon_sec", 900},
+                        {"exit_policy", "managed"},
+                        {"stop_loss_pct", 0.20}, {"take_profit_pct", 0.20}, {"taker_bps", 100.0}},
+            QStringLiteral("prediction lock-win"));
+        QVERIFY(strategy.is_ok());
+
+        const qint64 t0 = 16'000'000;
+        // Open a HIGH-entry yes position (0.86): the +20% take_profit target
+        // (bid 1.03) is mathematically unreachable, so absent LOCK_WIN this rides
+        // to settlement. seconds_left 130 -> expires_at = t0 + 130s.
+        insert_journal_row(QStringLiteral("dec-lockwin-open"), QStringLiteral("kalshi-lockwin-test"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.8, t0, QStringLiteral("15m"),
+                           QJsonObject{{"signal", QJsonObject{{"yes_bid", 0.86}, {"no_bid", 0.12}}}},
+                           QJsonObject{}, 0.86, QStringLiteral("LOCKWIN-MARKET"), 130);
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto opened = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(opened.is_ok(), opened.is_err() ? opened.error().c_str() : "");
+        QCOMPARE(opened.value().opened, 1);
+
+        // Reprice late: held-side fair 0.90 (>= lock_win_fair 0.85), yes_bid 0.88
+        // (cash-out within slippage of fair), 115s left (<= lock_win_window 120s).
+        // move = (0.88-0.86)/0.86 = 2.3% -> no take_profit/stop_loss; and
+        // remaining_edge = 0.90-0.88-fee ~ +0.02 -> no edge_reversal. Only
+        // LOCK_WIN can close this.
+        insert_journal_row(QStringLiteral("dec-lockwin-reprice"), QStringLiteral("kalshi-lockwin-test"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.8, t0 + 14000, QStringLiteral("15m"),
+                           QJsonObject{{"signal", QJsonObject{{"yes_bid", 0.88}, {"no_bid", 0.10}}}},
+                           QJsonObject{}, 0.90, QStringLiteral("LOCKWIN-MARKET"), 130);
+        auto exited = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 15000);
+        QVERIFY2(exited.is_ok(), exited.is_err() ? exited.error().c_str() : "");
+        QCOMPARE(exited.value().closed, 1);
+
+        const PositionRow position = fetch_position(QStringLiteral("dec-lockwin-open"));
+        QVERIFY(position.found);
+        QCOMPARE(position.state, QStringLiteral("closed"));
+        QCOMPARE(position.close_reason, QStringLiteral("lock_win"));
+        QVERIFY(position.has_realized_pnl);
+        QVERIFY(position.realized_pnl > 0.0);  // banked a winner, not a loss
+    }
+
+    // LOCK-WIN time-gate guard: the SAME near-certain-win setup but with plenty
+    // of time to settlement (600s left, outside lock_win_window 120s) must NOT
+    // fire -- the position rides for its edge. Pins LOCK_WIN to the decisive
+    // final window, so a future change that fires on fair>=0.85 alone regresses.
+    void prediction_lock_win_holds_when_ample_time_left() {
+        auto strategy = register_strategy(
+            QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
+            QJsonObject{{"notional_usd", 25.0}, {"source", "edge_journal"},
+                        {"journal_source", "kalshi-lockwin-hold-test"}, {"max_age_sec", 3600},
+                        {"prediction", true}, {"horizon", "15m"}, {"horizon_sec", 900},
+                        {"exit_policy", "managed"},
+                        {"stop_loss_pct", 0.20}, {"take_profit_pct", 0.20}, {"taker_bps", 100.0}},
+            QStringLiteral("prediction lock-win time-gate"));
+        QVERIFY(strategy.is_ok());
+
+        const qint64 t0 = 17'000'000;
+        // seconds_left 700 -> expires_at = t0 + 700s (far from the final window).
+        insert_journal_row(QStringLiteral("dec-lockhold-open"), QStringLiteral("kalshi-lockwin-hold-test"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.8, t0, QStringLiteral("15m"),
+                           QJsonObject{{"signal", QJsonObject{{"yes_bid", 0.86}, {"no_bid", 0.12}}}},
+                           QJsonObject{}, 0.86, QStringLiteral("LOCKHOLD-MARKET"), 700);
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto opened = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(opened.is_ok(), opened.is_err() ? opened.error().c_str() : "");
+        QCOMPARE(opened.value().opened, 1);
+
+        // Same high fair (0.90) and bid (0.88) as the fire test, but repriced with
+        // 600s left (700s - 100s) -- outside the 120s lock_win_window. No % trigger
+        // fires either (move 2.3%, remaining_edge ~ +0.02), so it must stay open.
+        insert_journal_row(QStringLiteral("dec-lockhold-reprice"), QStringLiteral("kalshi-lockwin-hold-test"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.8, t0 + 14000, QStringLiteral("15m"),
+                           QJsonObject{{"signal", QJsonObject{{"yes_bid", 0.88}, {"no_bid", 0.10}}}},
+                           QJsonObject{}, 0.90, QStringLiteral("LOCKHOLD-MARKET"), 700);
+        auto repriced = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 100000);
+        QVERIFY2(repriced.is_ok(), repriced.is_err() ? repriced.error().c_str() : "");
+        QCOMPARE(repriced.value().closed, 0);
+
+        const PositionRow position = fetch_position(QStringLiteral("dec-lockhold-open"));
+        QVERIFY(position.found);
+        QCOMPARE(position.state, QStringLiteral("open"));
+        QVERIFY(!position.has_realized_pnl);
+    }
+
     // Chronos-2 journal rows are price forecasts, not binary yes/no
     // contracts. The seeded chronos2 book must therefore open a concrete
     // tick-resolved paper position, preserving down forecasts as sell/short
