@@ -536,13 +536,22 @@ class OnlineLogit:
             self.m2[i] += delta * (v - self.mean[i])
 
     def predict(self, feature_dict):
-        x = [float(feature_dict[f]) for f in self.features]
+        # .get(f, 0.0), not [f]: a stored observation recorded before a feature
+        # existed (e.g. book_imbalance/event_pressure added by a later model
+        # migration) simply lacks that key. Treat an absent feature as its
+        # neutral 0.0 -- the same neutral-on-missing discipline extract_features
+        # stubs it with -- instead of a KeyError that crashes settle_cycle when
+        # it replays historical observations against the reconciled model.
+        x = [float(feature_dict.get(f, 0.0)) for f in self.features]
         z = self._standardize(x)
         s = self.w[-1] + sum(wi * zi for wi, zi in zip(self.w, z))
         return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, s))))
 
     def update(self, feature_dict, outcome, l2=0.0):
-        x = [float(feature_dict[f]) for f in self.features]
+        # .get(f, 0.0): see predict() -- a pre-feature historical observation
+        # trains the newly added feature at its neutral, self-correcting as new
+        # contracts arrive with real values, never crashing on the missing key.
+        x = [float(feature_dict.get(f, 0.0)) for f in self.features]
         p = self.predict(feature_dict)
         self._observe_stats(x)
         z = self._standardize(x)

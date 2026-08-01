@@ -820,5 +820,47 @@ class EventPressureTest(unittest.TestCase):
             self.assertAlmostEqual(migrated.w[migrated.features.index(f)], old.w[old.features.index(f)])
 
 
+class MissingFeatureNeutralTest(unittest.TestCase):
+    """A saved model whose feature list has grown past what a persisted
+    observation carries -- because a later migration added book_imbalance /
+    event_pressure -- must treat the absent key as neutral 0.0 in BOTH predict
+    and update, never KeyError. This is exactly the settle_cycle replay of
+    historical observations that crash-looped the live calibrator
+    (`KeyError: 'book_imbalance'`)."""
+
+    def _obs_pre_ensemble(self):
+        # A full observation as recorded before the ensemble features existed:
+        # the six physics keys only, none of the five ensemble keys.
+        return {"signed_distance_bps": 10.0, "per_min_vol_bps": 5.0,
+                "sqrt_minutes_left": 3.0, "required_move_sigma": 1.0,
+                "realized_move_bps": 2.0, "yes_mid": 0.4}
+
+    def test_predict_tolerates_missing_feature_keys(self):
+        m = cal.OnlineLogit(cal.FULL_FEATURES)  # 11 features
+        p = m.predict(self._obs_pre_ensemble())  # obs has only 6 -> must not KeyError
+        self.assertTrue(0.0 <= p <= 1.0)
+
+    def test_update_tolerates_missing_feature_keys(self):
+        m = cal.OnlineLogit(cal.FULL_FEATURES)
+        m.update(self._obs_pre_ensemble(), True, l2=cal.L2)  # must not KeyError
+        # the absent feature was seen as neutral 0.0, so its running mean stays 0.0
+        for f in ("book_imbalance", "event_pressure"):
+            self.assertEqual(m.mean[cal.FULL_FEATURES.index(f)], 0.0)
+
+    def test_settle_cycle_replays_pre_feature_observations(self):
+        # End-to-end reproduction of the live crash: a pending contract whose
+        # stored observations predate the ensemble features settles without
+        # KeyError. The model carries all 11 features; the obs carry 6.
+        state = cal.default_state()
+        state["pending"]["KXBTCD-PRE"] = {
+            "close_ms": 1_000, "obs": [self._obs_pre_ensemble(), self._obs_pre_ensemble()]}
+        # now_ms is past close_ms + the 120s settlement grace so the contract
+        # actually settles; the resolver returns YES so settle_cycle scores +
+        # trains on the pre-feature observations (the exact crashing path).
+        cal.settle_cycle(state, now_ms=1_000 + 200_000, resolver=lambda ticker, **k: True)
+        self.assertNotIn("KXBTCD-PRE", state["pending"])  # settled, no crash
+        self.assertEqual(state["resolved"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
