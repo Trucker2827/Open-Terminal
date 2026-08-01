@@ -398,6 +398,11 @@ static bool series_matches_keywords(const QJsonObject& obj, const QStringList& k
     return false;
 }
 
+bool kalshi_series_cache_fresh(qint64 cached_at_ms, qint64 now_ms, qint64 ttl_ms) {
+    return cached_at_ms > 0 && ttl_ms > 0 && now_ms >= cached_at_ms
+           && (now_ms - cached_at_ms) < ttl_ms;
+}
+
 void KalshiRestClient::fetch_category(const QString& category, const QStringList& frequencies,
                                       const QStringList& series_keywords,
                                       bool as_events, int limit) {
@@ -411,15 +416,30 @@ void KalshiRestClient::fetch_category(const QString& category, const QStringList
         else emit markets_ready({}, QString());
         return;
     }
+    const int cap = qBound(1, limit, 500);
+    // The series list resolved for (category, frequencies, keywords) is
+    // near-static; serve it from cache and skip the 429-prone /series browse
+    // when a recent resolution is still fresh. The per-series ladders below are
+    // never cached, so live contract data stays current.
+    const QString cache_key = category + QLatin1Char('\x1f')
+        + frequencies.join(QLatin1Char(',')) + QLatin1Char('\x1f')
+        + series_keywords.join(QLatin1Char(','));
+    const auto cached = series_list_cache_.constFind(cache_key);
+    if (cached != series_list_cache_.constEnd()
+        && kalshi_series_cache_fresh(cached->fetched_at_ms,
+                                     QDateTime::currentMSecsSinceEpoch(), kSeriesCacheTtlMs)) {
+        fan_out_series_events(cached->series, as_events, cap);
+        return;
+    }
+
     QUrlQuery q;
     q.addQueryItem(QStringLiteral("category"), category);
     QUrl u(base_url() + QStringLiteral("/series"));
     u.setQuery(q);
 
-    const int cap = qBound(1, limit, 500);
     QPointer<KalshiRestClient> self = this;
     get_json(u.toString(),
-             [self, frequencies, series_keywords, as_events, cap](const QJsonDocument& doc) {
+             [self, frequencies, series_keywords, as_events, cap, cache_key](const QJsonDocument& doc) {
                  if (!self) return;
                  const auto arr = doc.object().value("series").toArray();
                  // Sort series by recency (last_updated_ts, ISO-8601 sorts
@@ -446,6 +466,10 @@ void KalshiRestClient::fetch_category(const QString& category, const QStringList
                  QStringList series;
                  series.reserve(by_recency.size());
                  for (const auto& p : by_recency) series.push_back(p.second);
+                 // Remember this resolution so the next planner cycles reuse it
+                 // instead of re-hitting the rate-limited /series browse.
+                 self->series_list_cache_.insert(
+                     cache_key, {QDateTime::currentMSecsSinceEpoch(), series});
                  // Nested event payloads contain the complete active contract
                  // ladder (hourly BTC threshold events can expose ~185 markets).
                  // Flatten those for market callers instead of taking an
