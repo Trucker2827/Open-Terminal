@@ -232,6 +232,36 @@ struct KalshiMicroEvidenceResult {
     QStringList blockers;
 };
 
+// ── Position exit (cash-out / hold-cut) ──────────────────────────────────────
+// The engine plans only ENTRY legs today; a filled position rides to
+// settlement. For the 15-min binary race (YES=up / NO=down) the only lever
+// besides entry is cash-out (sell-to-close) to CUT LOSSES or LOCK SURE WINS.
+struct KalshiPositionExitInput {
+    QString held_side;               // "yes" or "no" — the side currently held
+    double entry_price = 0.0;        // price paid per contract for the held side
+    int contracts = 0;               // size held
+    double held_side_fair = 0.0;     // current fair P(held side settles in-the-money), 0..1
+    double held_side_bid = 0.0;      // best bid for the held side now (cash-out proceeds/contract)
+    double exit_fee_per_contract = 0.0;
+    int seconds_left = -1;
+    int trigger_streak = 0;          // consecutive ticks the exit condition has held (hysteresis)
+};
+
+struct KalshiExitConstraints {
+    double economic_margin = 0.02;      // cut only when cash-out beats holding by >= this
+    int min_trigger_streak = 2;         // hysteresis: the condition must persist this many ticks
+    double lock_win_fair = 0.85;        // "sure win": held-side fair at/above this ...
+    int lock_win_window_seconds = 120;  // ... inside the decisive final window ...
+    double lock_win_max_slippage = 0.03; // ... but only bank it if cash-out is within
+                                         // this of fair (never dump a winner into a
+                                         // stale/thin bid for far less than it's worth)
+};
+
+struct KalshiPositionExitResult {
+    bool sell = false;               // sell-to-close the held position?
+    QString reason;                  // HOLD_EDGE_INTACT | CUT_EDGE_REVERSED | LOCK_WIN
+};
+
 struct KalshiPortfolioPlan {
     QVector<KalshiPortfolioLeg> legs;
     QVector<KalshiPayoffPoint> payoff_curve;
@@ -309,6 +339,16 @@ class KalshiAutoEngine {
         const KalshiMicroEvidenceInput& input,
         double minimum_edge = 0.03,
         qint64 maximum_quote_age_ms = 5'000);
+
+    /// Pure hold-or-cut for ONE filled position. Sells-to-close when cashing out
+    /// economically beats riding to settlement (`CUT_EDGE_REVERSED`: cash-out
+    /// proceeds after fee exceed the held side's fair value by >= economic_margin,
+    /// held for >= min_trigger_streak ticks), OR when a near-sure win in the
+    /// decisive final window should be banked against a last-second reversal
+    /// (`LOCK_WIN`). Otherwise `HOLD_EDGE_INTACT`. No I/O — unit-tested in isolation.
+    static KalshiPositionExitResult evaluate_position_exit(
+        const KalshiPositionExitInput& input,
+        const KalshiExitConstraints& constraints = {});
 
     static KalshiReplayResult replay(const QVector<KalshiReplayFrame>& frames,
                                      const QHash<QString, double>& final_settlement_by_event,

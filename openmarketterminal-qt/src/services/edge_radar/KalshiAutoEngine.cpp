@@ -1231,6 +1231,51 @@ KalshiMicroEvidenceResult KalshiAutoEngine::evaluate_micro_evidence(
     return result;
 }
 
+KalshiPositionExitResult KalshiAutoEngine::evaluate_position_exit(
+    const KalshiPositionExitInput& input,
+    const KalshiExitConstraints& constraints) {
+    KalshiPositionExitResult result;
+    result.reason = QStringLiteral("HOLD_EDGE_INTACT");
+    // Nothing to manage without a real held side, size, and a live bid to sell
+    // into. A held side with no bid cannot be cashed out — hold, fail closed.
+    const QString side = input.held_side.trimmed().toLower();
+    if ((side != QStringLiteral("yes") && side != QStringLiteral("no")) ||
+        input.contracts < 1 ||
+        !(input.held_side_fair >= 0.0 && input.held_side_fair <= 1.0) ||
+        !(input.held_side_bid > 0.0 && input.held_side_bid < 1.0))
+        return result;
+
+    const double fee = input.exit_fee_per_contract > 0.0 ? input.exit_fee_per_contract : 0.0;
+    const double cash_out = input.held_side_bid - fee;  // proceeds per contract if we sell now
+
+    // (1) LOCK-WIN: a near-sure win inside the decisive final window. Bank it
+    //     against a last-second reversal even if the bid gives up a sliver vs
+    //     fair — but ONLY a sliver: the cash-out must be within
+    //     lock_win_max_slippage of the held side's fair value, or we would be
+    //     dumping a near-certain winner into a stale/thin/crossed bid for far
+    //     less than it is worth. This is the 15-min "sure win" cash-out.
+    if (input.seconds_left >= 0 && input.seconds_left <= constraints.lock_win_window_seconds &&
+        input.held_side_fair >= constraints.lock_win_fair &&
+        cash_out >= input.held_side_fair - constraints.lock_win_max_slippage) {
+        result.sell = true;
+        result.reason = QStringLiteral("LOCK_WIN");
+        return result;
+    }
+
+    // (2) ECONOMIC CUT: cashing out returns MORE than the held side is worth to
+    //     ride (bid − fee beats fair by >= economic_margin) — e.g. the market is
+    //     slow to mark a losing position down, or overpays. Requires the
+    //     condition to persist >= min_trigger_streak ticks so a one-tick book
+    //     blip never churns the position.
+    if (cash_out >= input.held_side_fair + constraints.economic_margin &&
+        input.trigger_streak >= constraints.min_trigger_streak) {
+        result.sell = true;
+        result.reason = QStringLiteral("CUT_EDGE_REVERSED");
+        return result;
+    }
+    return result;  // HOLD_EDGE_INTACT
+}
+
 KalshiReplayResult KalshiAutoEngine::replay(
     const QVector<KalshiReplayFrame>& frames,
     const QHash<QString, double>& final_settlement_by_event,
