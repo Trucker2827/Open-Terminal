@@ -61,6 +61,7 @@ OUTPUT_PATH = evidence_file("calibrator.json")
 TRADES_PATH = evidence_file("kalshi-trades.jsonl")
 SPOT_SERIES_PATH = evidence_file("btc-intelligence.jsonl")
 INTEL_LATEST_PATH = evidence_file("btc-intelligence-latest.json")
+EVENT_IMPACT_LATEST_PATH = evidence_file("btc-event-impact-latest.json")
 KALSHI_MARKET_URL = "https://api.elections.kalshi.com/trade-api/v2/markets/{ticker}"
 
 # trade_flow / spot_drift / news_forecast tuning (issue tracked in docs/research).
@@ -87,7 +88,7 @@ PHYSICS_FEATURES = ("signed_distance_bps", "per_min_vol_bps", "sqrt_minutes_left
 # snapshot keep getting an honest neutral read. All four round-trip through
 # the saved "full" model, hence PHYSICS_FEATURES staying named for
 # `reconcile_full_model`.
-ENSEMBLE_FEATURES = ("book_imbalance", "trade_flow", "spot_drift", "news_forecast")
+ENSEMBLE_FEATURES = ("book_imbalance", "trade_flow", "spot_drift", "news_forecast", "event_pressure")
 FULL_FEATURES = PHYSICS_FEATURES + ENSEMBLE_FEATURES
 MARKET_FEATURES = ("yes_mid",)
 MAX_OBS_PER_TICKER = 60
@@ -155,6 +156,7 @@ def extract_features(snapshot):
     result["trade_flow"] = 0.0      # overridden in observe_cycle
     result["spot_drift"] = 0.0      # overridden in observe_cycle
     result["news_forecast"] = 0.0   # overridden in observe_cycle
+    result["event_pressure"] = 0.0  # overridden in observe_cycle
     return result
 
 
@@ -297,6 +299,40 @@ def news_forecast_feature(intel):
         return 0.0
 
 
+def event_pressure_feature(record, now_ms):
+    """Signed, decaying pressure from live BTC events, as-of now_ms.
+
+    Sum over events with event_ts_ms <= now_ms of
+    direction*magnitude*0.5**(dt_hours/half_life_hours), clamped [-1,1].
+    0.0 when record is None/empty/malformed or has no live event -- neutral,
+    never a fabricated extreme. Pure: the disk read is in
+    load_event_impact_latest, so this is unit-testable against an injected
+    record.
+    """
+    if not record:
+        return 0.0
+    try:
+        events = record.get("events")
+    except AttributeError:
+        return 0.0
+    if not isinstance(events, list):
+        return 0.0
+    total = 0.0
+    for e in events:
+        try:
+            ts = int(e["event_ts_ms"])
+            hl = float(e["half_life_hours"])
+            d = float(e["direction"])
+            m = float(e["magnitude"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if ts > now_ms or hl <= 0.0:
+            continue
+        dt_hours = (now_ms - ts) / 3_600_000.0
+        total += d * m * (0.5 ** (dt_hours / hl))
+    return max(-1.0, min(1.0, total))
+
+
 def latest_spot_asof(spot_series, now_ms):
     """The most recent `(ts_ms, spot)` pair from `spot_series` with
     `ts_ms <= now_ms`; `None` when no such entry exists. Pure -- the disk
@@ -428,8 +464,28 @@ def load_intel_latest(path=INTEL_LATEST_PATH, now_ms=None):
     return intel
 
 
+def load_event_impact_latest(path=EVENT_IMPACT_LATEST_PATH, now_ms=None):
+    """Load btc-event-impact-latest.json, guarded against a stale future write
+    (no look-ahead via its own as_of_ms) and any read failure. None on either
+    -- event_pressure_feature(None) is 0.0. Mirrors load_intel_latest.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            record = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if now_ms is not None:
+        try:
+            as_of_ms = int(record.get("as_of_ms"))
+        except (TypeError, ValueError):
+            return None
+        if as_of_ms > now_ms:
+            return None
+    return record
+
+
 def load_auxiliary_sources(now_ms):
-    """Read all three auxiliary sources once, as-of `now_ms`, guarded
+    """Read all four auxiliary sources once, as-of `now_ms`, guarded
     end-to-end so a missing or malformed file degrades to neutral instead of
     crashing the cycle. Called once per cycle from `run_once`; tests never
     call this -- they inject `aux` directly into `observe_cycle`, so no disk
@@ -439,6 +495,7 @@ def load_auxiliary_sources(now_ms):
         "trades": load_trades_tail(),
         "spot_series": load_spot_series_tail(),
         "intel": load_intel_latest(now_ms=now_ms),
+        "event_impact": load_event_impact_latest(now_ms=now_ms),
     }
 
 
@@ -757,8 +814,8 @@ def save_json_atomic(payload, path):
 def observe_cycle(state, evidence, now_ms, aux=None):
     """Record one observation per modeled active snapshot; predict for output.
 
-    `aux` bundles the three auxiliary sources (see `load_auxiliary_sources`):
-    `trades`, `spot_series`, `intel`. It is optional and defaults to empty/
+    `aux` bundles the four auxiliary sources (see `load_auxiliary_sources`):
+    `trades`, `spot_series`, `intel`, `event_impact`. It is optional and defaults to empty/
     `None`, which reproduces the Task-1 neutral 0.0 stubs exactly -- every
     caller from before this task (all pre-Task-2 tests, and any future one
     that does not care about the ensemble signals) keeps working unchanged.
@@ -773,6 +830,7 @@ def observe_cycle(state, evidence, now_ms, aux=None):
     spot_now = latest_spot_asof(spot_series, now_ms) or 0.0
     spot_prev = spot_prev_asof(spot_series, now_ms) or 0.0
     news_forecast = news_forecast_feature(intel)
+    event_pressure = event_pressure_feature(aux.get("event_impact"), now_ms)
     full = reconcile_full_model(state["full"])
     market = OnlineLogit.from_json(state["market"])
     predictions = {}
@@ -787,6 +845,7 @@ def observe_cycle(state, evidence, now_ms, aux=None):
         features["trade_flow"] = trade_flow_feature(ticker, trades, now_ms)
         features["spot_drift"] = spot_drift_feature(spot_now, spot_prev, features["per_min_vol_bps"])
         features["news_forecast"] = news_forecast
+        features["event_pressure"] = event_pressure
         close_ms = now_ms + int((snapshot.get("contract") or {}).get("seconds_left") or 0) * 1000
         entry = state["pending"].setdefault(ticker, {"close_ms": close_ms, "obs": []})
         entry["close_ms"] = close_ms
