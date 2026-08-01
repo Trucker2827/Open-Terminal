@@ -57,19 +57,34 @@ int run_btc_event_impact_selftest() {
     if (!write_text(data_dir + QStringLiteral("/btc-news-pulse-latest.json"), pulse))
         return fail("could not write fixture pulse");
 
-    // Valid stub scorer: ignores stdin, echoes a well-formed record carrying a
-    // recognizable marker so we can prove the failure branch does not clobber it.
+    // Valid stub scorer: ASSERTS the producer's no-look-ahead source filter by
+    // inspecting the stdin it actually receives -- the fixture above carries a
+    // future-published story that the producer must have dropped, so the stub
+    // exits non-zero (failing branch 1) if any received story post-dates as_of
+    // or if the eligible count isn't exactly the one past-dated story. Only
+    // then does it echo a well-formed record with a recognizable marker (so the
+    // failure branch below can prove it isn't clobbered). Without this, flipping
+    // the filter's comparison would still pass the selftest.
     const QString good_scorer = data_dir + QStringLiteral("/good_scorer.py");
     const QByteArray good_src =
-        "import sys, json\n"
-        "sys.stdin.read()\n"
-        "sys.stdout.write(json.dumps({\n"
-        "  \"as_of_ms\": \"1800000000000\",\n"
-        "  \"events\": [{\"event_ts_ms\": 1700000000000, \"direction\": \"UP\",\n"
-        "               \"magnitude\": 0.5, \"half_life_hours\": 6, \"kind\": \"ETF/FLOWS\",\n"
-        "               \"headline\": \"BTC ETF sees record inflow\",\n"
-        "               \"rationale\": \"selftest stub record\"}],\n"
-        "  \"model\": \"selftest-stub-model\", \"prompt_version\": \"selftest-v0\"}))\n";
+        R"PY(import sys, json
+ctx = json.loads(sys.stdin.read() or "{}")
+as_of = int(ctx.get("as_of_ms", 0))
+stories = ctx.get("stories") or []
+if any(int(s.get("published_ts_ms", 0)) > as_of for s in stories):
+    sys.stderr.write("future-published story leaked past the source filter\n")
+    sys.exit(4)
+if len(stories) != 1:
+    sys.stderr.write("expected exactly 1 eligible story, got %d\n" % len(stories))
+    sys.exit(5)
+sys.stdout.write(json.dumps({
+  "as_of_ms": "1800000000000",
+  "events": [{"event_ts_ms": 1700000000000, "direction": "UP",
+              "magnitude": 0.5, "half_life_hours": 6, "kind": "ETF/FLOWS",
+              "headline": "BTC ETF sees record inflow",
+              "rationale": "selftest stub record"}],
+  "model": "selftest-stub-model", "prompt_version": "selftest-v0"}))
+)PY";
     if (!write_text(good_scorer, good_src))
         return fail("could not write good stub scorer");
 
