@@ -34,6 +34,7 @@
 #include "mcp/BridgeDiscoverySelftest.h"
 #include "mcp/DataHubPeekSelftest.h"
 #include "services/feeds/FeedSelfTest.h"
+#include "services/news/BtcEventImpactSelftest.h"
 #include "trading/PaperTradingSelftest.h"
 #include "trading/replication/PortfolioReplicationSelftest.h"
 #include "services/workflow/WorkflowHonestySelftest.h"
@@ -879,6 +880,8 @@ int main(int argc, char* argv[]) {
             return openmarketterminal::layout::run_dock_layout_selftest();
         if (qstrcmp(argv[i], "--selftest-universe-scan") == 0)
             return openmarketterminal::algo::run_universe_scan_selftest();
+        if (qstrcmp(argv[i], "--selftest-btc-event-impact") == 0)
+            return openmarketterminal::services::news::run_btc_event_impact_selftest();
         // NOTE: --selftest-workflow-honesty is dispatched EARLY (before SecureStorage
         // init) so it stays runnable headless — the keychain ACL prompt would block here.
         if (qstrcmp(argv[i], "--selftest-paper") == 0)

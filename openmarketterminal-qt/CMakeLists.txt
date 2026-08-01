@@ -1257,6 +1257,8 @@ set(SERVICE_SOURCES
     # NewsService split; see NewsService.cpp header.
     src/services/news/NewsService.cpp
     src/services/news/BtcNewsPulse.cpp
+    src/services/news/BtcEventImpact.cpp
+    src/services/news/BtcEventImpactSelftest.cpp
     src/services/news/NewsService_LiveFeed.cpp
     src/services/news/NewsService_Parsing.cpp
     src/services/news/NewsService_Classification.cpp

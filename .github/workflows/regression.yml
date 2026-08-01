@@ -118,7 +118,7 @@ jobs:
           APP="$(find build-test -maxdepth 3 -type f -name OpenTerminal | head -1)"
           test -n "$APP" || { echo "::error::GUI binary (OpenTerminal) not found under build-test"; exit 1; }
           echo "selftest binary: $APP"
-          for t in tools datahub-peek feeds dock-layout universe-scan paper portfolio-replication bridge-discovery workflow-honesty; do
+          for t in tools datahub-peek feeds dock-layout universe-scan paper portfolio-replication bridge-discovery workflow-honesty btc-event-impact; do
             echo "== --selftest-$t =="
             "$APP" "--selftest-$t" || { echo "::error::--selftest-$t failed"; exit 1; }
           done
