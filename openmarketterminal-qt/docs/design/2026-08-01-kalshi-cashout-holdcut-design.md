@@ -4,8 +4,7 @@
 **Branch:** `finn/kalshi-holdcut-cashout` (off `main`)
 
 ## Why (supervision + operator's rules)
-The bot has entry discipline but **zero exit discipline**: a filled position hits
-`KalshiBotDecision.cpp` `ALREADY_HELD` and rides to settlement untouched. For
+**TARGET ENGINE = `KalshiAutoEngine` (the `kalshi auto` bot that trades 15-min + live $2), NOT `KalshiBotDecision` (the separate calibrator paper bot).** Both are entry-only: `KalshiAutoEngine` reads existing positions ONLY to cap new entries (`existing_open_positions >= max_positions`) + reserve exit COST (`exit_cost_reserve`); it NEVER emits an exit/sell leg. So cash-out = **adding exit-leg generation to KalshiAutoEngine's portfolio planner** (a substantial new capability), then routing those legs through execute-next -> `sell_to_close`. The `KalshiBotDecision` `ALREADY_HELD` gap is real too but that's the calibrator bot, not the 15-min path. For
 15-min BTC (a pure binary UP=yes / DOWN=no, decided in the final minutes) the
 operator's rule is: the ONLY lever besides entry is **cash-out — sell-to-close
 to CUT LOSSES or LOCK SURE WINS** before settlement. Without it the bot rides
