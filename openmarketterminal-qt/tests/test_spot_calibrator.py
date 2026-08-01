@@ -9,14 +9,17 @@ import spot_calibrator as cal
 
 
 def snapshot(spot=65000.0, floor=64000.0, cap=0.0, seconds_left=900, yes_mid=0.62,
-             vol_per_min=6.3, realized_move=12.0):
+             vol_per_min=6.3, realized_move=12.0, yes_bid_size=None, yes_ask_size=None):
     horizon = {"spot": spot, "floor_strike": floor, "cap_strike": cap,
                "required_move_bps": abs(floor - spot) / spot * 10000.0 if spot else 0.0,
                "realized_move_30s_bps": realized_move}
     if vol_per_min:
         horizon["realized_volatility"] = {"per_min_bps": vol_per_min}
-    return {"contract": {"seconds_left": seconds_left, "yes_mid": yes_mid,
+    snap = {"contract": {"seconds_left": seconds_left, "yes_mid": yes_mid,
                          "horizon": horizon}}
+    if yes_bid_size is not None or yes_ask_size is not None:
+        snap["execution"] = {"yes": {"bid_size": yes_bid_size, "ask_size": yes_ask_size}}
+    return snap
 
 
 class FeatureExtractionTest(unittest.TestCase):
@@ -38,6 +41,19 @@ class FeatureExtractionTest(unittest.TestCase):
         self.assertIsNone(cal.extract_features(snapshot(seconds_left=0)))
         self.assertIsNone(cal.extract_features(snapshot(yes_mid=0.0)))   # no market mid
         self.assertIsNone(cal.extract_features({"contract": {"seconds_left": "abc"}}))
+
+    def test_book_imbalance_from_snapshot_sizes(self):
+        # execution.yes carries bid_size/ask_size; imbalance is (bid-ask)/(bid+ask).
+        snap = snapshot(yes_bid_size=300, yes_ask_size=100)
+        feats = cal.extract_features(snap)
+        self.assertAlmostEqual(feats["book_imbalance"], 0.5)       # (300-100)/(300+100)
+        self.assertEqual(feats["trade_flow"], 0.0)                 # neutral stub (Task 2)
+        self.assertEqual(feats["spot_drift"], 0.0)
+        self.assertEqual(feats["news_forecast"], 0.0)
+
+    def test_full_features_include_the_four_new_signals(self):
+        for f in ("book_imbalance", "trade_flow", "spot_drift", "news_forecast"):
+            self.assertIn(f, cal.FULL_FEATURES)
 
 
 class OnlineLogitTest(unittest.TestCase):
@@ -61,6 +77,26 @@ class OnlineLogitTest(unittest.TestCase):
     def test_cold_model_predicts_half(self):
         model = cal.OnlineLogit(cal.FULL_FEATURES)
         self.assertAlmostEqual(model.predict(cal.extract_features(snapshot())), 0.5)
+
+    def test_l2_shrinks_a_weight_toward_zero(self):
+        # With no error signal, repeated L2-regularized updates pull a nonzero
+        # feature weight toward 0; the bias is NOT regularized.
+        m = cal.OnlineLogit(("x",))
+        m.w[0] = 5.0
+        for _ in range(200):
+            m.update({"x": 0.0}, outcome=False, l2=0.1)   # x standardized ~0 => no data gradient
+        self.assertLess(abs(m.w[0]), 5.0)
+
+    def test_state_migrates_old_model_to_new_features(self):
+        # An old saved "full" model with only the physics features loads into the
+        # new FULL_FEATURES with the physics weights preserved and the four new
+        # weights zero-initialized.
+        old = cal.OnlineLogit(cal.PHYSICS_FEATURES)  # the pre-ensemble tuple
+        old.w = [1.0] * (len(cal.PHYSICS_FEATURES) + 1)
+        migrated = cal.reconcile_full_model(old.to_json())
+        self.assertEqual(tuple(migrated.features), cal.FULL_FEATURES)
+        for f in ("book_imbalance", "trade_flow", "spot_drift", "news_forecast"):
+            self.assertEqual(migrated.w[migrated.features.index(f)], 0.0)
 
 
 class BookPassthroughTest(unittest.TestCase):

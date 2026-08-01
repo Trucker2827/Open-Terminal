@@ -58,8 +58,14 @@ STATE_PATH = evidence_file("spot-calibrator-state.json")
 OUTPUT_PATH = evidence_file("calibrator.json")
 KALSHI_MARKET_URL = "https://api.elections.kalshi.com/trade-api/v2/markets/{ticker}"
 
-FULL_FEATURES = ("signed_distance_bps", "per_min_vol_bps", "sqrt_minutes_left",
-                 "required_move_sigma", "realized_move_bps", "yes_mid")
+PHYSICS_FEATURES = ("signed_distance_bps", "per_min_vol_bps", "sqrt_minutes_left",
+                    "required_move_sigma", "realized_move_bps", "yes_mid")
+# The hourly signal ensemble (issue tracked in docs/research): book_imbalance
+# is computed for real below; trade_flow/spot_drift/news_forecast are neutral
+# 0.0 stubs until Task 2 fills them in. All four round-trip through the saved
+# "full" model, hence PHYSICS_FEATURES staying named for `reconcile_full_model`.
+ENSEMBLE_FEATURES = ("book_imbalance", "trade_flow", "spot_drift", "news_forecast")
+FULL_FEATURES = PHYSICS_FEATURES + ENSEMBLE_FEATURES
 MARKET_FEATURES = ("yes_mid",)
 MAX_OBS_PER_TICKER = 60
 MIN_STANDARDIZE_SAMPLES = 8
@@ -68,6 +74,9 @@ STATE_SCHEMA = 2
 # distinction is the whole point of schema 2.
 SCORED_CONTRACT_WINDOW = 500
 MIN_SCORED_CONTRACTS = 100
+# L2 on the "full" model's feature weights (never the bias) — keeps the four
+# new ensemble weights from running away before enough contracts settle.
+L2 = 1e-3
 
 
 def extract_features(snapshot):
@@ -97,7 +106,7 @@ def extract_features(snapshot):
     required_move_sigma = 0.0
     if per_min_vol_bps > 0.0 and minutes_left > 0.0:
         required_move_sigma = required_move_bps / (per_min_vol_bps * math.sqrt(minutes_left))
-    return {
+    result = {
         "signed_distance_bps": (spot - floor) / spot * 10000.0,
         "per_min_vol_bps": per_min_vol_bps,
         "sqrt_minutes_left": math.sqrt(minutes_left),
@@ -105,6 +114,20 @@ def extract_features(snapshot):
         "realized_move_bps": float(horizon.get("realized_move_30s_bps") or 0.0),
         "yes_mid": yes_mid,
     }
+    # Ensemble signals (hourly signal ensemble, Task 1 of 3). book_imbalance is
+    # real: the daemon's own top-of-book sizes. The other three are neutral
+    # 0.0 stubs until Task 2 fills them in — never guessed, never omitted, so
+    # FULL_FEATURES always has a value for every key it trains on.
+    execution = snapshot.get("execution") or {}
+    yes = execution.get("yes") or {}
+    bid_sz = float(yes.get("bid_size") or 0.0)
+    ask_sz = float(yes.get("ask_size") or 0.0)
+    denom = bid_sz + ask_sz
+    result["book_imbalance"] = (bid_sz - ask_sz) / denom if denom > 0.0 else 0.0
+    result["trade_flow"] = 0.0      # Task 2
+    result["spot_drift"] = 0.0      # Task 2
+    result["news_forecast"] = 0.0   # Task 2
+    return result
 
 
 def extract_book(snapshot):
@@ -175,7 +198,7 @@ class OnlineLogit:
         s = self.w[-1] + sum(wi * zi for wi, zi in zip(self.w, z))
         return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, s))))
 
-    def update(self, feature_dict, outcome):
+    def update(self, feature_dict, outcome, l2=0.0):
         x = [float(feature_dict[f]) for f in self.features]
         p = self.predict(feature_dict)
         self._observe_stats(x)
@@ -184,6 +207,8 @@ class OnlineLogit:
         grads = z + [1.0]
         for i, g in enumerate(grads):
             gi = err * g
+            if l2 and i < len(self.features):     # regularize weights, not the bias
+                gi += l2 * self.w[i]
             self.g2[i] += gi * gi
             self.w[i] -= self.lr * gi / math.sqrt(1e-8 + self.g2[i])
         return p
@@ -201,6 +226,32 @@ class OnlineLogit:
         model.mean = list(blob["mean"])
         model.m2 = list(blob["m2"])
         return model
+
+
+def reconcile_full_model(blob):
+    """Load a saved 'full' model into the current FULL_FEATURES, preserving the
+    weights of features it already had and zero-initializing any new ones.
+
+    A no-op when the blob already matches FULL_FEATURES. The standardizer
+    stats (mean/m2/n_seen) are deliberately NOT carried across: n_seen is one
+    shared scalar for every feature, so inheriting it would hand the four new
+    features a large sample count against zero observed variance and blow up
+    their z-scores on first use. Starting fresh re-warms in
+    MIN_STANDARDIZE_SAMPLES observations, which is cheap next to getting the
+    scale wrong.
+    """
+    old = OnlineLogit.from_json(blob)
+    if tuple(old.features) == FULL_FEATURES:
+        return old
+    fresh = OnlineLogit(FULL_FEATURES, lr=old.lr)
+    old_index = {f: i for i, f in enumerate(old.features)}
+    for i, f in enumerate(FULL_FEATURES):
+        if f in old_index:
+            fresh.w[i] = old.w[old_index[f]]
+            fresh.g2[i] = old.g2[old_index[f]]
+    fresh.w[-1] = old.w[-1]      # bias
+    fresh.g2[-1] = old.g2[-1]
+    return fresh
 
 
 def brier(history):
@@ -296,7 +347,7 @@ def save_json_atomic(payload, path):
 
 def observe_cycle(state, evidence, now_ms):
     """Record one observation per modeled active snapshot; predict for output."""
-    full = OnlineLogit.from_json(state["full"])
+    full = reconcile_full_model(state["full"])
     market = OnlineLogit.from_json(state["market"])
     predictions = {}
     for ticker, snapshot in (evidence.get("snapshots") or {}).items():
@@ -334,7 +385,12 @@ def settle_cycle(state, now_ms, resolver=resolve_outcome_kalshi):
     the weights observation by observation as it always has. One score per
     contract goes into each list (see the module header for the rule).
     """
-    full = OnlineLogit.from_json(state["full"])
+    # settle_cycle is the sole place that persists state["full"] back to disk
+    # (observe_cycle's load is predict-only and never saved), so the migration
+    # from an old saved model to FULL_FEATURES has to happen HERE, not just in
+    # observe_cycle, or the on-disk model would never advance past its old
+    # feature tuple.
+    full = reconcile_full_model(state["full"])
     market = OnlineLogit.from_json(state["market"])
     for ticker in list(state["pending"].keys()):
         entry = state["pending"][ticker]
@@ -360,7 +416,7 @@ def settle_cycle(state, now_ms, resolver=resolve_outcome_kalshi):
         state["contract_scores_market_mid_raw"].append(
             brier([(f["yes_mid"], outcome) for f in observations]))
         for features in observations:
-            full.update(features, outcome)
+            full.update(features, outcome, l2=L2)
             market.update(features, outcome)
         state["resolved"] += 1
         del state["pending"][ticker]
