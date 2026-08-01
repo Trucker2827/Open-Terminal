@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include "cli/ServeCommand.h"
 #include "cli/BridgeDiscoveryFile.h"
+#include "services/prediction/kalshi/KalshiRestClient.h"
 
 using namespace openmarketterminal::cli;
 
@@ -101,6 +102,24 @@ private slots:
         QVERIFY(!kalshi_planner_process_timed_out(true, -1, 25000));
         QVERIFY(!kalshi_planner_process_timed_out(true, 25000, 25000));
         QVERIFY(kalshi_planner_process_timed_out(true, 25001, 25000));
+    }
+
+    void kalshi_series_fetch_orders_fifteen_min_first() {
+        using openmarketterminal::services::prediction::kalshi_ns::kalshi_series_fetch_precedes;
+        // The whole fix: a fifteen_min series is fetched before a MORE-recent
+        // hourly one, so the ~185-strike hourly ladder can't fill the fan-out
+        // budget and starve KXBTC15M out of the tradable surface.
+        QVERIFY(kalshi_series_fetch_precedes("fifteen_min", "2026-08-01T00:00:00Z",
+                                             "hourly", "2026-08-01T23:59:59Z"));
+        QVERIFY(!kalshi_series_fetch_precedes("hourly", "2026-08-01T23:59:59Z",
+                                              "fifteen_min", "2026-08-01T00:00:00Z"));
+        // Within one cadence, most-recently-updated wins (unchanged behavior).
+        QVERIFY(kalshi_series_fetch_precedes("hourly", "2026-08-01T12:00:00Z",
+                                             "hourly", "2026-08-01T11:00:00Z"));
+        QVERIFY(kalshi_series_fetch_precedes("fifteen_min", "2026-08-01T12:00:00Z",
+                                             "fifteen_min", "2026-08-01T11:00:00Z"));
+        QVERIFY(!kalshi_series_fetch_precedes("fifteen_min", "2026-08-01T11:00:00Z",
+                                              "fifteen_min", "2026-08-01T12:00:00Z"));
     }
 
     void kalshi_watchdog_bounds_non_execution_processes() {

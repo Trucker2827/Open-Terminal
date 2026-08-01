@@ -398,6 +398,14 @@ static bool series_matches_keywords(const QJsonObject& obj, const QStringList& k
     return false;
 }
 
+bool kalshi_series_fetch_precedes(const QString& freq_a, const QString& ts_a,
+                                  const QString& freq_b, const QString& ts_b) {
+    const bool a15 = freq_a == QLatin1String("fifteen_min");
+    const bool b15 = freq_b == QLatin1String("fifteen_min");
+    if (a15 != b15) return a15;   // fetch fifteen_min series before all others
+    return ts_a > ts_b;           // then most-recently-updated first
+}
+
 void KalshiRestClient::fetch_category(const QString& category, const QStringList& frequencies,
                                       const QStringList& series_keywords,
                                       bool as_events, int limit) {
@@ -422,13 +430,17 @@ void KalshiRestClient::fetch_category(const QString& category, const QStringList
              [self, frequencies, series_keywords, as_events, cap](const QJsonDocument& doc) {
                  if (!self) return;
                  const auto arr = doc.object().value("series").toArray();
-                 // Sort series by recency (last_updated_ts, ISO-8601 sorts
-                 // lexically) so the most-active series come first. Active crypto
-                 // series carry hundreds of markets, so the throttled fan-out
-                 // early-stops after just a few requests instead of probing all
-                 // ~250 series — which is what tripped Kalshi's rate limiter (429).
-                 QVector<QPair<QString, QString>> by_recency;  // (ts, ticker)
-                 by_recency.reserve(arr.size());
+                 // The throttled per-series fan-out early-stops once it has
+                 // enough markets (Kalshi 429s otherwise), so fetch ORDER
+                 // decides which series survive. Order fifteen_min-first, then
+                 // most-recent first (see kalshi_series_fetch_precedes): a
+                 // ~185-strike hourly series would otherwise fill the fan-out
+                 // budget before the 15-minute series is ever fetched, starving
+                 // KXBTC15M out of the tradable surface entirely. Within one
+                 // cadence this stays recency-ordered, as before.
+                 struct RankedSeries { QString frequency; QString ts; QString ticker; };
+                 QVector<RankedSeries> ranked;
+                 ranked.reserve(arr.size());
                  for (const auto& v : arr) {
                      const auto o = v.toObject();
                      const QString t = o.value("ticker").toString();
@@ -439,13 +451,17 @@ void KalshiRestClient::fetch_category(const QString& category, const QStringList
                          continue;
                      if (!series_matches_keywords(o, series_keywords))
                          continue;
-                     by_recency.push_back({o.value("last_updated_ts").toString(), t});
+                     ranked.push_back({o.value("frequency").toString(),
+                                       o.value("last_updated_ts").toString(), t});
                  }
-                 std::sort(by_recency.begin(), by_recency.end(),
-                           [](const auto& a, const auto& b) { return a.first > b.first; });
+                 std::sort(ranked.begin(), ranked.end(),
+                           [](const RankedSeries& a, const RankedSeries& b) {
+                               return kalshi_series_fetch_precedes(a.frequency, a.ts,
+                                                                   b.frequency, b.ts);
+                           });
                  QStringList series;
-                 series.reserve(by_recency.size());
-                 for (const auto& p : by_recency) series.push_back(p.second);
+                 series.reserve(ranked.size());
+                 for (const auto& r : ranked) series.push_back(r.ticker);
                  // Nested event payloads contain the complete active contract
                  // ladder (hourly BTC threshold events can expose ~185 markets).
                  // Flatten those for market callers instead of taking an

@@ -17,6 +17,16 @@ class QNetworkAccessManager;
 
 namespace openmarketterminal::services::prediction::kalshi_ns {
 
+/// Fan-out order for a category's series: `fifteen_min` series come first, then
+/// most-recent-updated first. The per-series market fan-out early-stops once it
+/// has enough markets to dodge Kalshi's rate limiter; an hourly BTC series
+/// exposes ~185 strikes and fills that budget before the fan-out ever reaches
+/// the 15-minute series, silently starving KXBTC15M out of the tradable surface.
+/// Fetching fifteen_min first guarantees the fast race is never the one dropped.
+/// Pure + unit-tested so the ordering is verified without any network I/O.
+bool kalshi_series_fetch_precedes(const QString& freq_a, const QString& ts_a,
+                                  const QString& freq_b, const QString& ts_b);
+
 /// Public (unsigned) REST client for the Kalshi v2 API.
 ///
 ///   Base URL : https://external-api.kalshi.com/trade-api/v2
