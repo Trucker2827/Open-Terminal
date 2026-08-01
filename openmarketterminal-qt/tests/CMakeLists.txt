@@ -32,6 +32,9 @@ add_test(NAME test_ws_stream_account
 add_test(NAME test_spot_calibrator
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_spot_calibrator.py -v)
+add_test(NAME test_btc_event_impact
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_btc_event_impact.py -v)
 add_test(NAME test_edge_ic_report
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_edge_ic_report.py -v)

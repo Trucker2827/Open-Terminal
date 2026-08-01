@@ -739,5 +739,86 @@ class AblationReportTest(unittest.TestCase):
             self.assertIn(field, report)
 
 
+class EventPressureTest(unittest.TestCase):
+    NOW = 1_800_000_000_000
+    def _rec(self, events, as_of=None):
+        return {"as_of_ms": str(self.NOW if as_of is None else as_of), "events": events}
+
+    def test_decay_at_one_half_life_is_half(self):
+        hl = 4.0
+        ev = {"event_ts_ms": self.NOW - int(hl * 3_600_000), "direction": 1.0,
+              "magnitude": 1.0, "half_life_hours": hl, "kind": "k", "headline": "h", "rationale": "r"}
+        val = cal.event_pressure_feature(self._rec([ev]), self.NOW)
+        self.assertAlmostEqual(val, 0.5, places=6)
+
+    def test_decay_at_zero_dt_is_full(self):
+        ev = {"event_ts_ms": self.NOW, "direction": -1.0, "magnitude": 1.0,
+              "half_life_hours": 3.0, "kind": "k", "headline": "h", "rationale": "r"}
+        self.assertAlmostEqual(cal.event_pressure_feature(self._rec([ev]), self.NOW), -1.0, places=6)
+
+    def test_events_sum_and_clamp(self):
+        e = lambda d: {"event_ts_ms": self.NOW, "direction": d, "magnitude": 1.0,
+                       "half_life_hours": 5.0, "kind": "k", "headline": "h", "rationale": "r"}
+        # two strong bullish events sum > 1 then clamp to 1.0
+        self.assertAlmostEqual(cal.event_pressure_feature(self._rec([e(0.8), e(0.8)]), self.NOW), 1.0, places=6)
+        # opposing events partially cancel
+        self.assertAlmostEqual(cal.event_pressure_feature(self._rec([e(0.6), e(-0.6)]), self.NOW), 0.0, places=6)
+
+    def test_future_event_ignored(self):
+        ev = {"event_ts_ms": self.NOW + 60_000, "direction": 1.0, "magnitude": 1.0,
+              "half_life_hours": 3.0, "kind": "k", "headline": "h", "rationale": "r"}
+        self.assertEqual(cal.event_pressure_feature(self._rec([ev]), self.NOW), 0.0)
+
+    def test_record_from_future_is_ignored_by_loader(self):
+        import tempfile, json as _j, os as _o
+        fd, path = tempfile.mkstemp(suffix=".json"); _o.close(fd)
+        try:
+            with open(path, "w") as fh:
+                _j.dump(self._rec([], as_of=self.NOW + 10_000), fh)
+            self.assertIsNone(cal.load_event_impact_latest(path=path, now_ms=self.NOW))
+        finally:
+            _o.remove(path)
+
+    def test_nonobject_json_file_is_none_not_crash(self):
+        # A file that is valid JSON but not an object (list/str/number) must
+        # degrade to None, not raise AttributeError out of load_auxiliary_sources
+        # and crash the whole cycle. (record.get(...) on a list would throw.)
+        import tempfile, json as _j, os as _o
+        for payload in ([1, 2, 3], "a string", 42):
+            fd, path = tempfile.mkstemp(suffix=".json"); _o.close(fd)
+            try:
+                with open(path, "w") as fh:
+                    _j.dump(payload, fh)
+                self.assertIsNone(cal.load_event_impact_latest(path=path, now_ms=self.NOW))
+            finally:
+                _o.remove(path)
+
+    def test_neutral_on_missing_or_empty(self):
+        self.assertEqual(cal.event_pressure_feature(None, self.NOW), 0.0)
+        self.assertEqual(cal.event_pressure_feature(self._rec([]), self.NOW), 0.0)
+        self.assertEqual(cal.event_pressure_feature({"events": "garbage"}, self.NOW), 0.0)
+
+    def test_event_pressure_in_feature_lists(self):
+        self.assertIn("event_pressure", cal.ENSEMBLE_FEATURES)
+        self.assertIn("event_pressure", cal.FULL_FEATURES)
+        self.assertEqual(len(cal.FULL_FEATURES), 11)
+
+    def test_migration_10_to_11_preserves_weights_through_settle(self):
+        # A saved 10-feature model reconciles to 11: the 10 weights + bias survive,
+        # event_pressure zero-inits. (Mirror the existing 6->10 migration test.)
+        old = cal.OnlineLogit(cal.PHYSICS_FEATURES + ("book_imbalance", "trade_flow", "spot_drift", "news_forecast"))
+        for i in range(len(old.w)):
+            old.w[i] = 0.3 + 0.01 * i
+            old.g2[i] = 1.0 + i
+        migrated = cal.reconcile_full_model(old.to_json())
+        self.assertEqual(tuple(migrated.features), cal.FULL_FEATURES)
+        self.assertAlmostEqual(migrated.w[-1], old.w[-1])  # bias preserved
+        idx = cal.FULL_FEATURES.index("event_pressure")
+        self.assertEqual(migrated.w[idx], 0.0)             # new feature zero-init
+        self.assertEqual(migrated.g2[idx], 0.0)
+        for f in ("signed_distance_bps", "news_forecast"):
+            self.assertAlmostEqual(migrated.w[migrated.features.index(f)], old.w[old.features.index(f)])
+
+
 if __name__ == "__main__":
     unittest.main()

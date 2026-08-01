@@ -47,6 +47,7 @@
 #include "services/llm/LlmService.h"
 #include "services/notebooks/NotebookLibraryService.h"
 #include "services/notifications/NotificationService.h"
+#include "services/news/BtcEventImpact.h"
 #include "services/news/BtcNewsPulse.h"
 #include "services/python_cli/PythonCliService.h"
 #include "services/report_builder/ReportBuilderService.h"
@@ -4084,6 +4085,34 @@ static int news_command(const GlobalOpts& opts, QStringList args) {
                     gate.value("executable_edge").toDouble() * 100.0);
         for (const auto& reason : result.reasons) std::printf("reason       %s\n", qUtf8Printable(reason));
         std::printf("warning      advisory only; cannot trigger an order\n");
+        return 0;
+    }
+
+    if (sub == QStringLiteral("bitcoin-event-impact") || sub == QStringLiteral("btc-event-impact")) {
+        const int limit = parse_limit(args, 60);
+        if (limit < 1 || limit > 200 || !args.isEmpty()) {
+            std::fprintf(stderr, "usage: news bitcoin-event-impact [--limit N]\n");
+            return 2;
+        }
+        // Thin wrapper over the core producer glue (shared with the offscreen
+        // --selftest-btc-event-impact one-shot). Reads the pulse, pipes eligible
+        // stories to the Python scorer, validates, and writes the snapshot the
+        // calibrator consumer reads. NO snapshot is written on any failure.
+        const QString directory = bitcoin_evidence_data_dir();
+        const QString py = cli_python_for_scripts();
+        // Task-1 scorer lives under scripts/kalshi_advise/ (synced into the app
+        // bundle); pass the subdir so cli_script_path resolves it in the bundle,
+        // repo root, and openmarketterminal-qt/ working dirs alike.
+        const QString script = cli_script_path(QStringLiteral("kalshi_advise/btc_event_impact.py"));
+        const openmarketterminal::services::news::BtcEventImpactResult r =
+            openmarketterminal::services::news::run_btc_event_impact(
+                directory, py, script, limit, QDateTime::currentMSecsSinceEpoch());
+        if (!r.ok) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(r.error));
+            return 5;  // consumer keeps last good / neutral
+        }
+        if (opts.json) std::printf("%s\n", qUtf8Printable(r.stdout_json));
+        else std::printf("btc-event-impact: %d event(s) scored\n", r.events);
         return 0;
     }
 
