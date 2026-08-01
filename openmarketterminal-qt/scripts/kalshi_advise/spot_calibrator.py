@@ -558,6 +558,42 @@ def mean_or_none(values):
     return sum(values) / len(values)
 
 
+def _ablation_walk_forward(resolved_observations):
+    """The no-look-ahead walk-forward at the heart of `ablation_report`,
+    UNGATED: two model families (full + one ablated-per-ENSEMBLE_FEATURE)
+    walked from cold over `resolved_observations` in order, each contract
+    scored with `predict()` before any of them trains on it. Returns the raw
+    per-contract score lists -- `(full_scores, market_scores, ablated_scores)`
+    -- exactly as `ablation_report` means and then floor-gates them. Split out
+    so the ordering invariant (score before train) stays testable on its own,
+    independent of the `MIN_SCORED_CONTRACTS` floor `ablation_report` enforces
+    on its SURFACED numbers.
+    """
+    full = OnlineLogit(FULL_FEATURES)
+    ablated_models = {f: OnlineLogit(FULL_FEATURES) for f in ENSEMBLE_FEATURES}
+    full_scores = []
+    market_scores = []
+    ablated_scores = {f: [] for f in ENSEMBLE_FEATURES}
+    for observations, outcome in resolved_observations:
+        if not observations:
+            continue
+        # --- score pass: every model predicts BEFORE any of them trains on
+        # this contract, so every score here is out-of-sample. ---
+        full_scores.append(brier([(full.predict(f), outcome) for f in observations]))
+        market_scores.append(brier([(f["yes_mid"], outcome) for f in observations]))
+        for feature_name, model in ablated_models.items():
+            pinned = [dict(f, **{feature_name: 0.0}) for f in observations]
+            ablated_scores[feature_name].append(
+                brier([(model.predict(p), outcome) for p in pinned]))
+        # --- train pass: now let every model learn this contract. ---
+        for f in observations:
+            full.update(f, outcome, l2=L2)
+        for feature_name, model in ablated_models.items():
+            for f in observations:
+                model.update(dict(f, **{feature_name: 0.0}), outcome, l2=L2)
+    return full_scores, market_scores, ablated_scores
+
+
 def ablation_report(resolved_observations):
     """Per-signal ablation over already-resolved contracts: proves whether
     each ENSEMBLE_FEATURE earns its place, plus an overall beats-market
@@ -591,40 +627,40 @@ def ablation_report(resolved_observations):
     feature HELPS (removing it made the Brier worse), matched consistently
     here, in the docstring, and in the test suite. `None` for all three
     (never a fabricated number) when there are no resolved contracts to
-    replay yet.
+    replay yet, OR when there are fewer than `MIN_SCORED_CONTRACTS` of them —
+    the same floor `build_report`'s live money-gate enforces (line ~99). On a
+    small handful of contracts the walk-forward's own numbers are real but
+    are pure noise as evidence; surfacing them (and letting `beats_market`
+    flip to `True` on that noise) would be dishonest by the same standard the
+    empty-record case already meets. Below the floor, `scored_contracts`
+    still reports the TRUE count, so progress toward it stays visible even
+    though the verdict does not.
 
     `beats_market`: whether the full model's contract-weighted Brier beats
-    the untrained raw-mid Brier over these same contracts. `False` when there
-    is no data is "no evidence", not "the market won" — callers that need to
-    tell the two apart should check `scored_contracts` too.
+    the untrained raw-mid Brier over these same contracts, once at least
+    `MIN_SCORED_CONTRACTS` have been walked. `False` below that floor, or
+    when there is no data at all, is "no evidence", not "the market won" —
+    callers that need to tell the two apart should check `scored_contracts`
+    too.
     """
-    full = OnlineLogit(FULL_FEATURES)
-    ablated_models = {f: OnlineLogit(FULL_FEATURES) for f in ENSEMBLE_FEATURES}
-    full_scores = []
-    market_scores = []
-    ablated_scores = {f: [] for f in ENSEMBLE_FEATURES}
-    for observations, outcome in resolved_observations:
-        if not observations:
-            continue
-        # --- score pass: every model predicts BEFORE any of them trains on
-        # this contract, so every score here is out-of-sample. ---
-        full_scores.append(brier([(full.predict(f), outcome) for f in observations]))
-        market_scores.append(brier([(f["yes_mid"], outcome) for f in observations]))
-        for feature_name, model in ablated_models.items():
-            pinned = [dict(f, **{feature_name: 0.0}) for f in observations]
-            ablated_scores[feature_name].append(
-                brier([(model.predict(p), outcome) for p in pinned]))
-        # --- train pass: now let every model learn this contract. ---
-        for f in observations:
-            full.update(f, outcome, l2=L2)
-        for feature_name, model in ablated_models.items():
-            for f in observations:
-                model.update(dict(f, **{feature_name: 0.0}), outcome, l2=L2)
+    full_scores, market_scores, ablated_scores = _ablation_walk_forward(resolved_observations)
     full_brier = mean_or_none(full_scores)
     market_brier = mean_or_none(market_scores)
+    # Same floor the live money-gate enforces in build_report (>= 100
+    # CONTRACTS, never observations): below it, the walk-forward's numbers
+    # are real but are noise as evidence, so they are withheld here exactly
+    # like the empty-record case, not surfaced with a caveat. scored_contracts
+    # is set from len(full_scores) below, unaffected by this gate, so
+    # progress toward the floor stays visible.
+    enough = len(full_scores) >= MIN_SCORED_CONTRACTS
+    ablated_briers = {f: mean_or_none(ablated_scores[f]) for f in ENSEMBLE_FEATURES}
+    if not enough:
+        full_brier = None
+        market_brier = None
+        ablated_briers = {f: None for f in ENSEMBLE_FEATURES}
     report = {}
     for feature_name in ENSEMBLE_FEATURES:
-        ablated_brier = mean_or_none(ablated_scores[feature_name])
+        ablated_brier = ablated_briers[feature_name]
         delta = (ablated_brier - full_brier
                  if ablated_brier is not None and full_brier is not None else None)
         report[feature_name] = {
@@ -635,7 +671,7 @@ def ablation_report(resolved_observations):
     report["full_brier"] = full_brier
     report["market_mid_brier"] = market_brier
     report["scored_contracts"] = len(full_scores)
-    report["beats_market"] = (full_brier is not None and market_brier is not None
+    report["beats_market"] = (enough and full_brier is not None and market_brier is not None
                               and full_brier < market_brier)
     return report
 

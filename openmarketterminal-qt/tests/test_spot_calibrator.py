@@ -587,6 +587,29 @@ def fixture_where(feature_name, n=240):
     return contracts
 
 
+def fixture_spurious_win(n, observations_per_contract=5):
+    """`n` resolved contracts (n meant to be well below MIN_SCORED_CONTRACTS)
+    engineered so the UNGATED walk-forward hands the full model a spurious
+    win over the market: `yes_mid` is pinned to 0.5 on every observation, so
+    the untrained raw-mid baseline scores exactly 0.25 on every contract
+    regardless of outcome, while `spot_drift` is pinned to +1.0/-1.0 and
+    PERFECTLY separates the outcome (as in `fixture_where`), with several
+    identical observations per contract so the online logit's few updates
+    move its weight enough to beat 0.25 after only a handful of contracts --
+    empirically confirmed: mean(full_scores) < mean(market_scores) already at
+    n=4. This is the shape the honesty floor exists to catch: real numbers,
+    a real (if noise-driven) win, from far too little evidence to trust."""
+    base = cal.extract_features(snapshot(yes_mid=0.5))
+    contracts = []
+    for i in range(n):
+        outcome = i % 2 == 0
+        features = dict(base)
+        features["spot_drift"] = 1.0 if outcome else -1.0
+        obs = [dict(features) for _ in range(observations_per_contract)]
+        contracts.append((obs, outcome))
+    return contracts
+
+
 class AblationReportTest(unittest.TestCase):
     """Task 3: per-signal ablation. `ablation_report` walk-forwards over
     already-resolved contracts (predict-before-train, no look-ahead -- the
@@ -600,7 +623,10 @@ class AblationReportTest(unittest.TestCase):
     """
 
     def test_ablation_reports_a_delta_per_feature(self):
-        report = cal.ablation_report(fixture_resolved_observations())
+        # At/above MIN_SCORED_CONTRACTS so the floor (Important, honesty: the
+        # ablation must not surface a verdict below the live money-gate's own
+        # >= 100 contracts) doesn't null out this plumbing check.
+        report = cal.ablation_report(fixture_resolved_observations(cal.MIN_SCORED_CONTRACTS))
         for f in cal.ENSEMBLE_FEATURES:
             self.assertIn(f, report)
             self.assertIsInstance(report[f]["brier_delta_vs_full"], float)
@@ -621,10 +647,17 @@ class AblationReportTest(unittest.TestCase):
         # would land under 0.25 -- the fabricated-delta failure mode the task
         # calls out by name. Mirrors
         # PerContractScoringTest.test_scores_are_taken_before_training_on_the_contract.
-        report = cal.ablation_report([([cal.extract_features(snapshot())], True)])
-        self.assertAlmostEqual(report["full_brier"], 0.25)
+        #
+        # Uses the ungated walk-forward directly, not ablation_report: a
+        # single contract is far below MIN_SCORED_CONTRACTS, and the
+        # honesty floor now nulls ablation_report's surfaced numbers there
+        # by design -- this test is about the walk-forward's ordering
+        # invariant, which the floor is deliberately orthogonal to.
+        full_scores, _market_scores, ablated_scores = cal._ablation_walk_forward(
+            [([cal.extract_features(snapshot())], True)])
+        self.assertAlmostEqual(full_scores[0], 0.25)
         for f in cal.ENSEMBLE_FEATURES:
-            self.assertAlmostEqual(report[f]["ablated_brier"], 0.25)
+            self.assertAlmostEqual(ablated_scores[f][0], 0.25)
 
     def test_ablation_empty_record_is_honest_not_false(self):
         # No contracts retained yet: every Brier is None, not a fabricated
@@ -635,6 +668,47 @@ class AblationReportTest(unittest.TestCase):
             self.assertIsNone(report[f]["brier_delta_vs_full"])
         self.assertFalse(report["beats_market"])
         self.assertEqual(report["scored_contracts"], 0)
+
+    def test_ablation_below_floor_is_honest_not_a_verdict(self):
+        # The live money-gate (build_report) refuses a verdict below
+        # MIN_SCORED_CONTRACTS = 100 CONTRACTS. The ablation must honor the
+        # SAME floor. This is not a fixture that merely happens to produce
+        # non-None numbers -- it is constructed so the UNGATED walk-forward
+        # actually beats the market (a spurious `beats_market=True`), which
+        # is the exact failure the task names. First prove the fixture is
+        # dangerous on the raw, ungated walk...
+        n = 5
+        contracts = fixture_spurious_win(n)
+        full_scores, market_scores, _ablated = cal._ablation_walk_forward(contracts)
+        self.assertLess(sum(full_scores) / len(full_scores),
+                        sum(market_scores) / len(market_scores))
+        # ...then prove ablation_report refuses to report that win, or any
+        # delta, below the floor -- withholding the verdict, not fabricating
+        # a loss.
+        report = cal.ablation_report(contracts)
+        self.assertIs(report["beats_market"], False)
+        self.assertIsNone(report["full_brier"])
+        self.assertIsNone(report["market_mid_brier"])
+        for f in cal.ENSEMBLE_FEATURES:
+            self.assertIsNone(report[f]["full_brier"])
+            self.assertIsNone(report[f]["ablated_brier"])
+            self.assertIsNone(report[f]["brier_delta_vs_full"])
+        # Progress toward the floor stays visible -- the true count, not
+        # zeroed out along with the nulled verdict.
+        self.assertEqual(report["scored_contracts"], n)
+
+    def test_ablation_at_floor_emits_real_verdict(self):
+        # The floor must not over-null a legitimate result: at exactly
+        # MIN_SCORED_CONTRACTS, with spot_drift constructed to perfectly
+        # separate the outcome, the full model must show a real, non-None
+        # advantage -- proving the gate only withholds evidence, it does
+        # not manufacture a null result once there is enough of it.
+        contracts = fixture_where("spot_drift", n=cal.MIN_SCORED_CONTRACTS)
+        report = cal.ablation_report(contracts)
+        self.assertEqual(report["scored_contracts"], cal.MIN_SCORED_CONTRACTS)
+        self.assertIsNotNone(report["full_brier"])
+        self.assertIsNotNone(report["spot_drift"]["brier_delta_vs_full"])
+        self.assertGreater(report["spot_drift"]["brier_delta_vs_full"], 0.0)
 
     def test_settle_cycle_retains_resolved_observations_for_ablation(self):
         # settle_cycle is where a contract's (observations, outcome) become
