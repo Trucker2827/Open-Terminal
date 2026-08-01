@@ -613,6 +613,19 @@ class AblationReportTest(unittest.TestCase):
         self.assertGreater(report["spot_drift"]["brier_delta_vs_full"], 0.0)
         self.assertLess(report["spot_drift"]["full_brier"], report["spot_drift"]["ablated_brier"])
 
+    def test_ablation_scores_before_training_no_look_ahead(self):
+        # One resolved contract, cold model: predict() == 0.5 -> Brier == 0.25
+        # exactly, for both the full model and every ablated model. If the
+        # train pass ran BEFORE the score pass, the bias would already have
+        # moved off 0.5 by the time this contract is "scored," and the Brier
+        # would land under 0.25 -- the fabricated-delta failure mode the task
+        # calls out by name. Mirrors
+        # PerContractScoringTest.test_scores_are_taken_before_training_on_the_contract.
+        report = cal.ablation_report([([cal.extract_features(snapshot())], True)])
+        self.assertAlmostEqual(report["full_brier"], 0.25)
+        for f in cal.ENSEMBLE_FEATURES:
+            self.assertAlmostEqual(report[f]["ablated_brier"], 0.25)
+
     def test_ablation_empty_record_is_honest_not_false(self):
         # No contracts retained yet: every Brier is None, not a fabricated
         # number, and beats_market is False for lack of evidence, not
