@@ -251,7 +251,10 @@ struct KalshiExitConstraints {
     double economic_margin = 0.02;      // cut only when cash-out beats holding by >= this
     int min_trigger_streak = 2;         // hysteresis: the condition must persist this many ticks
     double lock_win_fair = 0.85;        // "sure win": held-side fair at/above this ...
-    int lock_win_window_seconds = 120;  // ... inside the decisive final window
+    int lock_win_window_seconds = 120;  // ... inside the decisive final window ...
+    double lock_win_max_slippage = 0.03; // ... but only bank it if cash-out is within
+                                         // this of fair (never dump a winner into a
+                                         // stale/thin bid for far less than it's worth)
 };
 
 struct KalshiPositionExitResult {

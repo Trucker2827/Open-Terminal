@@ -158,6 +158,14 @@ private slots:
         QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.40, 0.41, 300, 5), c).sell);
         // Guard: no live bid to sell into -> HOLD (fail closed).
         QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.30, 0.0, 300, 5), c).sell);
+        // CRITICAL (review catch): a near-certain winner must NOT be dumped into
+        // a near-worthless bid. fair 0.99, bid 0.02 in-window -> HOLD. Fails
+        // without the lock_win_max_slippage floor.
+        QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.99, 0.02, 60, 0), c).sell);
+        // seconds_left < 0 can never trip LOCK_WIN.
+        QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.95, 0.95, -1, 0), c).sell);
+        // Invalid side -> HOLD (fail closed).
+        QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("bad", 0.90, 0.90, 60, 0), c).sell);
     }
 
     void kalshi_event_cycle_paces_paper_but_not_armed_live() {

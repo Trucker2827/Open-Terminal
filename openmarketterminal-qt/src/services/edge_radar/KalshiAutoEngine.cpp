@@ -1249,11 +1249,14 @@ KalshiPositionExitResult KalshiAutoEngine::evaluate_position_exit(
     const double cash_out = input.held_side_bid - fee;  // proceeds per contract if we sell now
 
     // (1) LOCK-WIN: a near-sure win inside the decisive final window. Bank it
-    //     against a last-second reversal even if the bid barely beats fair — the
-    //     tail risk of the binary settling to zero is not worth the sliver of
-    //     remaining edge. This is the 15-min "sure win" cash-out.
+    //     against a last-second reversal even if the bid gives up a sliver vs
+    //     fair — but ONLY a sliver: the cash-out must be within
+    //     lock_win_max_slippage of the held side's fair value, or we would be
+    //     dumping a near-certain winner into a stale/thin/crossed bid for far
+    //     less than it is worth. This is the 15-min "sure win" cash-out.
     if (input.seconds_left >= 0 && input.seconds_left <= constraints.lock_win_window_seconds &&
-        input.held_side_fair >= constraints.lock_win_fair && cash_out > 0.0) {
+        input.held_side_fair >= constraints.lock_win_fair &&
+        cash_out >= input.held_side_fair - constraints.lock_win_max_slippage) {
         result.sell = true;
         result.reason = QStringLiteral("LOCK_WIN");
         return result;
