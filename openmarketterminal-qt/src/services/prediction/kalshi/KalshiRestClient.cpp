@@ -430,17 +430,14 @@ void KalshiRestClient::fetch_category(const QString& category, const QStringList
              [self, frequencies, series_keywords, as_events, cap](const QJsonDocument& doc) {
                  if (!self) return;
                  const auto arr = doc.object().value("series").toArray();
-                 // Sort series by recency (last_updated_ts, ISO-8601 sorts
-                 // lexically) so the most-active series come first. Active crypto
-                 // series carry hundreds of markets, so the throttled fan-out
-                 // early-stops after just a few requests instead of probing all
-                 // ~250 series — which is what tripped Kalshi's rate limiter (429).
-                 // Order fifteen_min-first, then most-recent first (see
-                 // kalshi_series_fetch_precedes): the per-series fan-out
-                 // early-stops once it has enough markets, and a ~185-strike
-                 // hourly series would otherwise fill that budget before the
-                 // 15-minute series is ever fetched, starving KXBTC15M out of
-                 // the tradable surface entirely.
+                 // The throttled per-series fan-out early-stops once it has
+                 // enough markets (Kalshi 429s otherwise), so fetch ORDER
+                 // decides which series survive. Order fifteen_min-first, then
+                 // most-recent first (see kalshi_series_fetch_precedes): a
+                 // ~185-strike hourly series would otherwise fill the fan-out
+                 // budget before the 15-minute series is ever fetched, starving
+                 // KXBTC15M out of the tradable surface entirely. Within one
+                 // cadence this stays recency-ordered, as before.
                  struct RankedSeries { QString frequency; QString ts; QString ticker; };
                  QVector<RankedSeries> ranked;
                  ranked.reserve(arr.size());
