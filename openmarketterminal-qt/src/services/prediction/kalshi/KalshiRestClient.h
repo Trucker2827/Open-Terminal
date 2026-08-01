@@ -17,6 +17,13 @@ class QNetworkAccessManager;
 
 namespace openmarketterminal::services::prediction::kalshi_ns {
 
+/// Pure TTL freshness check for the cached category->series resolution.
+/// True only when a prior fetch exists (`cached_at_ms > 0`), the TTL is
+/// positive, and `now_ms` falls in `[cached_at_ms, cached_at_ms + ttl_ms)`.
+/// A stamp in the future (clock skew) reads as not-fresh, never as valid.
+/// Extracted so the cache policy is unit-testable without any network I/O.
+bool kalshi_series_cache_fresh(qint64 cached_at_ms, qint64 now_ms, qint64 ttl_ms);
+
 /// Public (unsigned) REST client for the Kalshi v2 API.
 ///
 ///   Base URL : https://external-api.kalshi.com/trade-api/v2
@@ -178,6 +185,20 @@ class KalshiRestClient : public QObject {
 
     QNetworkAccessManager* nam_ = nullptr;
     bool demo_ = false;
+
+    /// Cache for the near-static category->series resolution. The event planner
+    /// re-runs fetch_category on every top-of-book change (~every 3s on an
+    /// active market); the /series?category=… browse it issues is exactly the
+    /// call Kalshi 429-rate-limits (Kalshi.fetch_category.series), which then
+    /// hangs the planner. The resolved series list only changes when Kalshi
+    /// adds/removes a product, so a short TTL collapses the repeat browses into
+    /// one while the per-series ladders (fan_out_series_events) stay live.
+    struct SeriesListCacheEntry {
+        qint64 fetched_at_ms = 0;
+        QStringList series;
+    };
+    QHash<QString, SeriesListCacheEntry> series_list_cache_;
+    static constexpr qint64 kSeriesCacheTtlMs = 300000;  // 5 minutes
 };
 
 } // namespace openmarketterminal::services::prediction::kalshi_ns

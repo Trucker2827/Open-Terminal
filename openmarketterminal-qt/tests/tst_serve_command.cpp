@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include "cli/ServeCommand.h"
 #include "cli/BridgeDiscoveryFile.h"
+#include "services/prediction/kalshi/KalshiRestClient.h"
 
 using namespace openmarketterminal::cli;
 
@@ -101,6 +102,20 @@ private slots:
         QVERIFY(!kalshi_planner_process_timed_out(true, -1, 25000));
         QVERIFY(!kalshi_planner_process_timed_out(true, 25000, 25000));
         QVERIFY(kalshi_planner_process_timed_out(true, 25001, 25000));
+    }
+
+    void kalshi_series_cache_bounds_repeat_universe_fetches() {
+        using openmarketterminal::services::prediction::kalshi_ns::kalshi_series_cache_fresh;
+        // No prior fetch, or a clock-skewed future stamp -> never fresh (must GET).
+        QVERIFY(!kalshi_series_cache_fresh(0, 10000, 5000));
+        QVERIFY(!kalshi_series_cache_fresh(-1, 10000, 5000));
+        QVERIFY(!kalshi_series_cache_fresh(20000, 10000, 5000));  // stamp in the future
+        // Fresh strictly inside [cached_at, cached_at + ttl); stale at/after it.
+        QVERIFY(kalshi_series_cache_fresh(10000, 10000, 5000));   // same instant
+        QVERIFY(kalshi_series_cache_fresh(10000, 14999, 5000));   // 4999ms < 5000ms
+        QVERIFY(!kalshi_series_cache_fresh(10000, 15000, 5000));  // exactly TTL -> stale
+        QVERIFY(!kalshi_series_cache_fresh(10000, 20000, 5000));  // past TTL
+        QVERIFY(!kalshi_series_cache_fresh(10000, 10000, 0));     // zero TTL never caches
     }
 
     void kalshi_watchdog_bounds_non_execution_processes() {
