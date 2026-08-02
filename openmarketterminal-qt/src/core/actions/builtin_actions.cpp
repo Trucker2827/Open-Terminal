@@ -769,6 +769,7 @@ void register_builtins() {
     register_screen("ai_quant_lab", "Quant Lab", {"qml", "ml", "ai quant", "quant lab"});
     register_screen("geopolitics", "Geopolitics", {"geo", "geopolitics", "sanctions"});
     register_screen("maritime", "Maritime", {"ship", "maritime", "vessels"});
+    register_screen("weather", "Weather", {"weather", "temperature", "kalshi", "climate", "forecast"});
     register_screen("polymarket", "Prediction Markets", {"pmkt", "polymarket", "kalshi"});
     register_screen("edge_radar", "Edge Radar", {"edge", "radar", "edge radar", "kalshi edge", "stock edge"});
     register_screen("relationship_map", "Relationship Map", {"map", "relationships", "graph"});

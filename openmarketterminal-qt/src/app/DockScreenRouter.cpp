@@ -68,6 +68,7 @@ QString DockScreenRouter::title_for_id(const QString& id) {
         {"geopolitics", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Geopolitics")},
         {"gov_data", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Gov Data")},
         {"maritime", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Maritime")},
+        {"weather", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Weather")},
         {"polymarket", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Prediction Markets")},
         {"edge_radar", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Edge Radar")},
         {"relationship_map", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Relationship Map")},
