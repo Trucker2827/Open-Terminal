@@ -552,6 +552,9 @@ void SandboxBooksPanel::populate_leaderboard() {
                                      params.value(QStringLiteral("exit_policy")).toString());
         } else if (row.kind == QStringLiteral("scalp")) {
             strategy_name = tr("Scalp %1").arg(venue);
+        } else if (row.kind == QStringLiteral("kalshi_weather")) {
+            strategy_name = tr("Kalshi Weather (daily temps, %1)")
+                                .arg(params.value(QStringLiteral("exit_policy")).toString());
         }
         add(i, 0, strategy_name);
         add(i, 1, strategy.symbols.isEmpty() ? QStringLiteral("-") : strategy.symbols);

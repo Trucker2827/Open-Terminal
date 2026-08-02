@@ -177,12 +177,11 @@ class TstSandboxRegistry : public QObject {
     void seed_default_strategies_is_idempotent() {
         auto first = seed_default_strategies();
         QVERIFY2(first.is_ok(), first.is_err() ? first.error().c_str() : "");
-        QCOMPARE(first.value().size(), 28);  // was 37; -9 after the kalshi `settlement`
-                                             // exit cohort was retired (managed is now default)
+        QCOMPARE(first.value().size(), 29);  // 28 (crypto/spot/etc, managed-only) + 1 kalshi_weather lane
 
         auto second = seed_default_strategies();
         QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
-        QCOMPARE(second.value().size(), 28);
+        QCOMPARE(second.value().size(), 29);
         QCOMPARE(second.value(), first.value());
 
         auto rows = list_strategies();
@@ -227,9 +226,9 @@ class TstSandboxRegistry : public QObject {
                 maker_venues.insert(params.value(QStringLiteral("venue")).toString());
             }
         }
-        QCOMPARE(seed_row_count, 28);
-        QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "swing", "maker", "kalshi", "long_short", "chronos2",
-                                       "chronos2_1h", "chronos2_1d", "chronos2_equity"}));
+        QCOMPARE(seed_row_count, 29);
+        QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "swing", "maker", "kalshi", "kalshi_weather", "long_short",
+                                       "chronos2", "chronos2_1h", "chronos2_1d", "chronos2_equity"}));
         QCOMPARE(scalp_count, 6);  // 2 legacy + 4 honest grid (coinbase_advanced/kraken_pro maker+taker)
         QCOMPARE(scalp_venues, QSet<QString>({"kraken_pro", "coinbase_advanced"}));
         QCOMPARE(maker_count, 2);  // coinbase_advanced/kraken_pro maker_decisions lanes
