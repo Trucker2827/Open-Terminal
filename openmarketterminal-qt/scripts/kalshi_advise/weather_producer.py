@@ -32,7 +32,13 @@ BASE = "https://external-api.kalshi.com/trade-api/v2"
 SOURCE = "kalshi weather-plan"
 MARGIN = 0.08          # forecast must beat the price by this to trade
 RESERVE = 0.01         # exit-cost reserve subtracted into gate_edge
-NEAR_LO, NEAR_HI = 0.10, 0.90   # only trade genuinely-uncertain brackets
+# The backtest measured the edge on GENUINELY-UNCERTAIN brackets (market mid in
+# 0.15-0.85) at the ~15h morning-of lead. Match that regime exactly: a bracket
+# priced near 0/1 (or a market that has already sharpened late-day) produces
+# huge apparent "edges" that are really forecast-vs-sharp-market noise near a
+# bracket boundary, NOT the validated signal.
+MID_LO, MID_HI = 0.15, 0.85          # uncertain-bracket band (on the mid)
+LEAD_MIN, LEAD_MAX = 36000, 61200    # 10-17h before close (centered on the ~15h backtest lead)
 
 # series -> (label, lat, lon, bias_F, std_F)  bias/std MEASURED empirically (fc_quality)
 CITIES = {
@@ -96,16 +102,19 @@ def forecast_high(lat, lon, date):
 
 
 def book_bid_ask(ticker):
-    """Real yes bid/ask from the orderbook (list endpoint nulls them)."""
-    ob = http_json(f"{BASE}/markets/{ticker}/orderbook?depth=3")
-    book = (ob or {}).get("orderbook", {}) or {}
-    yes = book.get("yes") or []
-    no = book.get("no") or []
-    yes_bid = max((lvl[0] for lvl in yes), default=0) / 100.0 if yes else 0.0
-    no_best = max((lvl[0] for lvl in no), default=0) / 100.0 if no else 0.0
+    """Real yes bid/ask from the live orderbook (list endpoint nulls the quote
+    fields). Kalshi returns `orderbook_fp` with `yes_dollars`/`no_dollars`, each
+    a list of [price_str, size_str] in DOLLARS. Best yes bid = max yes price;
+    best yes ask = 1 - (max no price), since a no-bid is a yes-ask."""
+    ob = http_json(f"{BASE}/markets/{ticker}/orderbook?depth=5")
+    book = (ob or {}).get("orderbook_fp", {}) or {}
+    yes = book.get("yes_dollars") or []
+    no = book.get("no_dollars") or []
+    yes_bid = max((float(p) for p, _ in yes), default=0.0)
+    no_best = max((float(p) for p, _ in no), default=0.0)
     yes_ask = (1.0 - no_best) if no_best else 0.0
-    ydepth = sum(lvl[1] for lvl in yes)
-    ndepth = sum(lvl[1] for lvl in no)
+    ydepth = sum(float(s) for _, s in yes)
+    ndepth = sum(float(s) for _, s in no)
     return yes_bid, yes_ask, ydepth, ndepth
 
 
@@ -146,16 +155,23 @@ def decisions_for_series(series, cfg, now_ms):
             except Exception:
                 continue
             seconds_left = cts - now_ms // 1000
-            if seconds_left <= 900:          # too close to settlement to act
+            # Trade only in the VALIDATED lead window (~15h before close, the
+            # morning-of the settlement day, where the per-city forecast std was
+            # calibrated). Day-ahead (>17h) is less certain than the std assumes;
+            # late-day (<10h) the market has sharpened past the measured edge.
+            if seconds_left < LEAD_MIN or seconds_left > LEAD_MAX:
                 continue
             yes_bid, yes_ask, ydepth, ndepth = book_bid_ask(m["ticker"])
             if yes_ask <= 0 or yes_bid <= 0:  # need a two-sided live quote
                 continue
+            mid = (yes_bid + yes_ask) / 2.0
+            if not (MID_LO <= mid <= MID_HI):  # only genuinely-uncertain brackets
+                continue
             no_ask = 1.0 - yes_bid
             side = price = model_p = depth = None
-            if fp > yes_ask + MARGIN and NEAR_LO <= yes_ask <= NEAR_HI:
+            if fp > yes_ask + MARGIN:
                 side, price, model_p, depth = "yes", yes_ask, fp, ydepth
-            elif (1 - fp) > no_ask + MARGIN and NEAR_LO <= no_ask <= NEAR_HI:
+            elif (1 - fp) > no_ask + MARGIN:
                 side, price, model_p, depth = "no", no_ask, 1 - fp, ndepth
             if side is None:
                 continue
