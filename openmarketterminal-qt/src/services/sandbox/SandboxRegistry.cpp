@@ -405,7 +405,14 @@ Result<QList<QString>> seed_default_strategies() {
         {"daily", "early", 21601, 172800, 86400},
     };
     for (const KalshiCohort& cohort : kKalshiCohorts) {
-        for (const QString& exit_policy : {QStringLiteral("settlement"), QStringLiteral("managed")}) {
+        // Managed (cash-out) exit is now the DEFAULT and the `settlement`
+        // (ride-to-settlement) control cohort is retired. The A/B on the paper
+        // prediction book answered the design question: managed beats settlement
+        // -0.187 vs -0.253 realized P&L per $1 notional (+3.3pp win rate). Active
+        // settlement strategies from the prior grid are auto-retired by the
+        // reconciliation below (their ids fall out of the seed set); their
+        // already-open positions still settle normally, preserving evidence.
+        for (const QString& exit_policy : {QStringLiteral("managed")}) {
             QJsonObject params{{"notional_usd", 2.0},
                                {"source", "edge_journal"},
                                {"journal_source", "kalshi auto-plan"},
