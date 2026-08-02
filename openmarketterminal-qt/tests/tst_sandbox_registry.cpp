@@ -177,11 +177,12 @@ class TstSandboxRegistry : public QObject {
     void seed_default_strategies_is_idempotent() {
         auto first = seed_default_strategies();
         QVERIFY2(first.is_ok(), first.is_err() ? first.error().c_str() : "");
-        QCOMPARE(first.value().size(), 37);  // 28 base + 9 activatable spot-grid lanes
+        QCOMPARE(first.value().size(), 28);  // was 37; -9 after the kalshi `settlement`
+                                             // exit cohort was retired (managed is now default)
 
         auto second = seed_default_strategies();
         QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
-        QCOMPARE(second.value().size(), 37);
+        QCOMPARE(second.value().size(), 28);
         QCOMPARE(second.value(), first.value());
 
         auto rows = list_strategies();
@@ -226,7 +227,7 @@ class TstSandboxRegistry : public QObject {
                 maker_venues.insert(params.value(QStringLiteral("venue")).toString());
             }
         }
-        QCOMPARE(seed_row_count, 37);
+        QCOMPARE(seed_row_count, 28);
         QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "swing", "maker", "kalshi", "long_short", "chronos2",
                                        "chronos2_1h", "chronos2_1d", "chronos2_equity"}));
         QCOMPARE(scalp_count, 6);  // 2 legacy + 4 honest grid (coinbase_advanced/kraken_pro maker+taker)
@@ -234,9 +235,12 @@ class TstSandboxRegistry : public QObject {
         QCOMPARE(maker_count, 2);  // coinbase_advanced/kraken_pro maker_decisions lanes
         QCOMPARE(maker_venues, QSet<QString>({"kraken_pro", "coinbase_advanced"}));
         QCOMPARE(spot_count, 3);
-        QCOMPARE(kalshi_count, 18);
+        // Managed (cash-out) exit is now the default; the `settlement` control
+        // cohort was retired after the A/B (managed beat ride-to-settlement).
+        // 9 cohorts x 1 policy = 9 kalshi seeds (was 9 x 2 = 18).
+        QCOMPARE(kalshi_count, 9);
         QCOMPARE(kalshi_cohorts.size(), 9);
-        QCOMPARE(kalshi_exit_policies, QSet<QString>({"settlement", "managed"}));
+        QCOMPARE(kalshi_exit_policies, QSet<QString>({"managed"}));
         QCOMPARE(long_short_count, 1);
         QCOMPARE(spot_horizons, QSet<int>({3600, 14400, 86400}));
 
@@ -373,7 +377,8 @@ class TstSandboxRegistry : public QObject {
         // Every expected kind must actually have been present and checked --
         // 3 rows for spot (horizon variants), 1 row for the rest.
         QCOMPARE(checked_count.value(QStringLiteral("spot")), 3);
-        QCOMPARE(checked_count.value(QStringLiteral("kalshi")), 18);
+        QCOMPARE(checked_count.value(QStringLiteral("kalshi")), 9);  // 9 cohorts, managed-only
+                                                                     // (was 18: x2 exit policies)
         QCOMPARE(checked_count.value(QStringLiteral("long_short")), 1);
         QCOMPARE(checked_count.value(QStringLiteral("chronos2")), 1);
         QCOMPARE(checked_count.value(QStringLiteral("chronos2_1h")), 1);

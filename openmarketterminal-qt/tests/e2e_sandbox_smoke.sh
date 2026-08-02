@@ -37,8 +37,8 @@
 #
 # Flow (mirrors PaperExecutor.cpp's open_price_forecast_candidates /
 # advance_open_positions and PaperFillModel.cpp's check_exit):
-#   1. `sandbox seed` registers 37 books, including producer-backed honest lanes
-#      spot 1h/4h/1d, 18 Kalshi v2 cohort/policy books, long_short, plus Chronos BTC
+#   1. `sandbox seed` registers 28 books, including producer-backed honest lanes
+#      spot 1h/4h/1d, 9 Kalshi v2 cohort books (managed exit only), long_short, plus Chronos BTC
 #      15m/1h/1d and equity, and the two crypto maker_decisions lanes
 #      (btc5m/chronos2_5m are retired).
 #   2. A fresh chronos2-forecast/horizon=15m/side=buy journal row is
@@ -120,9 +120,9 @@ SEED_JSON="$(wd 30 "$CLI" --json sandbox seed)" || fail "sandbox seed exited non
 printf '%s' "$SEED_JSON" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 37, d
-" || fail "sandbox seed did not report 37 seeded strategy ids: $SEED_JSON"
-echo "PASS: sandbox seed -> 37 strategies"
+assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 28, d
+" || fail "sandbox seed did not report 28 seeded strategy ids: $SEED_JSON"
+echo "PASS: sandbox seed -> 28 strategies"
 
 CHRONOS_ID="$(printf '%s' "$(wd 30 "$CLI" --json sandbox list --status active)" | python3 -c "
 import sys, json
