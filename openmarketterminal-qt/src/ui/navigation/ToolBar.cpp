@@ -333,6 +333,7 @@ QMenu* ToolBar::build_research_menu() {
     nav(m, tr("Alt. Investments"), "alt_investments");
     nav(m, tr("Geopolitics"), "geopolitics");
     nav(m, tr("Maritime"), "maritime");
+    nav(m, tr("Weather"), "weather");
     nav(m, tr("Surface Analytics"), "surface_analytics");
     m->addSeparator();
     nav(m, tr("AI Quant Lab"), "ai_quant_lab");
