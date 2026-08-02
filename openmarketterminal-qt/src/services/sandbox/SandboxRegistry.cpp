@@ -438,6 +438,38 @@ Result<QList<QString>> seed_default_strategies() {
         }
     }
 
+    // Kalshi WEATHER (daily city high-temp) — paper lane for the validated
+    // forecast edge. Distinct journal_source ("kalshi weather-plan") isolates it
+    // from the BTC crypto lane and bypasses the BTC-only micro-evidence gate.
+    // Rows are produced by scripts/kalshi_advise/weather_producer.py (Open-Meteo
+    // forecast vs Kalshi price on near-money brackets). Daily horizon -> a wide
+    // seconds_left window and a 6h max_age (the producer runs periodically, not
+    // per-second). Managed exits (take_profit/stop_loss/edge_reversal + LOCK_WIN)
+    // apply exactly as the crypto lane. PAPER ONLY — no live weather rung.
+    {
+        QJsonObject wparams{{"notional_usd", 2.0},
+                            {"source", "edge_journal"},
+                            {"journal_source", "kalshi weather-plan"},
+                            {"venue", "kalshi"},
+                            {"prediction", true},
+                            {"paper_only", true},
+                            {"experiment_protocol", "kalshi-weather-v1"},
+                            {"horizon", "daily"},
+                            {"exit_policy", "managed"},
+                            {"allowed_side", "both"},
+                            {"min_seconds_left", 3600},
+                            {"max_seconds_left", 86400},
+                            {"min_entry_probability", 0.05},
+                            {"max_entry_probability", 0.95},
+                            {"horizon_sec", 86400},
+                            {"max_age_sec", 21600},
+                            {"max_open_positions", 0},
+                            {"take_profit_pct", 0.20},
+                            {"stop_loss_pct", 0.20},
+                            {"fee_model", "journal_exact"}};
+        seeds.append(Seed{QStringLiteral("kalshi_weather"), QStringLiteral("US-WEATHER"), wparams});
+    }
+
     // Activate the spot measurement grid lanes that reuse an existing producer
     // (scalp -> scalp_decisions; swing -> edge crypto-recommend / chronos2-
     // equity-forecast). Lanes without a source (maker spread-capture, equity
@@ -472,7 +504,7 @@ Result<QList<QString>> seed_default_strategies() {
     const QSet<QString> managed_kinds = {
         QStringLiteral("scalp"), QStringLiteral("spot"), QStringLiteral("swing"),
         QStringLiteral("maker"),
-        QStringLiteral("kalshi"), QStringLiteral("long_short"), QStringLiteral("chronos2"),
+        QStringLiteral("kalshi"), QStringLiteral("kalshi_weather"), QStringLiteral("long_short"), QStringLiteral("chronos2"),
         QStringLiteral("chronos2_1h"), QStringLiteral("chronos2_1d"), QStringLiteral("chronos2_equity")};
     auto active = list_strategies(QStringLiteral("active"));
     if (active.is_err())
