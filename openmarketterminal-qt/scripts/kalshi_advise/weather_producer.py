@@ -44,6 +44,11 @@ LEAD_MIN, LEAD_MAX = 36000, 61200    # 10-17h before close (centered on the ~15h
 # reveals WHERE it dropped: in_window -> two_sided book -> uncertain mid -> edge.
 FUNNEL = {"in_window": 0, "two_sided": 0, "uncertain": 0, "edge": 0}
 
+# Evidence record for EVERY evaluated bracket (not just gate='pass' decisions),
+# consumed by the WeatherScreen UI (see WeatherEvidenceReader in the Qt plan).
+# Reset at the top of each producer run (main()).
+BRACKETS = []
+
 # series -> (label, lat, lon, bias_F, std_F)  bias/std MEASURED empirically (fc_quality)
 CITIES = {
     "KXHIGHNY":   ("NYC-HIGH",   40.78, -73.97,  1.2, 2.1),
@@ -122,6 +127,43 @@ def book_bid_ask(ticker):
     return yes_bid, yes_ask, ydepth, ndepth
 
 
+def bracket_record(series, cfg, ticker, strike_type, floor, cap, fc, std,
+                    yes_bid, yes_ask, now_ms, close_ts):
+    """Evidence record for one evaluated bracket, regardless of trade gate.
+
+    Reuses bracket_prob for forecast_p; edge mirrors the decision rule in
+    decisions_for_series: max(yes-side edge, no-side edge), where
+    no_ask = 1 - yes_bid.
+    """
+    label = cfg[0]
+    fp = bracket_prob(fc, strike_type, floor, cap, std)
+    if fp is not None:
+        fp = min(max(fp, 0.0), 1.0)
+    no_ask = 1.0 - yes_bid
+    edge = None
+    if fp is not None:
+        edge = max(fp - yes_ask, (1.0 - fp) - no_ask)
+    seconds_left = close_ts - now_ms // 1000
+    in_window = LEAD_MIN <= seconds_left <= LEAD_MAX
+    return {
+        "series": series,
+        "city": label,
+        "ticker": ticker,
+        "floor": floor,
+        "cap": cap,
+        "strike_type": strike_type,
+        "forecast_high_f": round(fc, 1) if fc is not None else None,
+        "forecast_p": round(fp, 4) if fp is not None else None,
+        "market_bid": yes_bid,
+        "market_ask": yes_ask,
+        "market_mid": round((yes_bid + yes_ask) / 2.0, 4),
+        "edge": round(edge, 4) if edge is not None else None,
+        "in_window": in_window,
+        "seconds_left": seconds_left,
+        "generated_at_ms": now_ms,
+    }
+
+
 def decisions_for_series(series, cfg, now_ms):
     label, lat, lon, bias, std = cfg
     out = []
@@ -175,6 +217,8 @@ def decisions_for_series(series, cfg, now_ms):
                 continue
             FUNNEL["uncertain"] += 1
             no_ask = 1.0 - yes_bid
+            BRACKETS.append(bracket_record(series, cfg, m["ticker"], st, floor, cap, fc, std,
+                                            yes_bid, yes_ask, now_ms, cts))
             side = price = model_p = depth = None
             if fp > yes_ask + MARGIN:
                 side, price, model_p, depth = "yes", yes_ask, fp, ydepth
@@ -234,6 +278,7 @@ def main():
     ap.add_argument("--write", action="store_true", help="write journal rows + evidence (default: dry run)")
     args = ap.parse_args()
     now_ms = int(time.time() * 1000)
+    BRACKETS.clear()
     all_rows = []
     for series, cfg in CITIES.items():
         rows = decisions_for_series(series, cfg, now_ms)
@@ -249,7 +294,8 @@ def main():
               f"edge={r['edge_after_cost']:+.3f} gate_edge={r['gate_edge']:+.3f} "
               f"secs_left={r['seconds_left']}")
     evidence = {"event": "kalshi_weather_producer", "generated_at_ms": now_ms,
-                "source": SOURCE, "margin": MARGIN, "decisions": all_rows}
+                "source": SOURCE, "margin": MARGIN, "decisions": all_rows,
+                "brackets": BRACKETS}
     if args.write:
         with open(evidence_file("kalshi-weather-plan.json"), "w") as f:
             json.dump(evidence, f, indent=2)
