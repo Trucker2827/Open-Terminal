@@ -1,8 +1,10 @@
 #pragma once
 
 #include "screens/common/IStatefulScreen.h"
+#include "screens/weather/WeatherEvidenceReader.h"
 #include "services/prediction/PredictionTypes.h"
 
+#include <QHash>
 #include <QShowEvent>
 #include <QTableWidget>
 #include <QWidget>
@@ -52,6 +54,8 @@ class WeatherScreen final : public QWidget, public IStatefulScreen {
     void select_bracket(int row);
     void render_order_book(const services::prediction::PredictionOrderBook& book);
     void render_trades(const QVector<services::prediction::PredictionTrade>& trades);
+    void load_forecasts();
+    void update_forecast_panel();
 
     QLabel* status_label_ = nullptr;
     QLabel* count_label_ = nullptr;
@@ -65,6 +69,17 @@ class WeatherScreen final : public QWidget, public IStatefulScreen {
     QVector<services::prediction::PredictionMarket> markets_;
     services::prediction::PredictionMarket selected_;
     bool has_selection_ = false;
+
+    // Task 4: forecast-vs-market panel, read from the producer's evidence
+    // JSON (kalshi-weather-plan.json) via WeatherEvidenceReader and joined
+    // to markets by ticker (PredictionMarket::key.market_id, which
+    // KalshiRestClient populates from the raw Kalshi ticker — the same
+    // string weather_producer.py's bracket_record() writes).
+    QHash<QString, BracketForecast> forecasts_;
+    QLabel* forecast_stats_label_ = nullptr;
+    QLabel* forecast_edge_label_ = nullptr;
+    QLabel* forecast_window_badge_ = nullptr;
+    QLabel* forecast_threshold_label_ = nullptr;
 };
 
 } // namespace openmarketterminal::screens

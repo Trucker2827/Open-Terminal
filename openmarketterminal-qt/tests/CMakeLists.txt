@@ -156,6 +156,17 @@ target_include_directories(tst_kalshi_strategy_grid_view PRIVATE ${CMAKE_SOURCE_
 target_link_libraries(tst_kalshi_strategy_grid_view PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_strategy_grid_view COMMAND tst_kalshi_strategy_grid_view)
 
+# Pure reader for weather_producer.py's evidence JSON (Task 4 of the
+# per-category Kalshi views plan) — parses the `brackets` array keyed by
+# ticker, fails closed (empty map) on missing/garbage input, and surfaces a
+# JSON-null `edge` as NaN (never a silent 0.0). Depends only on Qt Core.
+add_executable(tst_weather_evidence_reader
+    weather/tst_weather_evidence_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/screens/weather/WeatherEvidenceReader.cpp)
+target_include_directories(tst_weather_evidence_reader PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_weather_evidence_reader PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_weather_evidence_reader COMMAND tst_weather_evidence_reader)
+
 add_executable(tst_command_dispatch
     tst_command_dispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/CommandDispatch.cpp

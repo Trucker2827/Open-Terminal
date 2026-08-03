@@ -1369,6 +1369,7 @@ set(SERVICE_SOURCES
     src/services/prediction/kalshi/KalshiWsClient.cpp
     src/services/prediction/kalshi/KalshiAdapter.cpp
     src/services/prediction/kalshi/KalshiEvidenceEngine.cpp
+    src/screens/weather/WeatherEvidenceReader.cpp
     src/services/prediction/kalshi/KalshiSettlementScoreboard.cpp
     src/services/prediction/kalshi/KalshiBotDecision.cpp
     src/services/prediction/kalshi/KalshiBotFunnel.cpp
