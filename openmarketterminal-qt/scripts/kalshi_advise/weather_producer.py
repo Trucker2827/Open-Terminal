@@ -40,6 +40,10 @@ RESERVE = 0.01         # exit-cost reserve subtracted into gate_edge
 MID_LO, MID_HI = 0.15, 0.85          # uncertain-bracket band (on the mid)
 LEAD_MIN, LEAD_MAX = 36000, 61200    # 10-17h before close (centered on the ~15h backtest lead)
 
+# Per-run funnel counters (logged to stderr) so a run that produces 0 decisions
+# reveals WHERE it dropped: in_window -> two_sided book -> uncertain mid -> edge.
+FUNNEL = {"in_window": 0, "two_sided": 0, "uncertain": 0, "edge": 0}
+
 # series -> (label, lat, lon, bias_F, std_F)  bias/std MEASURED empirically (fc_quality)
 CITIES = {
     "KXHIGHNY":   ("NYC-HIGH",   40.78, -73.97,  1.2, 2.1),
@@ -161,12 +165,15 @@ def decisions_for_series(series, cfg, now_ms):
             # late-day (<10h) the market has sharpened past the measured edge.
             if seconds_left < LEAD_MIN or seconds_left > LEAD_MAX:
                 continue
+            FUNNEL["in_window"] += 1
             yes_bid, yes_ask, ydepth, ndepth = book_bid_ask(m["ticker"])
             if yes_ask <= 0 or yes_bid <= 0:  # need a two-sided live quote
                 continue
+            FUNNEL["two_sided"] += 1
             mid = (yes_bid + yes_ask) / 2.0
             if not (MID_LO <= mid <= MID_HI):  # only genuinely-uncertain brackets
                 continue
+            FUNNEL["uncertain"] += 1
             no_ask = 1.0 - yes_bid
             side = price = model_p = depth = None
             if fp > yes_ask + MARGIN:
@@ -175,6 +182,7 @@ def decisions_for_series(series, cfg, now_ms):
                 side, price, model_p, depth = "no", no_ask, 1 - fp, ndepth
             if side is None:
                 continue
+            FUNNEL["edge"] += 1
             fee = kalshi_fee(price)
             raw_edge = model_p - price
             edge_after = raw_edge - fee
@@ -232,6 +240,8 @@ def main():
         all_rows.extend(rows)
         print(f"[{cfg[0]}] {series}: {len(rows)} decisions", file=sys.stderr)
     all_rows.sort(key=lambda r: -r["gate_edge"])
+    print(f"funnel: in_window={FUNNEL['in_window']} -> two_sided_book={FUNNEL['two_sided']} "
+          f"-> uncertain_mid={FUNNEL['uncertain']} -> edge>{MARGIN}={FUNNEL['edge']}", file=sys.stderr)
     print(f"\n=== WEATHER DECISIONS ({len(all_rows)}) — {'WRITE' if args.write else 'DRY RUN'} ===")
     for r in all_rows[:40]:
         print(f"  {r['ticker'][:26]:26} buy {r['side']:3} @ {r['price']:.2f}  "
