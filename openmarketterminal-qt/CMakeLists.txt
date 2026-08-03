@@ -1843,6 +1843,7 @@ set(SCREEN_SOURCES
     # Polymarket / Prediction Markets
     src/screens/prediction/PredictionMarketsScreen.cpp
     src/screens/weather/WeatherPredictionsScreen.cpp
+    src/screens/weather/WeatherScreen.cpp
     src/screens/kalshi/KalshiScreen.cpp
     src/screens/kalshi/KalshiBotCockpitView.cpp
     src/screens/polymarket/PolymarketScreen.cpp
@@ -2453,6 +2454,7 @@ set_source_files_properties(
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/prediction/PredictionMarketsScreen.cpp
     src/screens/weather/WeatherPredictionsScreen.cpp
+    src/screens/weather/WeatherScreen.cpp
     src/screens/kalshi/KalshiScreen.cpp
     src/screens/kalshi/KalshiBotCockpitView.cpp
     src/screens/polymarket/PolymarketScreen.cpp
