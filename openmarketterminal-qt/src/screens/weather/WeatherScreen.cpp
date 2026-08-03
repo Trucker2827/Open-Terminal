@@ -4,6 +4,7 @@
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
+#include "storage/sqlite/Database.h"
 #include "ui/theme/Theme.h"
 
 #include <QAbstractItemView>
@@ -12,7 +13,9 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QPair>
+#include <QTabWidget>
 #include <QTableWidgetItem>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -42,6 +45,38 @@ QTableWidgetItem* cell(const QString& text, const QString& color = {}) {
     return it;
 }
 
+// Task 5 bot panel — ported verbatim (query pattern + presentation) from the
+// retired lean weather predictions screen.
+int q_int(const QString& sql) {
+    auto r = Database::instance().execute(sql, {});
+    if (!r.is_ok() || !r.value().next())
+        return 0;
+    return r.value().value(0).toInt();
+}
+
+double q_double(const QString& sql) {
+    auto r = Database::instance().execute(sql, {});
+    if (!r.is_ok() || !r.value().next() || r.value().value(0).isNull())
+        return 0.0;
+    return r.value().value(0).toDouble();
+}
+
+QLabel* make_stat(QLabel** value_out, const QString& caption, QVBoxLayout* into) {
+    auto* box = new QVBoxLayout;
+    auto* cap = new QLabel(caption);
+    cap->setStyleSheet(QString("color:%1;font-size:9px;font-weight:700;background:transparent;%2")
+                           .arg(ui::colors::TEXT_TERTIARY(), MF));
+    auto* val = new QLabel(QStringLiteral("-"));
+    val->setStyleSheet(QString("color:%1;font-size:16px;font-weight:800;background:transparent;%2")
+                           .arg(ui::colors::TEXT_PRIMARY(), MF));
+    box->addWidget(cap);
+    box->addWidget(val);
+    box->setSpacing(0);
+    into->addLayout(box);
+    *value_out = val;
+    return val;
+}
+
 double outcome_price(const pred::PredictionMarket& market, int index) {
     return index >= 0 && index < market.outcomes.size() ? market.outcomes[index].price : 0.0;
 }
@@ -68,6 +103,12 @@ QString city_for_series(const QString& series_ticker) {
 WeatherScreen::WeatherScreen(QWidget* parent) : QWidget(parent) {
     build_ui();
     wire_adapter();
+
+    // Task 5: bot panel periodic refresh while visible (mirrors the retired
+    // lean predictions screen's 30s cadence).
+    bot_timer_ = new QTimer(this);
+    bot_timer_->setInterval(30'000);
+    connect(bot_timer_, &QTimer::timeout, this, &WeatherScreen::refresh_bot_panel);
 }
 
 void WeatherScreen::build_ui() {
@@ -87,6 +128,22 @@ void WeatherScreen::build_ui() {
                                 .arg(ui::colors::TEXT_TERTIARY(), MF));
     root->addWidget(subtitle);
 
+    // Task 5: main_tabs_ hosts the existing bracket browser/detail content
+    // (unchanged, just reparented into a "BRACKETS" tab) alongside a new
+    // "BOT" tab — the sub-tab option from the Task 5 spec.
+    main_tabs_ = new QTabWidget(this);
+    main_tabs_->setStyleSheet(QString(
+        "QTabWidget::pane{border:1px solid %1;background:%2;}"
+        "QTabBar::tab{background:%2;color:%3;padding:6px 16px;font-size:10px;font-weight:700;%4}"
+        "QTabBar::tab:selected{background:%5;color:%6;}")
+        .arg(ui::colors::BORDER_DIM(), ui::colors::BG_BASE(), ui::colors::TEXT_SECONDARY(), MF,
+             ui::colors::BG_RAISED(), ui::colors::TEXT_PRIMARY()));
+
+    auto* brackets_tab = new QWidget(main_tabs_);
+    auto* brackets_layout = new QVBoxLayout(brackets_tab);
+    brackets_layout->setContentsMargins(0, 8, 0, 0);
+    brackets_layout->setSpacing(10);
+
     auto* header_row = new QHBoxLayout;
     status_label_ = new QLabel(QStringLiteral("-"));
     status_label_->setStyleSheet(QString("color:%1;font-size:10px;background:transparent;%2")
@@ -97,7 +154,7 @@ void WeatherScreen::build_ui() {
     count_label_->setStyleSheet(QString("color:%1;font-size:10px;font-weight:700;background:transparent;%2")
                                     .arg(ui::colors::CYAN(), MF));
     header_row->addWidget(count_label_);
-    root->addLayout(header_row);
+    brackets_layout->addLayout(header_row);
 
     auto* content_row = new QHBoxLayout;
     content_row->setSpacing(10);
@@ -188,7 +245,81 @@ void WeatherScreen::build_ui() {
 
     content_row->addLayout(right_col, 2);
 
-    root->addLayout(content_row, 1);
+    brackets_layout->addLayout(content_row, 1);
+
+    main_tabs_->addTab(brackets_tab, tr("BRACKETS"));
+    main_tabs_->addTab(build_bot_tab(), tr("BOT"));
+
+    root->addWidget(main_tabs_, 1);
+}
+
+QWidget* WeatherScreen::build_bot_tab() {
+    // Task 5 bot panel — summary (open/closed counts, realized PnL,
+    // edge-status badge), decisions table, positions table. Ported verbatim
+    // (query pattern, column layout) from the retired lean weather
+    // predictions screen; filtered to sandbox_strategy kind='kalshi_weather'
+    // and edge_decision_journal source='kalshi weather-plan'.
+    auto* tab = new QWidget(main_tabs_);
+    auto* layout = new QVBoxLayout(tab);
+    layout->setContentsMargins(0, 8, 0, 0);
+    layout->setSpacing(10);
+
+    auto* stats = new QHBoxLayout;
+    stats->setSpacing(28);
+    {
+        auto add = [&](QLabel** out, const QString& cap) {
+            auto* col = new QVBoxLayout;
+            make_stat(out, cap, col);
+            stats->addLayout(col);
+        };
+        add(&bot_open_count_, tr("OPEN POSITIONS"));
+        add(&bot_resolved_count_, tr("RESOLVED"));
+        add(&bot_win_count_, tr("WINS"));
+        add(&bot_net_pnl_, tr("NET P&L (paper)"));
+    }
+    stats->addStretch();
+    layout->addLayout(stats);
+
+    // Edge-status badge — same lane-status text the retired lean screen
+    // showed (active/awaiting/decision-count), presented as a badge here.
+    bot_status_label_ = new QLabel(QStringLiteral("-"));
+    bot_status_label_->setWordWrap(true);
+    bot_status_label_->setStyleSheet(QString(
+        "color:%1;background:%2;border:1px solid %3;padding:4px 8px;font-size:10px;font-weight:700;%4")
+        .arg(ui::colors::TEXT_SECONDARY(), ui::colors::BG_RAISED(), ui::colors::BORDER_DIM(), MF));
+    layout->addWidget(bot_status_label_);
+
+    auto* dec_hdr = new QLabel(tr("RECENT FORECAST DECISIONS"));
+    dec_hdr->setStyleSheet(QString("color:%1;font-size:10px;font-weight:700;background:transparent;%2")
+                               .arg(ui::colors::CYAN(), MF));
+    layout->addWidget(dec_hdr);
+    bot_decisions_table_ = new QTableWidget(0, 7, tab);
+    bot_decisions_table_->setHorizontalHeaderLabels(
+        {tr("Time"), tr("Market"), tr("Side"), tr("Forecast P"), tr("Mkt Price"), tr("Edge"), tr("Gate")});
+    bot_decisions_table_->setStyleSheet(table_style());
+    bot_decisions_table_->verticalHeader()->setVisible(false);
+    bot_decisions_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    bot_decisions_table_->setSelectionMode(QAbstractItemView::NoSelection);
+    bot_decisions_table_->horizontalHeader()->setStretchLastSection(true);
+    bot_decisions_table_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    layout->addWidget(bot_decisions_table_, 1);
+
+    auto* pos_hdr = new QLabel(tr("WEATHER PAPER POSITIONS"));
+    pos_hdr->setStyleSheet(QString("color:%1;font-size:10px;font-weight:700;background:transparent;%2")
+                               .arg(ui::colors::CYAN(), MF));
+    layout->addWidget(pos_hdr);
+    bot_positions_table_ = new QTableWidget(0, 8, tab);
+    bot_positions_table_->setHorizontalHeaderLabels(
+        {tr("Time"), tr("Market"), tr("Side"), tr("Entry"), tr("Qty"), tr("State"), tr("P&L"), tr("Reason")});
+    bot_positions_table_->setStyleSheet(table_style());
+    bot_positions_table_->verticalHeader()->setVisible(false);
+    bot_positions_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    bot_positions_table_->setSelectionMode(QAbstractItemView::NoSelection);
+    bot_positions_table_->horizontalHeader()->setStretchLastSection(true);
+    bot_positions_table_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    layout->addWidget(bot_positions_table_, 1);
+
+    return tab;
 }
 
 pred::PredictionExchangeAdapter* WeatherScreen::adapter() const {
@@ -214,6 +345,12 @@ void WeatherScreen::showEvent(QShowEvent* event) {
         first_show_ = false;
         refresh();
     }
+    // Bot panel refreshes every show (mirrors the retired lean predictions
+    // screen's showEvent behavior) and keeps polling on bot_timer_ while
+    // this screen stays visible.
+    refresh_bot_panel();
+    if (bot_timer_)
+        bot_timer_->start();
 }
 
 void WeatherScreen::refresh() {
@@ -477,6 +614,126 @@ void WeatherScreen::update_forecast_panel() {
                              .arg(inside ? tr("INSIDE") : tr("OUTSIDE"));
     }
     forecast_threshold_label_->setText(threshold_text);
+}
+
+void WeatherScreen::refresh_bot_panel() {
+    populate_bot_summary();
+    populate_bot_decisions();
+    populate_bot_positions();
+}
+
+void WeatherScreen::populate_bot_summary() {
+    const QString base =
+        "FROM sandbox_position p JOIN sandbox_strategy s ON s.strategy_id=p.strategy_id "
+        "WHERE s.kind='kalshi_weather'";
+    const int open = q_int("SELECT COUNT(*) " + base + " AND p.state IN ('open','pending_fill')");
+    const int resolved = q_int("SELECT COUNT(*) " + base + " AND p.state='closed'");
+    const int wins = q_int("SELECT COUNT(*) " + base + " AND p.state='closed' AND p.realized_pnl>0");
+    const double pnl = q_double("SELECT COALESCE(SUM(p.realized_pnl),0) " + base);
+
+    if (bot_open_count_)
+        bot_open_count_->setText(QString::number(open));
+    if (bot_resolved_count_)
+        bot_resolved_count_->setText(QString::number(resolved));
+    if (bot_win_count_)
+        bot_win_count_->setText(resolved > 0 ? QStringLiteral("%1 (%2%)").arg(wins).arg(100 * wins / resolved)
+                                             : QString::number(wins));
+    if (bot_net_pnl_) {
+        bot_net_pnl_->setText(QString::asprintf("%+.2f", pnl));
+        bot_net_pnl_->setStyleSheet(QString("color:%1;font-size:16px;font-weight:800;background:transparent;%2")
+                                        .arg(pnl >= 0 ? ui::colors::POSITIVE() : ui::colors::NEGATIVE(), MF));
+    }
+
+    const bool strategy_active =
+        q_int("SELECT COUNT(*) FROM sandbox_strategy WHERE kind='kalshi_weather' AND status='active'") > 0;
+    const int recent_decisions =
+        q_int("SELECT COUNT(*) FROM edge_decision_journal WHERE source='kalshi weather-plan'");
+    if (bot_status_label_) {
+        QString badge_color = ui::colors::TEXT_SECONDARY();
+        if (!strategy_active) {
+            bot_status_label_->setText(tr("Weather lane not seeded yet (run: sandbox seed)."));
+            badge_color = ui::colors::TEXT_TERTIARY();
+        } else if (recent_decisions == 0) {
+            bot_status_label_->setText(tr("Weather lane active — awaiting the morning forecast window "
+                                          "(producer runs during US active hours)."));
+            badge_color = ui::colors::AMBER();
+        } else {
+            bot_status_label_->setText(tr("Weather lane active — %1 forecast decisions journaled.")
+                                           .arg(recent_decisions));
+            badge_color = ui::colors::POSITIVE();
+        }
+        bot_status_label_->setStyleSheet(QString(
+            "color:%1;background:%2;border:1px solid %1;padding:4px 8px;font-size:10px;font-weight:700;%3")
+            .arg(badge_color, ui::colors::BG_RAISED(), MF));
+    }
+}
+
+void WeatherScreen::populate_bot_decisions() {
+    if (!bot_decisions_table_)
+        return;
+    bot_decisions_table_->setRowCount(0);
+    auto r = Database::instance().execute(
+        "SELECT created_at, market_id, side, model_probability, market_probability, edge_after_cost, gate "
+        "FROM edge_decision_journal WHERE source='kalshi weather-plan' "
+        "ORDER BY created_at DESC LIMIT 60",
+        {});
+    if (!r.is_ok())
+        return;
+    auto& q = r.value();
+    int row = 0;
+    while (q.next()) {
+        bot_decisions_table_->insertRow(row);
+        const auto ts = QDateTime::fromMSecsSinceEpoch(q.value(0).toLongLong());
+        const double edge = q.value(5).toDouble();
+        const QString gate = q.value(6).toString();
+        bot_decisions_table_->setItem(row, 0, cell(ts.toString(QStringLiteral("MM-dd HH:mm"))));
+        bot_decisions_table_->setItem(row, 1, cell(q.value(1).toString()));
+        bot_decisions_table_->setItem(row, 2, cell(q.value(2).toString().toUpper(),
+                                               q.value(2).toString() == "yes" ? ui::colors::POSITIVE()
+                                                                              : ui::colors::CYAN()));
+        bot_decisions_table_->setItem(row, 3, cell(QString::asprintf("%.2f", q.value(3).toDouble())));
+        bot_decisions_table_->setItem(row, 4, cell(QString::asprintf("%.2f", q.value(4).toDouble())));
+        bot_decisions_table_->setItem(row, 5, cell(QString::asprintf("%+.3f", edge),
+                                               edge >= 0 ? ui::colors::POSITIVE() : ui::colors::NEGATIVE()));
+        bot_decisions_table_->setItem(row, 6, cell(gate.toUpper(),
+                                               gate == "pass" ? ui::colors::AMBER() : ui::colors::TEXT_TERTIARY()));
+        ++row;
+    }
+}
+
+void WeatherScreen::populate_bot_positions() {
+    if (!bot_positions_table_)
+        return;
+    bot_positions_table_->setRowCount(0);
+    auto r = Database::instance().execute(
+        "SELECT p.created_at, j.market_id, p.side, p.limit_price, p.qty, p.state, p.realized_pnl, p.close_reason "
+        "FROM sandbox_position p JOIN sandbox_strategy s ON s.strategy_id=p.strategy_id "
+        "JOIN edge_decision_journal j ON j.id=p.decision_id "
+        "WHERE s.kind='kalshi_weather' ORDER BY p.created_at DESC LIMIT 100",
+        {});
+    if (!r.is_ok())
+        return;
+    auto& q = r.value();
+    int row = 0;
+    while (q.next()) {
+        bot_positions_table_->insertRow(row);
+        const auto ts = QDateTime::fromMSecsSinceEpoch(q.value(0).toLongLong());
+        const QString state = q.value(5).toString();
+        const bool has_pnl = !q.value(6).isNull();
+        const double pnl = q.value(6).toDouble();
+        bot_positions_table_->setItem(row, 0, cell(ts.toString(QStringLiteral("MM-dd HH:mm"))));
+        bot_positions_table_->setItem(row, 1, cell(q.value(1).toString()));
+        bot_positions_table_->setItem(row, 2, cell(q.value(2).toString().toUpper()));
+        bot_positions_table_->setItem(row, 3, cell(QString::asprintf("%.2f", q.value(3).toDouble())));
+        bot_positions_table_->setItem(row, 4, cell(QString::asprintf("%.0f", q.value(4).toDouble())));
+        bot_positions_table_->setItem(row, 5, cell(state.toUpper(),
+                                               state == "open" ? ui::colors::AMBER() : ui::colors::TEXT_SECONDARY()));
+        bot_positions_table_->setItem(row, 6, cell(has_pnl ? QString::asprintf("%+.2f", pnl) : QStringLiteral("-"),
+                                               !has_pnl ? ui::colors::TEXT_TERTIARY()
+                                                        : (pnl >= 0 ? ui::colors::POSITIVE() : ui::colors::NEGATIVE())));
+        bot_positions_table_->setItem(row, 7, cell(q.value(7).toString()));
+        ++row;
+    }
 }
 
 } // namespace openmarketterminal::screens
