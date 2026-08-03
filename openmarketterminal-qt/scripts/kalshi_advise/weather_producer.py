@@ -131,18 +131,26 @@ def bracket_record(series, cfg, ticker, strike_type, floor, cap, fc, std,
                     yes_bid, yes_ask, now_ms, close_ts):
     """Evidence record for one evaluated bracket, regardless of trade gate.
 
-    Reuses bracket_prob for forecast_p; edge mirrors the decision rule in
-    decisions_for_series: max(yes-side edge, no-side edge), where
-    no_ask = 1 - yes_bid.
+    Called for EVERY bracket the producer iterates (see decisions_for_series),
+    so forecast fields (forecast_high_f/forecast_p) are cheap pure-math and
+    always filled. yes_bid/yes_ask are None when the book wasn't fetched for
+    this bracket (e.g. it's outside the trading lead window) — in that case
+    the book/edge fields are JSON null rather than triggering an extra
+    per-bracket network call. Reuses bracket_prob for forecast_p; edge
+    mirrors the decision rule in decisions_for_series: max(yes-side edge,
+    no-side edge), where no_ask = 1 - yes_bid.
     """
     label = cfg[0]
     fp = bracket_prob(fc, strike_type, floor, cap, std)
     if fp is not None:
         fp = min(max(fp, 0.0), 1.0)
-    no_ask = 1.0 - yes_bid
-    edge = None
-    if fp is not None:
-        edge = max(fp - yes_ask, (1.0 - fp) - no_ask)
+    market_bid = market_ask = market_mid = edge = None
+    if yes_bid is not None and yes_ask is not None:
+        market_bid, market_ask = yes_bid, yes_ask
+        market_mid = round((yes_bid + yes_ask) / 2.0, 4)
+        if fp is not None:
+            no_ask = 1.0 - yes_bid
+            edge = round(max(fp - yes_ask, (1.0 - fp) - no_ask), 4)
     seconds_left = close_ts - now_ms // 1000
     in_window = LEAD_MIN <= seconds_left <= LEAD_MAX
     return {
@@ -154,10 +162,10 @@ def bracket_record(series, cfg, ticker, strike_type, floor, cap, fc, std,
         "strike_type": strike_type,
         "forecast_high_f": round(fc, 1) if fc is not None else None,
         "forecast_p": round(fp, 4) if fp is not None else None,
-        "market_bid": yes_bid,
-        "market_ask": yes_ask,
-        "market_mid": round((yes_bid + yes_ask) / 2.0, 4),
-        "edge": round(edge, 4) if edge is not None else None,
+        "market_bid": market_bid,
+        "market_ask": market_ask,
+        "market_mid": market_mid,
+        "edge": edge,
         "in_window": in_window,
         "seconds_left": seconds_left,
         "generated_at_ms": now_ms,
@@ -205,11 +213,22 @@ def decisions_for_series(series, cfg, now_ms):
             # morning-of the settlement day, where the per-city forecast std was
             # calibrated). Day-ahead (>17h) is less certain than the std assumes;
             # late-day (<10h) the market has sharpened past the measured edge.
-            if seconds_left < LEAD_MIN or seconds_left > LEAD_MAX:
-                continue
-            FUNNEL["in_window"] += 1
-            yes_bid, yes_ask, ydepth, ndepth = book_bid_ask(m["ticker"])
-            if yes_ask <= 0 or yes_bid <= 0:  # need a two-sided live quote
+            in_window = LEAD_MIN <= seconds_left <= LEAD_MAX
+            yes_bid = yes_ask = ydepth = ndepth = None
+            two_sided = False
+            if in_window:
+                FUNNEL["in_window"] += 1
+                yes_bid, yes_ask, ydepth, ndepth = book_bid_ask(m["ticker"])
+                two_sided = yes_ask > 0 and yes_bid > 0  # need a two-sided live quote
+            # Evidence record for EVERY evaluated bracket (all strikes in every
+            # series/event), not just tradeable ones — forecast fields are cheap
+            # pure-math and always filled; book/edge fields are only filled when
+            # the book was actually fetched above (in-window brackets), null
+            # otherwise. No extra per-bracket network call for out-of-window
+            # brackets.
+            BRACKETS.append(bracket_record(series, cfg, m["ticker"], st, floor, cap, fc, std,
+                                            yes_bid, yes_ask, now_ms, cts))
+            if not in_window or not two_sided:
                 continue
             FUNNEL["two_sided"] += 1
             mid = (yes_bid + yes_ask) / 2.0
@@ -217,8 +236,6 @@ def decisions_for_series(series, cfg, now_ms):
                 continue
             FUNNEL["uncertain"] += 1
             no_ask = 1.0 - yes_bid
-            BRACKETS.append(bracket_record(series, cfg, m["ticker"], st, floor, cap, fc, std,
-                                            yes_bid, yes_ask, now_ms, cts))
             side = price = model_p = depth = None
             if fp > yes_ask + MARGIN:
                 side, price, model_p, depth = "yes", yes_ask, fp, ydepth
