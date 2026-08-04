@@ -59,7 +59,7 @@ Result<void> insert_fill(const QString& position_id, qint64 ts, const QString& k
 }
 
 struct PredictionRow {
-    QString position_id, decision_id;
+    QString position_id, decision_id, side;
     double limit_price = 0, entry_fee = 0, qty = 0;
     qint64 expires_at = 0;
 };
@@ -70,7 +70,7 @@ struct PredictionRow {
 Result<void> resolve_predictions(qint64 now_ms, ResolveReport& report) {
     auto& db = Database::instance();
     auto sel = db.execute(
-        "SELECT position_id, decision_id, limit_price, entry_fee, qty, expires_at"
+        "SELECT position_id, decision_id, limit_price, entry_fee, qty, expires_at, side"
         " FROM sandbox_position WHERE state = 'open' AND side IN ('yes','no') AND hypothetical = 0");
     if (sel.is_err())
         return Result<void>::err(sel.error());
@@ -86,6 +86,7 @@ Result<void> resolve_predictions(qint64 now_ms, ResolveReport& report) {
             row.entry_fee = q.value(3).toDouble();
             row.qty = q.value(4).toDouble();
             row.expires_at = q.value(5).toLongLong();
+            row.side = q.value(6).toString().trimmed().toLower();
             rows.append(row);
         }
     }
@@ -102,7 +103,14 @@ Result<void> resolve_predictions(qint64 now_ms, ResolveReport& report) {
         }
 
         if (found && (outcome == 0 || outcome == 1)) {
-            const double payout = outcome == 1 ? 1.0 : 0.0;
+            // Side-aware settlement: a 'no' position pays $1 when the market
+            // resolves NO (outcome==0); a 'yes' position pays $1 when it resolves
+            // YES (outcome==1). limit_price is already the price of the chosen
+            // side (yes_ask for yes, no_ask for no). Settling both as YES (the
+            // prior behavior) inverted every NO position's realized P&L.
+            const bool chosen_side_wins =
+                row.side == QLatin1String("no") ? (outcome == 0) : (outcome == 1);
+            const double payout = chosen_side_wins ? 1.0 : 0.0;
             // No exit fee: settlement is not a trade (controller decision --
             // see SandboxResolver.h).
             const double pnl = (payout - row.limit_price) * row.qty - row.entry_fee;

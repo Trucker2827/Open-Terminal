@@ -217,27 +217,62 @@ class TstSandboxResolver : public QObject {
         QVERIFY(qAbs(fill_price(QStringLiteral("pos-pred-b"), QStringLiteral("resolved")) - 0.0) < 1e-9);
     }
 
-    void prediction_no_side_resolves_with_selected_side_outcome() {
-        const qint64 t0 = 2500000;
-        const QString decision = QStringLiteral("dec-p-no-win");
-        const QString position = QStringLiteral("pos-p-no-win");
-        insert_journal_row(decision, QStringLiteral("journal-p"), QStringLiteral("BTC-USD"), t0, 1);
-        insert_position(position, QStringLiteral("strategy-p"), decision, QStringLiteral("BTC-USD"),
-                        QStringLiteral("no"), false, 10.0, 0.40, QVariant(), QVariant(),
-                        t0 + 300000, t0, 0.10, 4.0, t0);
+    // (c) NO-side win: a 'no' position pays $1/contract when the market resolves
+    // NO (journal outcome=0). limit_price is the no-price. Pre-fix this booked a
+    // full loss (payout ignored side) -- this test guards the regression.
+    // realized_pnl = (1.0 - 0.6) * 10 - 1.5 = 2.5
+    void prediction_no_side_win_pays_on_outcome_no() {
+        auto strat = register_strategy(QStringLiteral("kalshi_weather"), QStringLiteral("US-WEATHER"),
+                                       QJsonObject{{"prediction", true}, {"journal_source", "journal-pred-c"}});
+        QVERIFY(strat.is_ok());
 
-        QTemporaryDir daemon;
-        QVERIFY(daemon.isValid());
-        auto result = resolve_pending(QStringLiteral("default"), daemon.path(), t0 + 1000);
-        QVERIFY2(result.is_ok(), result.is_err() ? result.error().c_str() : "");
+        const qint64 t0 = 12000000;
+        insert_journal_row(QStringLiteral("dec-pred-c"), QStringLiteral("journal-pred-c"), QStringLiteral("KXHIGHNY"),
+                            t0, 0);
+        insert_position(QStringLiteral("pos-pred-c"), strat.value(), QStringLiteral("dec-pred-c"),
+                        QStringLiteral("KXHIGHNY"), QStringLiteral("no"), false, 10.0, 0.6, QVariant(), QVariant(),
+                        t0 + 100000, t0, 1.5, 100.0, t0);
 
-        const PositionRow row = fetch_position(position);
+        auto rep = resolve_pending(QStringLiteral("default"), QStringLiteral("/nonexistent/ticks.jsonl"), t0 + 1000);
+        QVERIFY2(rep.is_ok(), rep.is_err() ? rep.error().c_str() : "");
+        QCOMPARE(rep.value().resolved, 1);
+
+        const PositionRow row = fetch_position(QStringLiteral("pos-pred-c"));
         QVERIFY(row.found);
         QCOMPARE(row.state, QStringLiteral("closed"));
         QCOMPARE(row.close_reason, QStringLiteral("resolved"));
         QVERIFY(row.has_realized_pnl);
-        QVERIFY(qAbs(row.realized_pnl - 5.9) < 1e-9);
+        QVERIFY(qAbs(row.realized_pnl - 2.5) < 1e-9);
+        QVERIFY(qAbs(fill_price(QStringLiteral("pos-pred-c"), QStringLiteral("resolved")) - 1.0) < 1e-9);
     }
+
+    // (d) NO-side loss: a 'no' position pays $0 when the market resolves YES
+    // (journal outcome=1). Pre-fix this booked a PROFIT (inverted) -- guarded here.
+    // realized_pnl = (0.0 - 0.6) * 10 - 1.5 = -7.5
+    void prediction_no_side_loss_books_zero_on_outcome_yes() {
+        auto strat = register_strategy(QStringLiteral("kalshi_weather"), QStringLiteral("US-WEATHER"),
+                                       QJsonObject{{"prediction", true}, {"journal_source", "journal-pred-d"}});
+        QVERIFY(strat.is_ok());
+
+        const qint64 t0 = 13000000;
+        insert_journal_row(QStringLiteral("dec-pred-d"), QStringLiteral("journal-pred-d"), QStringLiteral("KXHIGHNY"),
+                            t0, 1);
+        insert_position(QStringLiteral("pos-pred-d"), strat.value(), QStringLiteral("dec-pred-d"),
+                        QStringLiteral("KXHIGHNY"), QStringLiteral("no"), false, 10.0, 0.6, QVariant(), QVariant(),
+                        t0 + 100000, t0, 1.5, 100.0, t0);
+
+        auto rep = resolve_pending(QStringLiteral("default"), QStringLiteral("/nonexistent/ticks.jsonl"), t0 + 1000);
+        QVERIFY2(rep.is_ok(), rep.is_err() ? rep.error().c_str() : "");
+        QCOMPARE(rep.value().resolved, 1);
+
+        const PositionRow row = fetch_position(QStringLiteral("pos-pred-d"));
+        QVERIFY(row.found);
+        QCOMPARE(row.state, QStringLiteral("closed"));
+        QVERIFY(row.has_realized_pnl);
+        QVERIFY(qAbs(row.realized_pnl - (-7.5)) < 1e-9);
+        QVERIFY(qAbs(fill_price(QStringLiteral("pos-pred-d"), QStringLiteral("resolved")) - 0.0) < 1e-9);
+    }
+
 
     // (c) prediction unresolved (outcome=-1), still within the 24h grace
     // window past expires_at -> stays open, counted pending.
