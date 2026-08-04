@@ -14,7 +14,7 @@ Dry-run by default (prints what WOULD resolve, writes nothing). --write applies.
 Low-risk: only sets outcome for journal rows whose Kalshi market has actually
 settled, using Kalshi's own result.
 """
-import sys, os, json, time, argparse, urllib.request, sqlite3
+import sys, os, json, time, argparse, urllib.request, sqlite3, subprocess
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from openterminal_paths import journal_db  # noqa: E402
 
@@ -93,8 +93,18 @@ def main():
             "UPDATE edge_decision_journal SET outcome=?, resolved_at=?, updated_at=? WHERE id=?",
             [(oc, now_ms, now_ms, jid) for jid, _, oc, _ in to_update])
         con.commit()
-        print(f"\nWROTE {len(to_update)} outcomes. resolve_predictions will settle the "
-              f"positions on the executor's next cycle.")
+        print(f"\nWROTE {len(to_update)} outcomes.")
+        # Settle now with the freshly-built cli (paper-only run_cycle -> side-aware
+        # resolve_predictions). Self-contained so settlement never depends on a
+        # stale-binary persistent executor. No live orders: sandbox tick is paper.
+        cli = "/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/build/openterminalcli"
+        if os.path.exists(cli):
+            try:
+                r = subprocess.run([cli, "--profile", "default", "sandbox", "tick"],
+                                   timeout=120, capture_output=True, text=True)
+                print(f"settled via fixed cli (exit {r.returncode}).")
+            except Exception as e:
+                print(f"tick failed: {e} (positions will settle on next executor cycle)")
     elif not args.write:
         print("\n(dry run — nothing written; re-run with --write to apply)")
     con.close()
