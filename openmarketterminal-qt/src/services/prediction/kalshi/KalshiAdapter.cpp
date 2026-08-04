@@ -206,6 +206,14 @@ CategoryFilter parse_category_filter(QString slug) {
 
     if (out.base.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) == 0)
         out.series_keywords = crypto_asset_keywords(asset);
+    // "Climate and Weather" resolves to ~291 series; the weather bot only trades
+    // six daily city-high series. Narrow the per-series fan-out to just those so
+    // the browser fetches 6 series (fast, reliable) instead of 291 (heavy, lossy
+    // — the six cities never reliably surfaced, leaving the browser empty).
+    else if (out.base.compare(QStringLiteral("Climate and Weather"), Qt::CaseInsensitive) == 0)
+        out.series_keywords = {QStringLiteral("KXHIGHNY"), QStringLiteral("KXHIGHCHI"),
+                               QStringLiteral("KXHIGHDEN"), QStringLiteral("KXHIGHTSFO"),
+                               QStringLiteral("KXHIGHPHIL"), QStringLiteral("KXHIGHTSEA")};
     return out;
 }
 }  // namespace
