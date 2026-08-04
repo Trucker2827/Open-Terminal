@@ -31,9 +31,14 @@ namespace openmarketterminal::screens {
 /// Rich weather cockpit route (`weather`). Task 2 delivers the shell
 /// and a left-side bracket browser sourced straight from the
 /// PredictionExchangeAdapter (same "kalshi" adapter instance KalshiScreen
-/// uses), filtered server-side to the "Weather" category. Task 3 adds a
-/// right-side detail pane: selecting a browser row fetches and renders
-/// that bracket's order book (via the reused CryptoOrderBook widget — the
+/// uses), filtered server-side to Kalshi's real "Climate and Weather"
+/// category (NOT "Weather" — that slug resolves to zero series on Kalshi's
+/// /series?category=… endpoint) and then client-side to the six weather
+/// series the bot trades (KXHIGHNY/KXHIGHCHI/KXHIGHDEN/KXHIGHTSFO/
+/// KXHIGHPHIL/KXHIGHTSEA — see is_bot_weather_series() in the .cpp), so the
+/// browser shows exactly the bot's cities rather than every climate market.
+/// Task 3 adds a right-side detail pane: selecting a browser row fetches and
+/// renders that bracket's order book (via the reused CryptoOrderBook widget — the
 /// same generic bid/ask depth widget KalshiScreen embeds for its spot
 /// reference DOM) and recent trades. Task 5 adds a BOT sub-tab (summary,
 /// decisions, positions) ported from the retired lean predictions screen,
@@ -71,6 +76,20 @@ class WeatherScreen final : public QWidget, public IStatefulScreen {
     void load_forecasts();
     void update_forecast_panel();
 
+    // Tier 1: real load state machine (never a permanent spinner) — a fetch
+    // is "pending" from refresh() until either populate_events/populate_markets
+    // or handle_fetch_error() resolves it, with load_timeout_timer_ as the
+    // backstop for a request whose reply never arrives at all.
+    void handle_fetch_error(const QString& context, const QString& message);
+    void handle_fetch_timeout();
+    void set_status(const QString& text, const QString& color);
+
+    // Tier 3: P&L summary strip on the BRACKETS tab — populate_bot_summary()
+    // is the single place that queries sandbox_position/sandbox_strategy;
+    // it passes its already-computed figures here to update the strip too,
+    // so the BOT tab's stat row and the BRACKETS tab's strip never drift.
+    void populate_pnl_strip(int open, int resolved, int wins, double pnl);
+
     // Task 5: bot panel (subsumes the retired lean weather predictions screen).
     QWidget* build_bot_tab();
     void refresh_bot_panel();
@@ -85,8 +104,24 @@ class WeatherScreen final : public QWidget, public IStatefulScreen {
 
     QLabel* status_label_ = nullptr;
     QLabel* count_label_ = nullptr;
+    QPushButton* refresh_button_ = nullptr;
     QTableWidget* bracket_table_ = nullptr;
     bool first_show_ = true;
+
+    // Tier 1: fetch state machine. fetch_pending_ is true from refresh()
+    // until the corresponding events_ready/markets_ready or error_occurred
+    // lands; load_timeout_timer_ is a backstop single-shot so a reply that
+    // never arrives (adapter hangs, dropped connection) still resolves to a
+    // visible "Fetch failed" state instead of leaving the browser stuck on
+    // "Loading weather brackets…" forever.
+    bool fetch_pending_ = false;
+    QTimer* load_timeout_timer_ = nullptr;
+
+    // Tier 1: rows in bracket_table_ interleave city group-header rows with
+    // data rows (Tier 3 grouping); this parallel vector maps a table row to
+    // its index into markets_, or -1 for a group-header row that carries no
+    // market of its own.
+    QVector<int> row_market_index_;
 
     // Task 3: bracket detail pane (order book + recent trades).
     QLabel* detail_title_ = nullptr;
@@ -106,6 +141,18 @@ class WeatherScreen final : public QWidget, public IStatefulScreen {
     QLabel* forecast_edge_label_ = nullptr;
     QLabel* forecast_window_badge_ = nullptr;
     QLabel* forecast_threshold_label_ = nullptr;
+    // Small forecast-vs-threshold number line (defined in WeatherScreen.cpp;
+    // stored as a plain QWidget* here since only that translation unit needs
+    // the concrete type).
+    QWidget* forecast_line_widget_ = nullptr;
+
+    // Tier 3: P&L summary strip on the BRACKETS tab — "positions · settled ·
+    // net P&L · win%", the same figures the BOT tab's stat row shows, kept
+    // in sync by populate_bot_summary() (single source of the SQL).
+    QLabel* pnl_strip_positions_ = nullptr;
+    QLabel* pnl_strip_settled_ = nullptr;
+    QLabel* pnl_strip_net_ = nullptr;
+    QLabel* pnl_strip_winrate_ = nullptr;
 
     // Task 5: bot panel — summary (open/closed, realized PnL, edge-status
     // badge), decisions table, positions table. Queries ported verbatim
