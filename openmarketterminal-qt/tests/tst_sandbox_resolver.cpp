@@ -223,13 +223,13 @@ class TstSandboxResolver : public QObject {
     // realized_pnl = (1.0 - 0.6) * 10 - 1.5 = 2.5
     void prediction_no_side_win_pays_on_outcome_no() {
         auto strat = register_strategy(QStringLiteral("kalshi_weather"), QStringLiteral("US-WEATHER"),
-                                       QJsonObject{{"prediction", true}, {"journal_source", "journal-pred-c"}});
+                                       QJsonObject{{"prediction", true}, {"journal_source", "journal-nsw"}});
         QVERIFY(strat.is_ok());
 
         const qint64 t0 = 12000000;
-        insert_journal_row(QStringLiteral("dec-pred-c"), QStringLiteral("journal-pred-c"), QStringLiteral("KXHIGHNY"),
+        insert_journal_row(QStringLiteral("dec-nsw"), QStringLiteral("journal-nsw"), QStringLiteral("KXHIGHNY"),
                             t0, 0);
-        insert_position(QStringLiteral("pos-pred-c"), strat.value(), QStringLiteral("dec-pred-c"),
+        insert_position(QStringLiteral("pos-nsw"), strat.value(), QStringLiteral("dec-nsw"),
                         QStringLiteral("KXHIGHNY"), QStringLiteral("no"), false, 10.0, 0.6, QVariant(), QVariant(),
                         t0 + 100000, t0, 1.5, 100.0, t0);
 
@@ -237,13 +237,13 @@ class TstSandboxResolver : public QObject {
         QVERIFY2(rep.is_ok(), rep.is_err() ? rep.error().c_str() : "");
         QCOMPARE(rep.value().resolved, 1);
 
-        const PositionRow row = fetch_position(QStringLiteral("pos-pred-c"));
+        const PositionRow row = fetch_position(QStringLiteral("pos-nsw"));
         QVERIFY(row.found);
         QCOMPARE(row.state, QStringLiteral("closed"));
         QCOMPARE(row.close_reason, QStringLiteral("resolved"));
         QVERIFY(row.has_realized_pnl);
         QVERIFY(qAbs(row.realized_pnl - 2.5) < 1e-9);
-        QVERIFY(qAbs(fill_price(QStringLiteral("pos-pred-c"), QStringLiteral("resolved")) - 1.0) < 1e-9);
+        QVERIFY(qAbs(fill_price(QStringLiteral("pos-nsw"), QStringLiteral("resolved")) - 1.0) < 1e-9);
     }
 
     // (d) NO-side loss: a 'no' position pays $0 when the market resolves YES
@@ -251,13 +251,13 @@ class TstSandboxResolver : public QObject {
     // realized_pnl = (0.0 - 0.6) * 10 - 1.5 = -7.5
     void prediction_no_side_loss_books_zero_on_outcome_yes() {
         auto strat = register_strategy(QStringLiteral("kalshi_weather"), QStringLiteral("US-WEATHER"),
-                                       QJsonObject{{"prediction", true}, {"journal_source", "journal-pred-d"}});
+                                       QJsonObject{{"prediction", true}, {"journal_source", "journal-nsl"}});
         QVERIFY(strat.is_ok());
 
         const qint64 t0 = 13000000;
-        insert_journal_row(QStringLiteral("dec-pred-d"), QStringLiteral("journal-pred-d"), QStringLiteral("KXHIGHNY"),
+        insert_journal_row(QStringLiteral("dec-nsl"), QStringLiteral("journal-nsl"), QStringLiteral("KXHIGHNY"),
                             t0, 1);
-        insert_position(QStringLiteral("pos-pred-d"), strat.value(), QStringLiteral("dec-pred-d"),
+        insert_position(QStringLiteral("pos-nsl"), strat.value(), QStringLiteral("dec-nsl"),
                         QStringLiteral("KXHIGHNY"), QStringLiteral("no"), false, 10.0, 0.6, QVariant(), QVariant(),
                         t0 + 100000, t0, 1.5, 100.0, t0);
 
@@ -265,12 +265,12 @@ class TstSandboxResolver : public QObject {
         QVERIFY2(rep.is_ok(), rep.is_err() ? rep.error().c_str() : "");
         QCOMPARE(rep.value().resolved, 1);
 
-        const PositionRow row = fetch_position(QStringLiteral("pos-pred-d"));
+        const PositionRow row = fetch_position(QStringLiteral("pos-nsl"));
         QVERIFY(row.found);
         QCOMPARE(row.state, QStringLiteral("closed"));
         QVERIFY(row.has_realized_pnl);
         QVERIFY(qAbs(row.realized_pnl - (-7.5)) < 1e-9);
-        QVERIFY(qAbs(fill_price(QStringLiteral("pos-pred-d"), QStringLiteral("resolved")) - 0.0) < 1e-9);
+        QVERIFY(qAbs(fill_price(QStringLiteral("pos-nsl"), QStringLiteral("resolved")) - 0.0) < 1e-9);
     }
 
 
