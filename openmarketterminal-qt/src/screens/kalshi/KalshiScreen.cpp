@@ -2,10 +2,12 @@
 #include "screens/kalshi/AdvisorCanaryPresentation.h"
 #include "screens/kalshi/ArenaContextPresentation.h"
 #include "screens/kalshi/BotCockpitPresentation.h"
+#include "screens/kalshi/CategoryPlaceholderPage.h"
 #include "screens/kalshi/KalshiBotCockpitView.h"
 #include "screens/kalshi/KalshiBotPanelPresentation.h"
 #include "screens/kalshi/MarketRollPresentation.h"
 #include "screens/kalshi/CliLocator.h"
+#include "screens/weather/WeatherScreen.h"
 
 #include "app/TerminalShell.h"
 #include "cli/ServeCommand.h"
@@ -68,6 +70,7 @@
 #include <QSpinBox>
 #include <QSplitter>
 #include <QSplitterHandle>
+#include <QStackedWidget>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTextEdit>
@@ -1615,7 +1618,21 @@ void KalshiScreen::build_ui() {
     connect(reset_dom_width, &QPushButton::clicked, this, reset_pane_widths);
     workspace_splitter_->handle(1)->setToolTip(QStringLiteral("Drag to resize the contract ladder"));
     workspace_splitter_->handle(2)->setToolTip(QStringLiteral("Drag to resize the reference DOM"));
-    root->addWidget(workspace_splitter_, 1);
+
+    // Category page-stack (Task 6, additive-only). Page 0 is the crypto
+    // workspace built above — workspace_splitter_ is reparented into the
+    // stack wholesale via addWidget(); none of its children are touched, so
+    // crypto's market list / ladder / DOM panel are exactly what they were
+    // before this stack existed. Page 1 / page 2 are new siblings that only
+    // become visible off-crypto (see set_family()).
+    category_stack_ = new QStackedWidget(this);
+    category_stack_->addWidget(workspace_splitter_); // page 0: crypto (unchanged, reparented wholesale)
+    weather_screen_ = new screens::WeatherScreen(category_stack_);
+    category_stack_->addWidget(weather_screen_); // page 1: Weather
+    category_placeholder_ = new CategoryPlaceholderPage(family_, category_stack_);
+    category_stack_->addWidget(category_placeholder_); // page 2: everything else
+    category_stack_->setCurrentIndex(0);
+    root->addWidget(category_stack_, 1);
 
     connect(polymarket_button_, &QPushButton::clicked, this,
             [this]() { emit venue_switch_requested(QStringLiteral("polymarket")); });
@@ -2051,6 +2068,20 @@ void KalshiScreen::set_family(const QString& family) {
     family_ = family;
     asset_bar_->setVisible(family_ == QStringLiteral("Crypto"));
     cadence_bar_->setVisible(family_ == QStringLiteral("Crypto"));
+    // Category page-stack (Task 6, additive-only): Crypto keeps the existing
+    // workspace on page 0; Weather switches to the embedded WeatherScreen;
+    // everything else shows the placeholder. This is purely a view swap —
+    // it does not replace anything set_family already did above or below.
+    if (category_stack_) {
+        if (family_ == QStringLiteral("Crypto")) {
+            category_stack_->setCurrentIndex(0);
+        } else if (family_ == QStringLiteral("Weather")) {
+            category_stack_->setCurrentIndex(1);
+        } else {
+            if (category_placeholder_) category_placeholder_->set_category(family_);
+            category_stack_->setCurrentIndex(2);
+        }
+    }
     refresh();
 }
 

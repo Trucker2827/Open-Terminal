@@ -1369,6 +1369,7 @@ set(SERVICE_SOURCES
     src/services/prediction/kalshi/KalshiWsClient.cpp
     src/services/prediction/kalshi/KalshiAdapter.cpp
     src/services/prediction/kalshi/KalshiEvidenceEngine.cpp
+    src/screens/weather/WeatherEvidenceReader.cpp
     src/services/prediction/kalshi/KalshiSettlementScoreboard.cpp
     src/services/prediction/kalshi/KalshiBotDecision.cpp
     src/services/prediction/kalshi/KalshiBotFunnel.cpp
@@ -1842,9 +1843,10 @@ set(SCREEN_SOURCES
 
     # Polymarket / Prediction Markets
     src/screens/prediction/PredictionMarketsScreen.cpp
-    src/screens/weather/WeatherPredictionsScreen.cpp
+    src/screens/weather/WeatherScreen.cpp
     src/screens/kalshi/KalshiScreen.cpp
     src/screens/kalshi/KalshiBotCockpitView.cpp
+    src/screens/kalshi/CategoryPlaceholderPage.cpp
     src/screens/polymarket/PolymarketScreen.cpp
     src/screens/polymarket/PolymarketCommandBar.cpp
     src/screens/polymarket/PolymarketMarketCard.cpp
@@ -2452,9 +2454,10 @@ set_source_files_properties(
     src/services/ai_decision/Screener.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/prediction/PredictionMarketsScreen.cpp
-    src/screens/weather/WeatherPredictionsScreen.cpp
+    src/screens/weather/WeatherScreen.cpp
     src/screens/kalshi/KalshiScreen.cpp
     src/screens/kalshi/KalshiBotCockpitView.cpp
+    src/screens/kalshi/CategoryPlaceholderPage.cpp
     src/screens/polymarket/PolymarketScreen.cpp
     src/screens/polymarket/PolymarketCommandBar.cpp
     src/screens/polymarket/PolymarketMarketCard.cpp

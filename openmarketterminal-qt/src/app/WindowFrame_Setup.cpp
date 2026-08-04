@@ -58,7 +58,7 @@
 #include "screens/info/TrademarksScreen.h"
 #include "screens/ma_analytics/MAAnalyticsScreen.h"
 #include "screens/maritime/MaritimeScreen.h"
-#include "screens/weather/WeatherPredictionsScreen.h"
+#include "screens/weather/WeatherScreen.h"
 #include "screens/markets/MarketsScreen.h"
 #include "screens/mcp_servers/McpServersScreen.h"
 #include "screens/news/NewsScreen.h"
@@ -276,7 +276,10 @@ void WindowFrame::setup_dock_screens() {
     dock_router_->register_factory("alt_investments", []() { return new screens::AltInvestmentsScreen; });
     dock_router_->register_factory("geopolitics", []() { return new screens::GeopoliticsScreen; });
     dock_router_->register_factory("maritime", []() { return new screens::MaritimeScreen; });
-    dock_router_->register_factory("weather", []() { return new screens::WeatherPredictionsScreen; });
+    // Rich weather cockpit (bracket browser + detail + forecast + bot panel,
+    // per the per-category Kalshi views plan). Subsumes the retired lean
+    // weather predictions screen as of Task 5 (bot panel port).
+    dock_router_->register_factory("weather", []() { return new screens::WeatherScreen; });
     dock_router_->register_factory("surface_analytics", []() { return new openmarketterminal::surface::SurfaceAnalyticsScreen; });
     dock_router_->register_factory("research_sources", []() { return new screens::ResearchSourcesScreen; });
     dock_router_->register_factory("agent_config", []() { return new screens::AgentConfigScreen; });

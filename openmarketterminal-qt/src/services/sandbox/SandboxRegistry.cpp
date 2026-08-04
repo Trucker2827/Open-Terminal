@@ -455,7 +455,11 @@ Result<QList<QString>> seed_default_strategies() {
                             {"paper_only", true},
                             {"experiment_protocol", "kalshi-weather-v1"},
                             {"horizon", "daily"},
-                            {"exit_policy", "managed"},
+                            // HOLD to daily resolution: the weather edge (+10c OOS) was
+                            // validated at settlement. Intraday managed exits (stop_loss/
+                            // edge_reversal) shook positions out on illiquid-book noise
+                            // before the forecast realized (observed live 2026-08-03).
+                            {"exit_policy", "settlement"},
                             {"allowed_side", "both"},
                             {"min_seconds_left", 3600},
                             {"max_seconds_left", 86400},

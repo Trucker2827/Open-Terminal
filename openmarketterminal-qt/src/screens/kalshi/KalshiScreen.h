@@ -43,10 +43,12 @@ namespace openmarketterminal::services::prediction {
 class PredictionExchangeAdapter;
 }
 namespace openmarketterminal::screens::crypto { class CryptoOrderBook; }
+namespace openmarketterminal::screens { class WeatherScreen; }
 
 namespace openmarketterminal::screens::kalshi {
 
 class KalshiSimpleChart;
+class CategoryPlaceholderPage;
 
 class KalshiScreen final : public QWidget {
     Q_OBJECT
@@ -189,6 +191,15 @@ class KalshiScreen final : public QWidget {
     QLabel* count_label_ = nullptr;
     QWidget* asset_bar_ = nullptr;
     QWidget* cadence_bar_ = nullptr;
+    // Category page-stack (Task 6, additive-only): page 0 is the existing
+    // crypto workspace (workspace_splitter_, reparented wholesale — none of
+    // its children are touched), page 1 is the embedded WeatherScreen, page
+    // 2 is a CategoryPlaceholderPage for every other category. Swapped only
+    // in set_family(); nothing about crypto's own rendering/fetch/trade path
+    // changes because of the stack's existence.
+    QStackedWidget* category_stack_ = nullptr;
+    screens::WeatherScreen* weather_screen_ = nullptr;
+    CategoryPlaceholderPage* category_placeholder_ = nullptr;
     QSplitter* workspace_splitter_ = nullptr;
     QWidget* dom_panel_ = nullptr;
     QListWidget* market_list_ = nullptr;
