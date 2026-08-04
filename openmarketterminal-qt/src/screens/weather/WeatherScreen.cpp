@@ -4,18 +4,25 @@
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
+#include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 #include "storage/sqlite/Database.h"
 #include "ui/theme/Theme.h"
 
 #include <QAbstractItemView>
+#include <QComboBox>
 #include <QDateTime>
+#include <QDoubleSpinBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPair>
+#include <QPushButton>
+#include <QSpinBox>
 #include <QTabWidget>
 #include <QTableWidgetItem>
 #include <QTimer>
+#include <QUuid>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -24,6 +31,7 @@
 namespace openmarketterminal::screens {
 
 namespace pred = openmarketterminal::services::prediction;
+namespace kalshi_data = openmarketterminal::services::prediction::kalshi_ns;
 
 namespace {
 
@@ -80,6 +88,12 @@ QLabel* make_stat(QLabel** value_out, const QString& caption, QVBoxLayout* into)
 double outcome_price(const pred::PredictionMarket& market, int index) {
     return index >= 0 && index < market.outcomes.size() ? market.outcomes[index].price : 0.0;
 }
+
+// Task 7: order-entry formatting helpers (mirror KalshiScreen's anonymous
+// namespace money()/probability() so the paper preview reads the same way
+// the live ticket's preview does).
+QString order_money(double value) { return QStringLiteral("$%1").arg(value, 0, 'f', 2); }
+QString order_probability(double value) { return QStringLiteral("%1%").arg(std::round(value * 100.0), 0, 'f', 0); }
 
 /// City abbreviation from the series ticker prefix (e.g. "KXHIGHNY" for the
 /// NYC daily-high-temperature series). Matches the city keys weather_producer
@@ -226,6 +240,9 @@ void WeatherScreen::build_ui() {
                                                  .arg(ui::colors::TEXT_SECONDARY(), MF));
     right_col->addWidget(forecast_threshold_label_);
 
+    // Task 7: paper-only order-entry mini form for the selected bracket.
+    build_order_entry_panel(right_col);
+
     order_book_widget_ = new crypto::CryptoOrderBook(this);
     right_col->addWidget(order_book_widget_, 2);
 
@@ -318,6 +335,25 @@ QWidget* WeatherScreen::build_bot_tab() {
     bot_positions_table_->horizontalHeader()->setStretchLastSection(true);
     bot_positions_table_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     layout->addWidget(bot_positions_table_, 1);
+
+    // Task 7: confirmations for manually-placed paper orders (order-entry
+    // mini form, right side of the BRACKETS tab). Session-local — these are
+    // simulated fills, never a bot-strategy position, so they are kept
+    // separate from bot_positions_table_'s sandbox_position rows above.
+    auto* manual_hdr = new QLabel(tr("MANUAL PAPER ORDERS (this session)"));
+    manual_hdr->setStyleSheet(QString("color:%1;font-size:10px;font-weight:700;background:transparent;%2")
+                                  .arg(ui::colors::CYAN(), MF));
+    layout->addWidget(manual_hdr);
+    manual_orders_table_ = new QTableWidget(0, 6, tab);
+    manual_orders_table_->setHorizontalHeaderLabels(
+        {tr("Time"), tr("Bracket"), tr("Side"), tr("Qty"), tr("Price"), tr("Status")});
+    manual_orders_table_->setStyleSheet(table_style());
+    manual_orders_table_->verticalHeader()->setVisible(false);
+    manual_orders_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    manual_orders_table_->setSelectionMode(QAbstractItemView::NoSelection);
+    manual_orders_table_->horizontalHeader()->setStretchLastSection(true);
+    manual_orders_table_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    layout->addWidget(manual_orders_table_, 1);
 
     return tab;
 }
@@ -465,6 +501,20 @@ void WeatherScreen::select_bracket(int row) {
     if (trades_table_)
         trades_table_->setRowCount(0);
     update_forecast_panel();
+
+    // Task 7: order-entry form tracks the selection — enable it and seed the
+    // price default off the current side's mid so it's not left at 0.50 for
+    // an obviously mispriced bracket.
+    if (order_preview_button_)
+        order_preview_button_->setEnabled(true);
+    if (order_place_button_)
+        order_place_button_->setEnabled(true);
+    if (order_price_spin_ && order_side_combo_) {
+        const int index = order_side_combo_->currentText() == QStringLiteral("NO") ? 1 : 0;
+        const double mid = outcome_price(selected_, index);
+        if (mid > 0.0)
+            order_price_spin_->setValue(mid);
+    }
 
     auto* a = adapter();
     if (!a)
@@ -614,6 +664,150 @@ void WeatherScreen::update_forecast_panel() {
                              .arg(inside ? tr("INSIDE") : tr("OUTSIDE"));
     }
     forecast_threshold_label_->setText(threshold_text);
+}
+
+void WeatherScreen::build_order_entry_panel(QVBoxLayout* into) {
+    auto* order_hdr = new QLabel(tr("PAPER ORDER ENTRY (selected bracket)"));
+    order_hdr->setStyleSheet(QString("color:%1;font-size:10px;font-weight:700;background:transparent;%2")
+                                 .arg(ui::colors::CYAN(), MF));
+    into->addWidget(order_hdr);
+
+    auto* form_row = new QHBoxLayout;
+    form_row->setSpacing(8);
+
+    order_side_combo_ = new QComboBox(this);
+    order_side_combo_->addItems({QStringLiteral("YES"), QStringLiteral("NO")});
+    order_side_combo_->setToolTip(tr("Outcome to buy — YES or NO."));
+    connect(order_side_combo_, &QComboBox::currentTextChanged, this, [this](const QString&) {
+        // Re-seed the price default off the newly selected outcome's mid so
+        // switching YES/NO doesn't leave a stale price from the other side.
+        if (!has_selection_ || !order_price_spin_)
+            return;
+        const int index = order_side_combo_->currentText() == QStringLiteral("NO") ? 1 : 0;
+        const double mid = outcome_price(selected_, index);
+        if (mid > 0.0)
+            order_price_spin_->setValue(mid);
+    });
+    form_row->addWidget(order_side_combo_);
+
+    order_price_spin_ = new QDoubleSpinBox(this);
+    order_price_spin_->setRange(0.01, 0.99);
+    order_price_spin_->setSingleStep(0.01);
+    order_price_spin_->setDecimals(2);
+    order_price_spin_->setValue(0.50);
+    order_price_spin_->setPrefix(QStringLiteral("$"));
+    order_price_spin_->setToolTip(tr("Limit price per contract (probability, 1-99c)."));
+    form_row->addWidget(order_price_spin_);
+
+    order_qty_spin_ = new QSpinBox(this);
+    order_qty_spin_->setRange(1, 100);
+    order_qty_spin_->setValue(5);  // small default paper size
+    order_qty_spin_->setSuffix(tr(" ct"));
+    order_qty_spin_->setToolTip(tr("Contracts (paper size)."));
+    form_row->addWidget(order_qty_spin_);
+
+    order_preview_button_ = new QPushButton(tr("PREVIEW"), this);
+    order_preview_button_->setEnabled(false);
+    connect(order_preview_button_, &QPushButton::clicked, this, &WeatherScreen::preview_paper_order);
+    form_row->addWidget(order_preview_button_);
+
+    order_place_button_ = new QPushButton(tr("PLACE PAPER ORDER"), this);
+    order_place_button_->setEnabled(false);
+    order_place_button_->setStyleSheet(QString("QPushButton{background:%1;color:%2;font-weight:800;padding:4px 10px;}")
+                                           .arg(ui::colors::BG_RAISED(), ui::colors::AMBER()));
+    connect(order_place_button_, &QPushButton::clicked, this, &WeatherScreen::place_paper_order);
+    form_row->addWidget(order_place_button_);
+
+    into->addLayout(form_row);
+
+    order_confirm_label_ = new QLabel(tr("PAPER ONLY — no live or exchange order is ever submitted here."));
+    order_confirm_label_->setWordWrap(true);
+    order_confirm_label_->setStyleSheet(QString(
+        "color:%1;background:%2;border:1px solid %3;padding:4px 8px;font-size:10px;font-weight:700;%4")
+        .arg(ui::colors::TEXT_SECONDARY(), ui::colors::BG_RAISED(), ui::colors::BORDER_DIM(), MF));
+    into->addWidget(order_confirm_label_);
+}
+
+void WeatherScreen::preview_paper_order() {
+    if (!has_selection_) {
+        QMessageBox::information(this, QStringLiteral("Weather"), tr("Select a bracket first."));
+        return;
+    }
+    const QString side = order_side_combo_->currentText();
+    const double p = order_price_spin_->value();
+    const int n = order_qty_spin_->value();
+    const double fee = kalshi_data::KalshiEvidenceEngine::conservative_taker_fee(selected_, p, n);
+    const QString bracket_label = selected_.question.isEmpty()
+        ? selected_.extras.value(QStringLiteral("event_title")).toString()
+        : selected_.question;
+    QMessageBox::information(this, tr("Paper order preview"),
+        tr("%1 %2\n%3\n\n%4 contracts at %5\nNotional %6\nMaximum fee estimate %7\nMaximum loss %8\n"
+           "Payout if correct %9\n\nThis review does not submit anything. PLACE PAPER ORDER simulates a "
+           "local fill only — no live or exchange order is ever submitted for Weather.")
+            .arg(QStringLiteral("BUY"), side, bracket_label)
+            .arg(n).arg(order_probability(p)).arg(order_money(p * n)).arg(order_money(fee))
+            .arg(order_money(p * n + fee)).arg(order_money(n)));
+}
+
+void WeatherScreen::place_paper_order() {
+    if (!has_selection_) {
+        QMessageBox::information(this, QStringLiteral("Weather"), tr("Select a bracket first."));
+        return;
+    }
+    const QString side = order_side_combo_->currentText();
+    const double p = order_price_spin_->value();
+    const int n = order_qty_spin_->value();
+    const QString bracket_label = selected_.question.isEmpty()
+        ? selected_.extras.value(QStringLiteral("event_title")).toString()
+        : selected_.question;
+
+    const auto answer = QMessageBox::question(
+        this, tr("Confirm paper order"),
+        tr("%1 %2 contracts of %3 at %4 on:\n%5\n\nThis is a PAPER order. It will never be submitted to "
+           "Kalshi or any exchange — it only simulates a local fill.")
+            .arg(QStringLiteral("BUY")).arg(n).arg(side).arg(order_probability(p)).arg(bracket_label),
+        QMessageBox::Cancel | QMessageBox::Yes, QMessageBox::Cancel);
+    if (answer != QMessageBox::Yes)
+        return;
+
+    // Build the OrderRequest for field parity with KalshiScreen's manual
+    // ticket (asset_id/side/price/size/client_order_id) — but this request
+    // is NEVER handed to PredictionExchangeAdapter::place_order(). Weather
+    // order entry is paper-only per the Global Constraints; the fill below
+    // is simulated entirely locally, so there is no code path here that can
+    // reach the live/demo Kalshi API, regardless of has_credentials().
+    const int outcome_index = side == QStringLiteral("NO") ? 1 : 0;
+    pred::OrderRequest request;
+    request.key = selected_.key;
+    request.asset_id = selected_.outcomes.value(outcome_index).asset_id;
+    request.side = QStringLiteral("BUY");
+    request.order_type = QStringLiteral("LIMIT");
+    request.price = p;
+    request.size = n;
+    request.client_order_id = QStringLiteral("PAPER-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    request.extras.insert(QStringLiteral("paper_only"), true);
+
+    const QDateTime now = QDateTime::currentDateTime();
+    if (order_confirm_label_) {
+        order_confirm_label_->setText(
+            tr("PAPER FILL — BUY %1 %2 @ %3 on %4 · order %5 · %6")
+                .arg(n).arg(side).arg(order_probability(p)).arg(bracket_label, request.client_order_id,
+                                                                  now.toString(QStringLiteral("hh:mm:ss"))));
+        order_confirm_label_->setStyleSheet(QString(
+            "color:%1;background:%2;border:1px solid %1;padding:4px 8px;font-size:10px;font-weight:700;%3")
+            .arg(ui::colors::POSITIVE(), ui::colors::BG_RAISED(), MF));
+    }
+
+    if (manual_orders_table_) {
+        manual_orders_table_->insertRow(0);
+        manual_orders_table_->setItem(0, 0, cell(now.toString(QStringLiteral("hh:mm:ss"))));
+        manual_orders_table_->setItem(0, 1, cell(bracket_label));
+        manual_orders_table_->setItem(0, 2, cell(side, side == QStringLiteral("YES")
+                                                             ? ui::colors::POSITIVE() : ui::colors::CYAN()));
+        manual_orders_table_->setItem(0, 3, cell(QString::number(n)));
+        manual_orders_table_->setItem(0, 4, cell(order_probability(p)));
+        manual_orders_table_->setItem(0, 5, cell(QStringLiteral("PAPER FILLED"), ui::colors::POSITIVE()));
+    }
 }
 
 void WeatherScreen::refresh_bot_panel() {
