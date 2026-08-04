@@ -740,6 +740,17 @@ void KalshiScreen::build_ui() {
     account_badge_->setToolTip(QStringLiteral(
         "Credential state for this Kalshi workspace. Use ACCOUNT to test the live connection."));
     command_layout->addWidget(account_badge_);
+    // Tier 2 (additive-only): paper-only categories (Weather) show this
+    // instead of the live account chip above, which is hidden for them in
+    // set_family() — "ACCOUNT: LIVE CONFIGURED" is misleading on a screen
+    // that can never place a live order.
+    paper_badge_ = new QLabel(QStringLiteral("PAPER"), command);
+    paper_badge_->setToolTip(QStringLiteral(
+        "This category is paper-only. No order placed here ever reaches a live exchange."));
+    paper_badge_->setStyleSheet(QStringLiteral("color:%1;font-weight:900;padding:6px;border:1px solid %1;")
+                                     .arg(colors::WARNING()));
+    paper_badge_->setVisible(false);
+    command_layout->addWidget(paper_badge_);
     daemon_badge_ = new QLabel(QStringLiteral("DAEMON: CHECKING"), command);
     daemon_badge_->setToolTip(QStringLiteral(
         "The local daemon keeps Kalshi WebSocket monitoring, paper evidence, and armed automation running when the GUI is idle."));
@@ -763,7 +774,8 @@ void KalshiScreen::build_ui() {
     auto* filters_layout = new QHBoxLayout(filters);
     filters_layout->setContentsMargins(12, 7, 12, 7);
     filters_layout->setSpacing(6);
-    filters_layout->addWidget(new QLabel(QStringLiteral("ASSET")));
+    asset_label_ = new QLabel(QStringLiteral("ASSET"));
+    filters_layout->addWidget(asset_label_);
     asset_bar_ = new QWidget(filters);
     auto* asset_layout = new QHBoxLayout(asset_bar_);
     asset_layout->setContentsMargins(0, 0, 0, 0);
@@ -776,7 +788,8 @@ void KalshiScreen::build_ui() {
     }
     filters_layout->addWidget(asset_bar_);
     filters_layout->addSpacing(16);
-    filters_layout->addWidget(new QLabel(QStringLiteral("DURATION")));
+    duration_label_ = new QLabel(QStringLiteral("DURATION"));
+    filters_layout->addWidget(duration_label_);
     cadence_bar_ = new QWidget(filters);
     auto* cadence_layout = new QHBoxLayout(cadence_bar_);
     cadence_layout->setContentsMargins(0, 0, 0, 0);
@@ -793,9 +806,9 @@ void KalshiScreen::build_ui() {
     }
     filters_layout->addWidget(cadence_bar_);
     filters_layout->addStretch();
-    auto* lane = new QLabel(QStringLiteral("LANE: 85–92% MAKER FAVORITES"), filters);
-    lane->setStyleSheet(QStringLiteral("color:%1;font-weight:800;").arg(colors::WARNING()));
-    filters_layout->addWidget(lane);
+    lane_label_ = new QLabel(QStringLiteral("LANE: 85–92% MAKER FAVORITES"), filters);
+    lane_label_->setStyleSheet(QStringLiteral("color:%1;font-weight:800;").arg(colors::WARNING()));
+    filters_layout->addWidget(lane_label_);
     root->addWidget(filters);
 
     workspace_splitter_ = new QSplitter(Qt::Horizontal, this);
@@ -2068,6 +2081,27 @@ void KalshiScreen::set_family(const QString& family) {
     family_ = family;
     asset_bar_->setVisible(family_ == QStringLiteral("Crypto"));
     cadence_bar_->setVisible(family_ == QStringLiteral("Crypto"));
+    // Tier 2 (weather window de-noise, additive-only, crypto-safe): hide the
+    // crypto-only header chrome — the ASSET/DURATION label row, the maker
+    // lane hint, and the live-account/DAEMON/RESTART/DATA-ISSUE chips — for
+    // every non-Crypto category. These are pure visibility toggles layered
+    // on top of the asset_bar_/cadence_bar_ toggle above: nothing about how
+    // any of these widgets are created, styled, or kept up to date changes,
+    // and when family_ == "Crypto" every one of them is visible exactly as
+    // before this change (is_crypto is true, so every setVisible call below
+    // is a no-op relative to the pre-existing behavior).
+    const bool is_crypto = family_ == QStringLiteral("Crypto");
+    if (asset_label_) asset_label_->setVisible(is_crypto);
+    if (duration_label_) duration_label_->setVisible(is_crypto);
+    if (lane_label_) lane_label_->setVisible(is_crypto);
+    if (account_badge_) account_badge_->setVisible(is_crypto);
+    if (daemon_badge_) daemon_badge_->setVisible(is_crypto);
+    if (daemon_restart_button_) daemon_restart_button_->setVisible(is_crypto);
+    if (connection_badge_) connection_badge_->setVisible(is_crypto);
+    // Weather is paper-only — surface that plainly instead of the (now
+    // hidden) live account chip, which would otherwise misleadingly imply a
+    // live Kalshi account backs this screen.
+    if (paper_badge_) paper_badge_->setVisible(family_ == QStringLiteral("Weather"));
     // Category page-stack (Task 6, additive-only): Crypto keeps the existing
     // workspace on page 0; Weather switches to the embedded WeatherScreen;
     // everything else shows the placeholder. This is purely a view swap —

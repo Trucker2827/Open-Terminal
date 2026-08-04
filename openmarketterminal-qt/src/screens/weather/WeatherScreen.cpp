@@ -12,13 +12,18 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QDoubleSpinBox>
+#include <QFont>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPair>
+#include <QPolygon>
 #include <QPushButton>
+#include <QSizePolicy>
 #include <QSpinBox>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QTableWidgetItem>
 #include <QTimer>
@@ -27,6 +32,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace openmarketterminal::screens {
 
@@ -95,12 +101,12 @@ double outcome_price(const pred::PredictionMarket& market, int index) {
 QString order_money(double value) { return QStringLiteral("$%1").arg(value, 0, 'f', 2); }
 QString order_probability(double value) { return QStringLiteral("%1%").arg(std::round(value * 100.0), 0, 'f', 0); }
 
-/// City abbreviation from the series ticker prefix (e.g. "KXHIGHNY" for the
-/// NYC daily-high-temperature series). Matches the city keys weather_producer
-/// .py's WEATHER_CITIES table uses. Unknown prefixes fall back to the raw
-/// series ticker so a new/unmapped city still shows something identifiable
-/// rather than a blank cell.
-QString city_for_series(const QString& series_ticker) {
+/// The six weather series the bot actually trades (weather_producer.py's
+/// WEATHER_CITIES table). Tier 1: the browser is filtered down to exactly
+/// these — the "Climate and Weather" category the fetch resolves to also
+/// carries series the bot never touches (other cities, non-high-temp
+/// products), and those would otherwise drown out the bot's own cities.
+const QHash<QString, QString>& known_weather_series() {
     static const QHash<QString, QString> kKnownSeries = {
         {QStringLiteral("KXHIGHNY"), QStringLiteral("NYC")},
         {QStringLiteral("KXHIGHCHI"), QStringLiteral("CHI")},
@@ -109,8 +115,135 @@ QString city_for_series(const QString& series_ticker) {
         {QStringLiteral("KXHIGHPHIL"), QStringLiteral("PHIL")},
         {QStringLiteral("KXHIGHTSEA"), QStringLiteral("SEA")},
     };
-    return kKnownSeries.value(series_ticker, series_ticker);
+    return kKnownSeries;
 }
+
+/// City abbreviation from the series ticker prefix (e.g. "KXHIGHNY" for the
+/// NYC daily-high-temperature series). Unknown prefixes fall back to the raw
+/// series ticker so a new/unmapped city still shows something identifiable
+/// rather than a blank cell.
+QString city_for_series(const QString& series_ticker) {
+    return known_weather_series().value(series_ticker, series_ticker);
+}
+
+/// Tier 1: true only for the six series the bot trades — the display filter
+/// applied to whatever the "Climate and Weather" category fetch returns.
+bool is_bot_weather_series(const QString& series_ticker) {
+    return known_weather_series().contains(series_ticker);
+}
+
+/// Small forecast-vs-threshold visual (Tier 3): the forecast high plotted
+/// against the selected bracket's strike(s) on a horizontal number line,
+/// rather than as bare numbers. Self-contained — computes its own axis range
+/// from whatever data it is given and repaints on set_data()/clear_data().
+class ForecastNumberLine : public QWidget {
+  public:
+    explicit ForecastNumberLine(QWidget* parent = nullptr) : QWidget(parent) {
+        // Tall enough for the forecast label above the axis and the
+        // floor/cap strike labels below it without either clipping against
+        // the widget edge (see paintEvent: label rows are anchored off
+        // height(), not off a fixed offset from axis_y).
+        setFixedHeight(64);
+        setMinimumWidth(160);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+
+    void clear_data() {
+        has_forecast_ = false;
+        has_floor_ = false;
+        has_cap_ = false;
+        update();
+    }
+
+    void set_data(double forecast_high, bool has_floor, double floor_strike, bool has_cap, double cap_strike,
+                  bool has_threshold, bool meets_threshold) {
+        has_forecast_ = true;
+        forecast_high_ = forecast_high;
+        has_floor_ = has_floor;
+        floor_strike_ = floor_strike;
+        has_cap_ = has_cap;
+        cap_strike_ = cap_strike;
+        has_threshold_ = has_threshold;
+        meets_threshold_ = meets_threshold;
+
+        double lo = forecast_high, hi = forecast_high;
+        if (has_floor_) { lo = std::min(lo, floor_strike_); hi = std::max(hi, floor_strike_); }
+        if (has_cap_) { lo = std::min(lo, cap_strike_); hi = std::max(hi, cap_strike_); }
+        const double pad = std::max(4.0, (hi - lo) * 0.35);
+        axis_lo_ = lo - pad;
+        axis_hi_ = hi + pad;
+        update();
+    }
+
+  protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setFont(QFont(QStringLiteral("Consolas"), 8));
+
+        const int margin = 10;
+        const int axis_y = height() / 2 + 4;
+        const int x0 = margin, x1 = width() - margin;
+
+        painter.setPen(QPen(QColor(ui::colors::BORDER_DIM()), 1));
+        painter.drawLine(x0, axis_y, x1, axis_y);
+
+        if (!has_forecast_ || axis_hi_ <= axis_lo_) {
+            painter.setPen(QColor(ui::colors::TEXT_TERTIARY()));
+            painter.drawText(rect(), Qt::AlignCenter, QStringLiteral("no forecast yet"));
+            return;
+        }
+
+        auto to_x = [&](double value) {
+            const double t = (value - axis_lo_) / (axis_hi_ - axis_lo_);
+            return x0 + static_cast<int>(t * (x1 - x0));
+        };
+
+        // Threshold band/marks first so the forecast marker paints on top.
+        // Strike labels are anchored off height() (not axis_y + a fixed
+        // offset) so they always land inside the widget regardless of its
+        // fixed height.
+        const int label_y = height() - 13;
+        painter.setPen(QPen(QColor(ui::colors::TEXT_SECONDARY()), 1, Qt::DashLine));
+        if (has_floor_) {
+            const int x = to_x(floor_strike_);
+            painter.drawLine(x, axis_y - 8, x, axis_y + 8);
+            painter.drawText(x - 20, label_y, 40, 12, Qt::AlignHCenter,
+                              QString::asprintf("%.0f", floor_strike_));
+        }
+        if (has_cap_) {
+            const int x = to_x(cap_strike_);
+            painter.drawLine(x, axis_y - 8, x, axis_y + 8);
+            painter.drawText(x - 20, label_y, 40, 12, Qt::AlignHCenter,
+                              QString::asprintf("%.0f", cap_strike_));
+        }
+
+        const QColor marker_color = !has_threshold_  ? QColor(ui::colors::TEXT_TERTIARY())
+                                     : meets_threshold_ ? QColor(ui::colors::POSITIVE())
+                                                        : QColor(ui::colors::NEGATIVE());
+        const int fx = to_x(forecast_high_);
+        painter.setPen(QPen(marker_color, 2));
+        painter.setBrush(marker_color);
+        const QPolygon diamond({QPoint(fx, axis_y - 9), QPoint(fx + 6, axis_y), QPoint(fx, axis_y + 9),
+                                 QPoint(fx - 6, axis_y)});
+        painter.drawPolygon(diamond);
+        painter.setPen(marker_color);
+        painter.drawText(fx - 30, axis_y - 22, 60, 12, Qt::AlignHCenter,
+                          QString::asprintf("%.1f°F", forecast_high_));
+    }
+
+  private:
+    bool has_forecast_ = false;
+    double forecast_high_ = 0.0;
+    bool has_floor_ = false;
+    double floor_strike_ = 0.0;
+    bool has_cap_ = false;
+    double cap_strike_ = 0.0;
+    bool has_threshold_ = false;
+    bool meets_threshold_ = false;
+    double axis_lo_ = 0.0;
+    double axis_hi_ = 1.0;
+};
 
 } // namespace
 
@@ -123,6 +256,14 @@ WeatherScreen::WeatherScreen(QWidget* parent) : QWidget(parent) {
     bot_timer_ = new QTimer(this);
     bot_timer_->setInterval(30'000);
     connect(bot_timer_, &QTimer::timeout, this, &WeatherScreen::refresh_bot_panel);
+
+    // Tier 1: backstop for a fetch whose reply never arrives at all (no
+    // events_ready/markets_ready, no error_occurred) — without this a broken
+    // connection leaves the browser on "Loading weather brackets…" forever.
+    load_timeout_timer_ = new QTimer(this);
+    load_timeout_timer_->setSingleShot(true);
+    load_timeout_timer_->setInterval(12'000);
+    connect(load_timeout_timer_, &QTimer::timeout, this, &WeatherScreen::handle_fetch_timeout);
 }
 
 void WeatherScreen::build_ui() {
@@ -168,7 +309,35 @@ void WeatherScreen::build_ui() {
     count_label_->setStyleSheet(QString("color:%1;font-size:10px;font-weight:700;background:transparent;%2")
                                     .arg(ui::colors::CYAN(), MF));
     header_row->addWidget(count_label_);
+    refresh_button_ = new QPushButton(tr("REFRESH"));
+    refresh_button_->setStyleSheet(QString(
+        "QPushButton{background:%1;color:%2;border:1px solid %3;padding:2px 10px;font-size:10px;font-weight:700;%4}"
+        "QPushButton:hover{color:%5;border-color:%5;}")
+        .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_SECONDARY(), ui::colors::BORDER_DIM(), MF,
+             ui::colors::CYAN()));
+    connect(refresh_button_, &QPushButton::clicked, this, &WeatherScreen::refresh);
+    header_row->addWidget(refresh_button_);
     brackets_layout->addLayout(header_row);
+
+    // Tier 3: P&L summary strip — "positions · settled · net P&L · win%" —
+    // read from the same sandbox_position/sandbox_strategy tables the BOT
+    // tab's stat row queries (populate_bot_summary() is the single source),
+    // so the bot's scorecard is visible without switching tabs.
+    auto* pnl_strip = new QHBoxLayout;
+    pnl_strip->setSpacing(24);
+    {
+        auto add = [&](QLabel** out, const QString& cap) {
+            auto* col = new QVBoxLayout;
+            make_stat(out, cap, col);
+            pnl_strip->addLayout(col);
+        };
+        add(&pnl_strip_positions_, tr("POSITIONS"));
+        add(&pnl_strip_settled_, tr("SETTLED"));
+        add(&pnl_strip_net_, tr("NET P&L (paper)"));
+        add(&pnl_strip_winrate_, tr("WIN%"));
+    }
+    pnl_strip->addStretch();
+    brackets_layout->addLayout(pnl_strip);
 
     auto* content_row = new QHBoxLayout;
     content_row->setSpacing(10);
@@ -240,6 +409,14 @@ void WeatherScreen::build_ui() {
                                                  .arg(ui::colors::TEXT_SECONDARY(), MF));
     right_col->addWidget(forecast_threshold_label_);
 
+    // Tier 3: forecast-vs-market as a small visual — the forecast high
+    // plotted against the selected bracket's threshold(s) on a horizontal
+    // number line, updated alongside the text stats above in
+    // update_forecast_panel().
+    auto* forecast_line = new ForecastNumberLine(this);
+    forecast_line_widget_ = forecast_line;
+    right_col->addWidget(forecast_line_widget_);
+
     // Task 7: paper-only order-entry mini form for the selected bracket.
     build_order_entry_panel(right_col);
 
@@ -266,6 +443,9 @@ void WeatherScreen::build_ui() {
 
     main_tabs_->addTab(brackets_tab, tr("BRACKETS"));
     main_tabs_->addTab(build_bot_tab(), tr("BOT"));
+    // Tier 3: never elide the tab labels — narrow layouts otherwise render
+    // "BRACKETS"/"BOT" as truncated "BRAC…"/"B…".
+    main_tabs_->tabBar()->setElideMode(Qt::ElideNone);
 
     root->addWidget(main_tabs_, 1);
 }
@@ -373,6 +553,11 @@ void WeatherScreen::wire_adapter() {
     connect(a, &pred::PredictionExchangeAdapter::markets_ready, this, &WeatherScreen::populate_markets);
     connect(a, &pred::PredictionExchangeAdapter::order_book_ready, this, &WeatherScreen::render_order_book);
     connect(a, &pred::PredictionExchangeAdapter::recent_trades_ready, this, &WeatherScreen::render_trades);
+    // Tier 1: real error state instead of a permanent "Loading…" — the
+    // adapter is shared with KalshiScreen, so only react while our own
+    // fetch is actually pending (mirrors KalshiScreen's own
+    // market_list_fetch_in_flight_ guard on the same signal).
+    connect(a, &pred::PredictionExchangeAdapter::error_occurred, this, &WeatherScreen::handle_fetch_error);
 }
 
 void WeatherScreen::showEvent(QShowEvent* event) {
@@ -390,16 +575,71 @@ void WeatherScreen::showEvent(QShowEvent* event) {
 }
 
 void WeatherScreen::refresh() {
-    if (status_label_)
-        status_label_->setText(tr("Loading weather brackets…"));
+    // Tier 1: real load state machine. fetch_pending_ stays true until
+    // populate_markets (success), handle_fetch_error (adapter error), or
+    // handle_fetch_timeout (no reply at all within load_timeout_timer_'s
+    // window) resolves it — so the browser can never get stuck showing
+    // "Loading weather brackets…" forever.
+    fetch_pending_ = true;
+    set_status(tr("Loading weather brackets…"), ui::colors::TEXT_SECONDARY());
+    if (load_timeout_timer_)
+        load_timeout_timer_->start();
+
     // Reload the producer's evidence on the same cadence the market list
     // refreshes (WeatherScreen has no separate polling timer of its own —
     // refresh() IS that cadence, driven by first show / future manual
     // refresh) so the browser's Fcst-P/Edge columns and the forecast panel
     // never join stale forecasts against fresh markets.
     load_forecasts();
-    if (auto* a = adapter())
-        a->list_events(QStringLiteral("Weather"), QStringLiteral("volume"), 200, 0);
+    auto* a = adapter();
+    if (!a) {
+        handle_fetch_error(QStringLiteral("Kalshi.fetch_category"), tr("Adapter offline."));
+        return;
+    }
+    // Tier 1 root cause: Kalshi's real category for KXHIGH* series is
+    // "Climate and Weather", not "Weather" — the latter resolves to zero
+    // series via /series?category=…, which is why the browser used to sit
+    // on "0 BRACKETS / Loading weather brackets…" forever. The category
+    // fetch still returns every "Climate and Weather" series (not just the
+    // bot's six cities); populate_markets() filters that down.
+    a->list_events(QStringLiteral("Climate and Weather"), QStringLiteral("volume"), 200, 0);
+}
+
+void WeatherScreen::set_status(const QString& text, const QString& color) {
+    if (!status_label_)
+        return;
+    status_label_->setText(text);
+    status_label_->setStyleSheet(QString("color:%1;font-size:10px;font-weight:700;background:transparent;%2")
+                                     .arg(color, MF));
+}
+
+void WeatherScreen::handle_fetch_error(const QString& context, const QString& message) {
+    // The "kalshi" adapter is shared with KalshiScreen, which fires the same
+    // fetch_category-family errors for its own (crypto/other) category
+    // browsing. Only treat this as our error while our own fetch is
+    // actually in flight, and only for the fetch_category family this
+    // screen's refresh() drives — mirrors KalshiScreen's own
+    // market_list_fetch_in_flight_ guard on this same broadcast signal.
+    if (!fetch_pending_ || !context.startsWith(QStringLiteral("Kalshi.fetch_category")))
+        return;
+    fetch_pending_ = false;
+    if (load_timeout_timer_)
+        load_timeout_timer_->stop();
+
+    if (bracket_table_)
+        bracket_table_->setRowCount(0);
+    row_market_index_.clear();
+    markets_.clear();
+    if (count_label_)
+        count_label_->setText(QStringLiteral("0 BRACKETS"));
+    set_status(tr("Fetch failed — %1. Refresh to retry.").arg(message.isEmpty() ? tr("no response") : message),
+               ui::colors::NEGATIVE());
+}
+
+void WeatherScreen::handle_fetch_timeout() {
+    if (!fetch_pending_)
+        return;
+    handle_fetch_error(QStringLiteral("Kalshi.fetch_category"), tr("request timed out"));
 }
 
 void WeatherScreen::load_forecasts() {
@@ -424,57 +664,189 @@ void WeatherScreen::populate_markets(const QVector<pred::PredictionMarket>& mark
     if (!bracket_table_)
         return;
 
-    QVector<pred::PredictionMarket> sorted = markets;
-    std::stable_sort(sorted.begin(), sorted.end(), [](const auto& left, const auto& right) {
-        return left.volume > right.volume;
+    // Tier 1: the "kalshi" adapter is shared with KalshiScreen, and both
+    // screens connect to events_ready/markets_ready (render_order_book and
+    // render_trades already guard against the same sharing on their own
+    // signals). A crypto — or any other category — list KalshiScreen fetches
+    // also lands here. Accept a payload only if it actually carries at
+    // least one of the bot's six weather series, or it is a genuinely empty
+    // reply to OUR OWN pending fetch (refresh() found zero brackets).
+    // Anything else is someone else's fetch on the shared adapter and must
+    // be ignored — otherwise a foreign payload would wipe an
+    // already-loaded weather browser back to "No open weather brackets."
+    const bool has_weather_market = std::any_of(markets.begin(), markets.end(), [](const auto& m) {
+        return is_bot_weather_series(m.extras.value(QStringLiteral("series_ticker")).toString());
     });
-    // Kept parallel to bracket_table_'s rows so select_bracket(row) can map
-    // a click straight back to the PredictionMarket it needs to fetch.
-    markets_ = sorted;
+    if (!has_weather_market && !(markets.isEmpty() && fetch_pending_))
+        return;
 
-    bracket_table_->setRowCount(0);
-    int row = 0;
-    for (const auto& market : sorted) {
+    // Tier 1: a reply landed (success or genuinely-empty) — the fetch is no
+    // longer pending, whatever the outcome below.
+    fetch_pending_ = false;
+    if (load_timeout_timer_)
+        load_timeout_timer_->stop();
+
+    // Tier 1: restrict the browser to the six weather series the bot trades
+    // — "Climate and Weather" (the category refresh() now fetches) also
+    // carries series the bot never touches, and those would otherwise drown
+    // out the bot's own six cities.
+    struct Row {
+        pred::PredictionMarket market;
+        bool has_forecast = false;
+        BracketForecast fc;
+        bool has_edge = false;
+    };
+
+    QHash<QString, QVector<Row>> groups;  // city -> rows
+    QStringList group_order;              // first-seen order; re-sorted below
+    int total_filtered = 0;
+    for (const auto& market : markets) {
         const QString series_ticker = market.extras.value(QStringLiteral("series_ticker")).toString();
-        const QString city = city_for_series(series_ticker);
-        const QString bracket_label = market.question.isEmpty()
-                                          ? market.extras.value(QStringLiteral("event_title")).toString()
-                                          : market.question;
-        const double mid = outcome_price(market, 0);
+        if (!is_bot_weather_series(series_ticker))
+            continue;
+        ++total_filtered;
 
-        bracket_table_->insertRow(row);
-        bracket_table_->setItem(row, 0, cell(city));
-        bracket_table_->setItem(row, 1, cell(bracket_label));
-        bracket_table_->setItem(row, 2, cell(QString::asprintf("%.2f", mid)));
-        bracket_table_->setItem(row, 3, cell(QString::asprintf("%.0f", market.volume)));
-
+        Row row;
+        row.market = market;
         // Joined by ticker (key.market_id) against the producer's evidence
         // (Task 4) — not every market has a forecast yet (evidence lags a
-        // fresh market list by one producer cycle), so a miss renders "—"
-        // rather than a misleading blank/zero.
+        // fresh market list by one producer cycle).
         const auto it = forecasts_.constFind(market.key.market_id);
         if (it != forecasts_.constEnd()) {
-            bracket_table_->setItem(row, 4, cell(QString::asprintf("%.1f%%", it->forecast_p * 100.0)));
-            if (std::isnan(it->edge)) {
-                bracket_table_->setItem(row, 5, cell(QStringLiteral("—")));
-            } else {
-                const QString color =
-                    it->edge > 0.0 ? ui::colors::POSITIVE() : (it->edge < 0.0 ? ui::colors::NEGATIVE() : QString());
-                bracket_table_->setItem(row, 5, cell(QString::asprintf("%+.3f", it->edge), color));
-            }
-        } else {
-            bracket_table_->setItem(row, 4, cell(QStringLiteral("—")));
-            bracket_table_->setItem(row, 5, cell(QStringLiteral("—")));
+            row.has_forecast = true;
+            row.fc = *it;
+            row.has_edge = !std::isnan(row.fc.edge);
         }
-        ++row;
+
+        const QString city = city_for_series(series_ticker);
+        if (!groups.contains(city))
+            group_order.push_back(city);
+        groups[city].push_back(row);
+    }
+
+    // Tier 3: sort rows within each city group by Edge descending (biggest
+    // edge on top); rows without a computed edge yet fall back to volume.
+    for (const auto& city : group_order) {
+        auto& rows = groups[city];
+        std::stable_sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
+            if (a.has_edge != b.has_edge)
+                return a.has_edge;
+            if (a.has_edge && b.has_edge && a.fc.edge != b.fc.edge)
+                return a.fc.edge > b.fc.edge;
+            return a.market.volume > b.market.volume;
+        });
+    }
+
+    // Order the city groups themselves by their best edge descending too, so
+    // the single biggest edge in the whole browser lands in the first group.
+    std::stable_sort(group_order.begin(), group_order.end(), [&](const QString& a, const QString& b) {
+        const auto& rows_a = groups[a];
+        const auto& rows_b = groups[b];
+        const bool a_has = !rows_a.isEmpty() && rows_a.first().has_edge;
+        const bool b_has = !rows_b.isEmpty() && rows_b.first().has_edge;
+        if (a_has != b_has)
+            return a_has;
+        if (a_has && b_has && rows_a.first().fc.edge != rows_b.first().fc.edge)
+            return rows_a.first().fc.edge > rows_b.first().fc.edge;
+        return a < b;  // deterministic fallback
+    });
+
+    // Kept parallel to bracket_table_'s rows (via row_market_index_) so
+    // select_bracket(row) can map a click straight back to the
+    // PredictionMarket it needs to fetch.
+    markets_.clear();
+    row_market_index_.clear();
+    bracket_table_->setRowCount(0);
+    bracket_table_->clearSpans();
+
+    int table_row = 0;
+    for (const auto& city : group_order) {
+        const auto& rows = groups[city];
+        if (rows.isEmpty())
+            continue;
+
+        // Tier 3: group header — the city's forecast high, shown once, with
+        // its brackets beneath it.
+        bool header_has_forecast = false;
+        double header_forecast = 0.0;
+        for (const auto& r : rows) {
+            if (r.has_forecast) {
+                header_has_forecast = true;
+                header_forecast = r.fc.forecast_high_f;
+                break;
+            }
+        }
+        const QString header_text = header_has_forecast
+            ? tr("%1 — forecast %2°F").arg(city).arg(header_forecast, 0, 'f', 0)
+            : tr("%1 — no forecast yet").arg(city);
+
+        bracket_table_->insertRow(table_row);
+        auto* header_item = cell(header_text, ui::colors::TEXT_PRIMARY());
+        QFont header_font = header_item->font();
+        header_font.setBold(true);
+        header_item->setFont(header_font);
+        header_item->setBackground(QColor(ui::colors::BG_RAISED()));
+        header_item->setFlags(header_item->flags() & ~Qt::ItemIsSelectable);
+        bracket_table_->setItem(table_row, 0, header_item);
+        bracket_table_->setSpan(table_row, 0, 1, bracket_table_->columnCount());
+        row_market_index_.push_back(-1);
+        ++table_row;
+
+        for (const auto& row : rows) {
+            markets_.push_back(row.market);
+            const int market_index = markets_.size() - 1;
+
+            const QString bracket_label = row.market.question.isEmpty()
+                                              ? row.market.extras.value(QStringLiteral("event_title")).toString()
+                                              : row.market.question;
+            const double mid = outcome_price(row.market, 0);
+
+            auto set_numeric = [&](int col, const QString& text, const QString& color = {}) {
+                auto* item = cell(text, color);
+                item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                bracket_table_->setItem(table_row, col, item);
+            };
+
+            bracket_table_->insertRow(table_row);
+            bracket_table_->setItem(table_row, 0, cell(city));
+            bracket_table_->setItem(table_row, 1, cell(bracket_label));
+            set_numeric(2, QString::asprintf("%.2f", mid));
+            set_numeric(3, QString::asprintf("%.0f", row.market.volume));
+
+            // Tier 3: color-coded Edge — green positive / red negative / dim
+            // when no edge yet (never a bare "0.0" masquerading as no-edge).
+            if (row.has_forecast) {
+                set_numeric(4, QString::asprintf("%.1f%%", row.fc.forecast_p * 100.0));
+                if (row.has_edge) {
+                    const QString color = row.fc.edge > 0.0 ? ui::colors::POSITIVE()
+                                         : row.fc.edge < 0.0 ? ui::colors::NEGATIVE()
+                                                              : ui::colors::TEXT_TERTIARY();
+                    set_numeric(5, QString::asprintf("%+.3f", row.fc.edge), color);
+                } else {
+                    set_numeric(5, QStringLiteral("—"), ui::colors::TEXT_TERTIARY());
+                }
+            } else {
+                set_numeric(4, QStringLiteral("—"), ui::colors::TEXT_TERTIARY());
+                set_numeric(5, QStringLiteral("—"), ui::colors::TEXT_TERTIARY());
+            }
+
+            row_market_index_.push_back(market_index);
+            ++table_row;
+        }
     }
 
     if (count_label_)
-        count_label_->setText(QStringLiteral("%1 BRACKETS").arg(sorted.size()));
-    if (status_label_)
-        status_label_->setText(sorted.isEmpty()
-                                   ? tr("No weather brackets returned.")
-                                   : tr("Weather brackets loaded — %1 evaluated.").arg(sorted.size()));
+        count_label_->setText(QStringLiteral("%1 BRACKETS").arg(total_filtered));
+
+    // Tier 1: a real empty/error state instead of a permanent spinner —
+    // "no results" and "fetch failed" now read differently, and neither one
+    // is ever left showing "Loading weather brackets…".
+    if (total_filtered == 0)
+        set_status(tr("No open weather brackets."), ui::colors::TEXT_SECONDARY());
+    else
+        set_status(tr("Weather brackets loaded — %1 evaluated across %2 cities.")
+                       .arg(total_filtered).arg(group_order.size()),
+                   ui::colors::TEXT_SECONDARY());
 
     // Keep the forecast panel in sync with whatever forecasts_ this reload
     // just joined against, even if the currently-selected bracket's row
@@ -484,10 +856,16 @@ void WeatherScreen::populate_markets(const QVector<pred::PredictionMarket>& mark
 }
 
 void WeatherScreen::select_bracket(int row) {
-    if (row < 0 || row >= markets_.size())
+    if (row < 0 || row >= row_market_index_.size())
+        return;
+    // Tier 3: bracket_table_'s rows interleave city group-header rows with
+    // data rows; a header row maps to -1 and carries no market, so a click
+    // on one is simply ignored (the previous selection, if any, stays put).
+    const int market_index = row_market_index_[row];
+    if (market_index < 0 || market_index >= markets_.size())
         return;
 
-    selected_ = markets_[row];
+    selected_ = markets_[market_index];
     has_selection_ = true;
 
     if (detail_title_) {
@@ -579,6 +957,7 @@ void WeatherScreen::render_trades(const QVector<pred::PredictionTrade>& trades) 
 void WeatherScreen::update_forecast_panel() {
     if (!forecast_stats_label_ || !forecast_edge_label_ || !forecast_window_badge_ || !forecast_threshold_label_)
         return;
+    auto* line = static_cast<ForecastNumberLine*>(forecast_line_widget_);
 
     if (!has_selection_) {
         forecast_stats_label_->setText(tr("Select a bracket for its forecast."));
@@ -587,6 +966,7 @@ void WeatherScreen::update_forecast_panel() {
                                                 .arg(ui::colors::TEXT_TERTIARY(), MF));
         forecast_window_badge_->setText(QStringLiteral("—"));
         forecast_threshold_label_->setText(QString());
+        if (line) line->clear_data();
         return;
     }
 
@@ -598,6 +978,7 @@ void WeatherScreen::update_forecast_panel() {
                                                 .arg(ui::colors::TEXT_TERTIARY(), MF));
         forecast_window_badge_->setText(QStringLiteral("—"));
         forecast_threshold_label_->setText(QString());
+        if (line) line->clear_data();
         return;
     }
 
@@ -641,29 +1022,42 @@ void WeatherScreen::update_forecast_panel() {
     const QVariant floor_v = selected_.extras.value(QStringLiteral("floor_strike"));
     const QVariant cap_v = selected_.extras.value(QStringLiteral("cap_strike"));
     QString threshold_text;
+    bool has_floor = false, has_cap = false, has_threshold = false, meets = false;
+    double floor_strike = 0.0, cap_strike = 0.0;
     if (strike_type == QStringLiteral("greater") && floor_v.isValid()) {
-        const double floor_strike = floor_v.toDouble();
+        floor_strike = floor_v.toDouble();
+        has_floor = true;
+        has_threshold = true;
+        meets = fc.forecast_high_f >= floor_strike;
         threshold_text = tr("Fcst %1°F vs strike ≥%2°F → %3")
                              .arg(fc.forecast_high_f, 0, 'f', 1)
                              .arg(floor_strike, 0, 'f', 1)
-                             .arg(fc.forecast_high_f >= floor_strike ? tr("ABOVE") : tr("BELOW"));
+                             .arg(meets ? tr("ABOVE") : tr("BELOW"));
     } else if (strike_type == QStringLiteral("less") && cap_v.isValid()) {
-        const double cap_strike = cap_v.toDouble();
+        cap_strike = cap_v.toDouble();
+        has_cap = true;
+        has_threshold = true;
+        meets = fc.forecast_high_f <= cap_strike;
         threshold_text = tr("Fcst %1°F vs strike ≤%2°F → %3")
                              .arg(fc.forecast_high_f, 0, 'f', 1)
                              .arg(cap_strike, 0, 'f', 1)
-                             .arg(fc.forecast_high_f <= cap_strike ? tr("BELOW") : tr("ABOVE"));
+                             .arg(meets ? tr("BELOW") : tr("ABOVE"));
     } else if (strike_type == QStringLiteral("between") && floor_v.isValid() && cap_v.isValid()) {
-        const double floor_strike = floor_v.toDouble();
-        const double cap_strike = cap_v.toDouble();
-        const bool inside = fc.forecast_high_f >= floor_strike && fc.forecast_high_f <= cap_strike;
+        floor_strike = floor_v.toDouble();
+        cap_strike = cap_v.toDouble();
+        has_floor = true;
+        has_cap = true;
+        has_threshold = true;
+        meets = fc.forecast_high_f >= floor_strike && fc.forecast_high_f <= cap_strike;
         threshold_text = tr("Fcst %1°F vs range [%2°F, %3°F] → %4")
                              .arg(fc.forecast_high_f, 0, 'f', 1)
                              .arg(floor_strike, 0, 'f', 1)
                              .arg(cap_strike, 0, 'f', 1)
-                             .arg(inside ? tr("INSIDE") : tr("OUTSIDE"));
+                             .arg(meets ? tr("INSIDE") : tr("OUTSIDE"));
     }
     forecast_threshold_label_->setText(threshold_text);
+    if (line)
+        line->set_data(fc.forecast_high_f, has_floor, floor_strike, has_cap, cap_strike, has_threshold, meets);
 }
 
 void WeatherScreen::build_order_entry_panel(QVBoxLayout* into) {
@@ -837,6 +1231,7 @@ void WeatherScreen::populate_bot_summary() {
         bot_net_pnl_->setStyleSheet(QString("color:%1;font-size:16px;font-weight:800;background:transparent;%2")
                                         .arg(pnl >= 0 ? ui::colors::POSITIVE() : ui::colors::NEGATIVE(), MF));
     }
+    populate_pnl_strip(open, resolved, wins, pnl);
 
     const bool strategy_active =
         q_int("SELECT COUNT(*) FROM sandbox_strategy WHERE kind='kalshi_weather' AND status='active'") > 0;
@@ -860,6 +1255,21 @@ void WeatherScreen::populate_bot_summary() {
             "color:%1;background:%2;border:1px solid %1;padding:4px 8px;font-size:10px;font-weight:700;%3")
             .arg(badge_color, ui::colors::BG_RAISED(), MF));
     }
+}
+
+void WeatherScreen::populate_pnl_strip(int open, int resolved, int wins, double pnl) {
+    if (pnl_strip_positions_)
+        pnl_strip_positions_->setText(QString::number(open));
+    if (pnl_strip_settled_)
+        pnl_strip_settled_->setText(QString::number(resolved));
+    if (pnl_strip_net_) {
+        pnl_strip_net_->setText(QString::asprintf("%+.2f", pnl));
+        pnl_strip_net_->setStyleSheet(QString("color:%1;font-size:16px;font-weight:800;background:transparent;%2")
+                                          .arg(pnl >= 0 ? ui::colors::POSITIVE() : ui::colors::NEGATIVE(), MF));
+    }
+    if (pnl_strip_winrate_)
+        pnl_strip_winrate_->setText(resolved > 0 ? QStringLiteral("%1%").arg(100 * wins / resolved)
+                                                  : QStringLiteral("—"));
 }
 
 void WeatherScreen::populate_bot_decisions() {

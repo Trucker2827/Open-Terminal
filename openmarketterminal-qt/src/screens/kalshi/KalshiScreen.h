@@ -191,6 +191,15 @@ class KalshiScreen final : public QWidget {
     QLabel* count_label_ = nullptr;
     QWidget* asset_bar_ = nullptr;
     QWidget* cadence_bar_ = nullptr;
+    // Tier 2 (weather window de-noise, additive-only): pointers to the
+    // crypto-only header chrome so set_family() can toggle their visibility
+    // for non-Crypto categories without touching anything about their
+    // creation, styling, or update logic. paper_badge_ is the one new
+    // widget added for this — everything else already existed.
+    QLabel* asset_label_ = nullptr;
+    QLabel* duration_label_ = nullptr;
+    QLabel* lane_label_ = nullptr;
+    QLabel* paper_badge_ = nullptr;
     // Category page-stack (Task 6, additive-only): page 0 is the existing
     // crypto workspace (workspace_splitter_, reparented wholesale — none of
     // its children are touched), page 1 is the embedded WeatherScreen, page
