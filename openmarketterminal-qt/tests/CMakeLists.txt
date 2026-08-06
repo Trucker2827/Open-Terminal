@@ -313,6 +313,22 @@ add_executable(tst_serve_command
     ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp)
 target_include_directories(tst_serve_command PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_serve_command PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+# openterminal_core's SpeechService references create_apple_speech_provider(),
+# whose implementation lives in AppleSpeechProvider.mm — attached only to the GUI
+# and CLI targets (see root CMakeLists.txt). A test that links core needs it too
+# on macOS or it fails to link (undefined symbol). Guarded by APPLE; CI is Linux
+# and uses a non-Apple provider, so this never affects CI. The test never invokes
+# speech — this only satisfies the link.
+if(APPLE)
+    target_sources(tst_serve_command PRIVATE ${CMAKE_SOURCE_DIR}/src/services/stt/AppleSpeechProvider.mm)
+    # The .mm is Objective-C++ with ARC; the root's source property is scoped to
+    # the root dir and does not reach here, and this target uses a Unity build
+    # that must NOT fold the .mm into a C++ translation unit.
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/src/services/stt/AppleSpeechProvider.mm
+        PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(tst_serve_command PRIVATE
+        "-framework Speech" "-framework AVFoundation" "-framework Foundation")
+endif()
 add_test(NAME tst_serve_command COMMAND tst_serve_command)
 
 # Phase 2 / Track 2 — daemon paper-strategy jobs must thread F5's saved risk
@@ -865,6 +881,15 @@ add_test(NAME tst_sandbox_fillmodel COMMAND tst_sandbox_fillmodel)
 add_executable(tst_sandbox_executor tst_sandbox_executor.cpp)
 target_include_directories(tst_sandbox_executor PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_executor PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+# See tst_serve_command above: core references create_apple_speech_provider();
+# a macOS test that links core needs AppleSpeechProvider.mm or it fails to link.
+if(APPLE)
+    target_sources(tst_sandbox_executor PRIVATE ${CMAKE_SOURCE_DIR}/src/services/stt/AppleSpeechProvider.mm)
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/src/services/stt/AppleSpeechProvider.mm
+        PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(tst_sandbox_executor PRIVATE
+        "-framework Speech" "-framework AVFoundation" "-framework Foundation")
+endif()
 add_test(NAME tst_sandbox_executor COMMAND tst_sandbox_executor)
 
 # FreshnessGate.h — pure data_quality_from_freshness/freshness_field helper,

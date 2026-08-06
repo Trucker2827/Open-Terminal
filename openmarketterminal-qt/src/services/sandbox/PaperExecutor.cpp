@@ -1180,6 +1180,7 @@ Result<void> advance_prediction_exits(qint64 now_ms, CycleReport& report) {
         auto& current = latest.value();
         const QString selected_side = current.value(0).toString().trimmed().toLower();
         const double selected_probability = current.value(1).toDouble();
+        const qint64 signal_created_at = current.value(4).toLongLong();  // reprice-row age gate
         const QJsonObject features = parse_object(current.value(2).toString());
         const QJsonObject signal = features.value(QStringLiteral("signal")).toObject();
         const double exit_bid = signal.value(row.side == QStringLiteral("yes")
@@ -1216,6 +1217,11 @@ Result<void> advance_prediction_exits(qint64 now_ms, CycleReport& report) {
             exit_input.exit_fee_per_contract = kalshi_prediction_fee_per_contract(exit_bid);
             exit_input.seconds_left = static_cast<int>((row.expires_at - now_ms) / 1000);
             exit_input.trigger_streak = 0;  // LOCK_WIN is time-gated, not streak-gated
+            // Refuse to cash out on a stale reprice: in the final window the latest
+            // row can be minutes-to-hours old; the core HOLDs when this exceeds
+            // max_signal_age_seconds rather than sell into a price that's gone.
+            exit_input.signal_age_seconds = signal_created_at > 0
+                ? static_cast<int>((now_ms - signal_created_at) / 1000) : -1;
             const auto exit = edge_radar::KalshiAutoEngine::evaluate_position_exit(exit_input);
             if (exit.reason == QStringLiteral("LOCK_WIN"))
                 reason = QStringLiteral("lock_win");

@@ -245,6 +245,8 @@ struct KalshiPositionExitInput {
     double exit_fee_per_contract = 0.0;
     int seconds_left = -1;
     int trigger_streak = 0;          // consecutive ticks the exit condition has held (hysteresis)
+    int signal_age_seconds = -1;     // age of the fair/bid signal; -1 = unknown (caller vouches
+                                     // for freshness). >=0 gates cash-out on max_signal_age_seconds.
 };
 
 struct KalshiExitConstraints {
@@ -255,6 +257,10 @@ struct KalshiExitConstraints {
     double lock_win_max_slippage = 0.03; // ... but only bank it if cash-out is within
                                          // this of fair (never dump a winner into a
                                          // stale/thin bid for far less than it's worth)
+    int max_signal_age_seconds = 90;    // never act on a fair/bid signal older than this
+                                         // (a known-stale signal is refused -> HOLD; the
+                                         // executor supplies the age from the reprice row's
+                                         // created_at). age<0 (unknown) skips this gate.
 };
 
 struct KalshiPositionExitResult {
@@ -330,6 +336,20 @@ class KalshiAutoEngine {
         const QHash<QString, openmarketterminal::services::prediction::PredictionOrderBook>& books,
         const KalshiAutoContext& context,
         const QString& event_ticker = {});
+
+    /// Restrict `markets` (in place) to the planner's event scope, but ALWAYS
+    /// retain a market that still has an OPEN managed position so the planner
+    /// keeps repricing held contracts into their final window — otherwise the
+    /// paper executor's exit engine goes signal-blind and LOCK_WIN / cut-loss
+    /// can never act (they refuse stale data). Erases every market that is
+    /// neither in `event_set` (by MarketKey.event_id) nor in `held_market_ids`
+    /// (by MarketKey.market_id). Returns the held market_ids that are ABSENT
+    /// from the fetched universe, sorted, so the caller can fetch them singly
+    /// and re-add them. Pure — no I/O, unit-tested.
+    static QStringList retain_markets_for_held_positions(
+        QVector<openmarketterminal::services::prediction::PredictionMarket>& markets,
+        const QSet<QString>& event_set,
+        const QSet<QString>& held_market_ids);
 
     static KalshiPortfolioPlan optimize(const QVector<KalshiSurfacePoint>& surface,
                                         const KalshiAutoContext& context,

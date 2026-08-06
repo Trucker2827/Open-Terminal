@@ -1238,11 +1238,22 @@ KalshiPositionExitResult KalshiAutoEngine::evaluate_position_exit(
     result.reason = QStringLiteral("HOLD_EDGE_INTACT");
     // Nothing to manage without a real held side, size, and a live bid to sell
     // into. A held side with no bid cannot be cashed out — hold, fail closed.
+    // The bid may be a fully-priced 1.00 (the surest possible win, worth banking);
+    // only 0/negative or an above-par (>1.00, invalid) bid is rejected.
     const QString side = input.held_side.trimmed().toLower();
     if ((side != QStringLiteral("yes") && side != QStringLiteral("no")) ||
         input.contracts < 1 ||
         !(input.held_side_fair >= 0.0 && input.held_side_fair <= 1.0) ||
-        !(input.held_side_bid > 0.0 && input.held_side_bid < 1.0))
+        !(input.held_side_bid > 0.0 && input.held_side_bid <= 1.0))
+        return result;
+
+    // Never cash out on a KNOWN-stale fair/bid signal. The executor derives the
+    // signal from the latest reprice row; in the decisive final window that row
+    // can be minutes-to-hours old, and acting on it would sell into a price that
+    // no longer exists. A negative age means "unknown / caller vouches" and skips
+    // this gate (unit callers, legacy paths); production always supplies age>=0.
+    if (input.signal_age_seconds >= 0 &&
+        input.signal_age_seconds > constraints.max_signal_age_seconds)
         return result;
 
     const double fee = input.exit_fee_per_contract > 0.0 ? input.exit_fee_per_contract : 0.0;
@@ -1274,6 +1285,33 @@ KalshiPositionExitResult KalshiAutoEngine::evaluate_position_exit(
         return result;
     }
     return result;  // HOLD_EDGE_INTACT
+}
+
+QStringList KalshiAutoEngine::retain_markets_for_held_positions(
+    QVector<openmarketterminal::services::prediction::PredictionMarket>& markets,
+    const QSet<QString>& event_set,
+    const QSet<QString>& held_market_ids) {
+    // Keep a market if it is in the event scope OR we still hold a position in
+    // it; drop everything else. Held markets are exempt from the nearest-event
+    // filter so the planner keeps repricing them into their final window.
+    markets.erase(std::remove_if(markets.begin(), markets.end(),
+        [&](const openmarketterminal::services::prediction::PredictionMarket& market) {
+            return !event_set.contains(market.key.event_id) &&
+                   !held_market_ids.contains(market.key.market_id);
+        }), markets.end());
+    // Report held markets that the fetched universe did not contain at all
+    // (dropped by the volume cap, or in a series the category no longer returns)
+    // so the caller can fetch them singly and re-add them.
+    QSet<QString> present;
+    present.reserve(markets.size());
+    for (const auto& market : markets)
+        present.insert(market.key.market_id);
+    QStringList missing;
+    for (const QString& id : held_market_ids)
+        if (!present.contains(id))
+            missing.append(id);
+    std::sort(missing.begin(), missing.end());  // deterministic for callers/tests
+    return missing;
 }
 
 KalshiReplayResult KalshiAutoEngine::replay(
