@@ -1287,6 +1287,33 @@ KalshiPositionExitResult KalshiAutoEngine::evaluate_position_exit(
     return result;  // HOLD_EDGE_INTACT
 }
 
+QStringList KalshiAutoEngine::retain_markets_for_held_positions(
+    QVector<openmarketterminal::services::prediction::PredictionMarket>& markets,
+    const QSet<QString>& event_set,
+    const QSet<QString>& held_market_ids) {
+    // Keep a market if it is in the event scope OR we still hold a position in
+    // it; drop everything else. Held markets are exempt from the nearest-event
+    // filter so the planner keeps repricing them into their final window.
+    markets.erase(std::remove_if(markets.begin(), markets.end(),
+        [&](const openmarketterminal::services::prediction::PredictionMarket& market) {
+            return !event_set.contains(market.key.event_id) &&
+                   !held_market_ids.contains(market.key.market_id);
+        }), markets.end());
+    // Report held markets that the fetched universe did not contain at all
+    // (dropped by the volume cap, or in a series the category no longer returns)
+    // so the caller can fetch them singly and re-add them.
+    QSet<QString> present;
+    present.reserve(markets.size());
+    for (const auto& market : markets)
+        present.insert(market.key.market_id);
+    QStringList missing;
+    for (const QString& id : held_market_ids)
+        if (!present.contains(id))
+            missing.append(id);
+    std::sort(missing.begin(), missing.end());  // deterministic for callers/tests
+    return missing;
+}
+
 KalshiReplayResult KalshiAutoEngine::replay(
     const QVector<KalshiReplayFrame>& frames,
     const QHash<QString, double>& final_settlement_by_event,

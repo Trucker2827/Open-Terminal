@@ -337,6 +337,20 @@ class KalshiAutoEngine {
         const KalshiAutoContext& context,
         const QString& event_ticker = {});
 
+    /// Restrict `markets` (in place) to the planner's event scope, but ALWAYS
+    /// retain a market that still has an OPEN managed position so the planner
+    /// keeps repricing held contracts into their final window — otherwise the
+    /// paper executor's exit engine goes signal-blind and LOCK_WIN / cut-loss
+    /// can never act (they refuse stale data). Erases every market that is
+    /// neither in `event_set` (by MarketKey.event_id) nor in `held_market_ids`
+    /// (by MarketKey.market_id). Returns the held market_ids that are ABSENT
+    /// from the fetched universe, sorted, so the caller can fetch them singly
+    /// and re-add them. Pure — no I/O, unit-tested.
+    static QStringList retain_markets_for_held_positions(
+        QVector<openmarketterminal::services::prediction::PredictionMarket>& markets,
+        const QSet<QString>& event_set,
+        const QSet<QString>& held_market_ids);
+
     static KalshiPortfolioPlan optimize(const QVector<KalshiSurfacePoint>& surface,
                                         const KalshiAutoContext& context,
                                         const KalshiPortfolioConstraints& constraints = {});

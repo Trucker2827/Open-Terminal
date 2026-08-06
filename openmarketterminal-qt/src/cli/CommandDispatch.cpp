@@ -19630,9 +19630,34 @@ static int kalshi_auto_run_command(const GlobalOpts& opts, QStringList args) {
     const QStringList events = event.isEmpty()
         ? kalshi_auto_default_events(markets) : QStringList{event};
     const QSet<QString> event_set(events.cbegin(), events.cend());
-    markets.erase(std::remove_if(markets.begin(), markets.end(), [&](const auto& market) {
-        return !event_set.contains(market.key.event_id);
-    }), markets.end());
+    // Part B: keep repricing markets where we hold an OPEN managed position even
+    // after the nearest-event filter would drop them, so the paper executor never
+    // goes signal-blind in a held contract's final window (LOCK_WIN / cut-loss need
+    // fresh data — Part A makes them refuse stale data). Held markets that fell out
+    // of the fetched universe entirely are re-fetched singly below so build_surface
+    // and the reprice journal keep covering them.
+    QSet<QString> held_market_ids;
+    {
+        auto held = Database::instance().execute(
+            "SELECT DISTINCT journal.market_id FROM sandbox_position position "
+            "JOIN edge_decision_journal journal ON journal.id=position.decision_id "
+            "WHERE position.state='open' AND journal.source='kalshi auto-plan'", {});
+        if (!held.is_err())
+            while (held.value().next())
+                held_market_ids.insert(held.value().value(0).toString());
+    }
+    const QStringList missing_held =
+        services::edge_radar::KalshiAutoEngine::retain_markets_for_held_positions(
+            markets, event_set, held_market_ids);
+    for (const QString& ticker : missing_held) {
+        const int held_timeout = remaining_timeout_ms();
+        if (held_timeout < 1000)
+            break;
+        services::prediction::PredictionMarket held_market;
+        QString held_error;
+        if (edge_fetch_kalshi_market(ticker, held_timeout, &held_market, &held_error))
+            markets.append(held_market);
+    }
     const QString event_scope = events.join(QLatin1Char(','));
     if (markets.isEmpty()) { std::fprintf(stderr, "no contracts found for event scope %s\n", qUtf8Printable(event_scope)); return 5; }
     request_timeout_ms = remaining_timeout_ms();

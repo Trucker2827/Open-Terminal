@@ -203,6 +203,38 @@ private slots:
         QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.99, 1.50, 30, 0, 0), c).sell);
     }
 
+    // Part B (2026-08-06): the planner filters its universe to the nearest-closing
+    // event each cycle, so a held longer-dated contract drops out and goes signal-
+    // blind. retain_markets_for_held_positions must EXEMPT held markets from that
+    // filter, and report held markets missing from the universe entirely (for a
+    // singular re-fetch). Without the held-exemption, "HELD" is dropped and this
+    // regresses.
+    void kalshi_retains_held_position_markets_past_event_filter() {
+        namespace es = openmarketterminal::services::edge_radar;
+        namespace pr = openmarketterminal::services::prediction;
+        auto mk = [](const QString& ticker, const QString& event) {
+            pr::PredictionMarket m;
+            m.key.exchange_id = QStringLiteral("kalshi");
+            m.key.market_id = ticker;
+            m.key.event_id = event;
+            return m;
+        };
+        QVector<pr::PredictionMarket> markets{mk(QStringLiteral("A"), QStringLiteral("E1")),
+                                              mk(QStringLiteral("B"), QStringLiteral("E2")),
+                                              mk(QStringLiteral("HELD"), QStringLiteral("E2"))};
+        const QSet<QString> event_set{QStringLiteral("E1")};  // only E1 is in scope
+        const QSet<QString> held{QStringLiteral("HELD"), QStringLiteral("GONE")};
+        const QStringList missing =
+            es::KalshiAutoEngine::retain_markets_for_held_positions(markets, event_set, held);
+        QSet<QString> kept;
+        for (const auto& m : markets) kept.insert(m.key.market_id);
+        QVERIFY(kept.contains(QStringLiteral("A")));     // in scope -> kept
+        QVERIFY(!kept.contains(QStringLiteral("B")));    // not scope, not held -> dropped
+        QVERIFY(kept.contains(QStringLiteral("HELD")));  // held -> exempt from the filter
+        // GONE is held but absent from the fetched universe -> reported for singular fetch.
+        QCOMPARE(missing, (QStringList{QStringLiteral("GONE")}));
+    }
+
     void kalshi_event_cycle_paces_paper_but_not_armed_live() {
         QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 0), 3000LL);
         QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 2999), 1LL);
