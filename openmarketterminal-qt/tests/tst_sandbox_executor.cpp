@@ -1365,6 +1365,56 @@ class TstSandboxExecutor : public QObject {
         QVERIFY(!position.has_realized_pnl);
     }
 
+    // LOCK-WIN staleness guard (2026-08-06): the SAME near-certain-win setup that
+    // fires LOCK_WIN, but the only in-window reprice is STALE (136s old at the
+    // exit cycle, > max_signal_age_seconds 90). Diagnosis showed the planner stops
+    // repricing these contracts hours before expiry, so the executor was reading a
+    // minutes-to-hours-old bid in the final window; acting on it would sell into a
+    // price that no longer exists. The engine must HOLD -> position stays open.
+    // Pins the guard: without it, LOCK_WIN fires on the stale row and this regresses.
+    void prediction_lock_win_refused_on_stale_reprice() {
+        auto strategy = register_strategy(
+            QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
+            QJsonObject{{"notional_usd", 25.0}, {"source", "edge_journal"},
+                        {"journal_source", "kalshi-lockwin-stale-test"}, {"max_age_sec", 3600},
+                        {"prediction", true}, {"horizon", "15m"}, {"horizon_sec", 900},
+                        {"exit_policy", "managed"},
+                        {"stop_loss_pct", 0.20}, {"take_profit_pct", 0.20}, {"taker_bps", 100.0}},
+            QStringLiteral("prediction lock-win stale"));
+        QVERIFY(strategy.is_ok());
+
+        const qint64 t0 = 18'000'000;
+        // High-entry yes (0.86); seconds_left 200 -> expires_at = t0 + 200s.
+        insert_journal_row(QStringLiteral("dec-lockstale-open"), QStringLiteral("kalshi-lockwin-stale-test"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.8, t0, QStringLiteral("15m"),
+                           QJsonObject{{"signal", QJsonObject{{"yes_bid", 0.86}, {"no_bid", 0.12}}}},
+                           QJsonObject{}, 0.86, QStringLiteral("LOCKSTALE-MARKET"), 200);
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto opened = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(opened.is_ok(), opened.is_err() ? opened.error().c_str() : "");
+        QCOMPARE(opened.value().opened, 1);
+
+        // The only reprice carries a LOCK_WIN-worthy fair 0.90 / bid 0.88 but was
+        // written at t0+14s. The exit cycle runs at t0+150s: seconds_left = 50s
+        // (in the 120s window), yet the signal is 136s old (> 90s) -> HOLD.
+        insert_journal_row(QStringLiteral("dec-lockstale-reprice"), QStringLiteral("kalshi-lockwin-stale-test"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.8, t0 + 14000, QStringLiteral("15m"),
+                           QJsonObject{{"signal", QJsonObject{{"yes_bid", 0.88}, {"no_bid", 0.10}}}},
+                           QJsonObject{}, 0.90, QStringLiteral("LOCKSTALE-MARKET"), 200);
+        auto held = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 150000);
+        QVERIFY2(held.is_ok(), held.is_err() ? held.error().c_str() : "");
+        QCOMPARE(held.value().closed, 0);
+
+        const PositionRow position = fetch_position(QStringLiteral("dec-lockstale-open"));
+        QVERIFY(position.found);
+        QCOMPARE(position.state, QStringLiteral("open"));
+        QVERIFY(!position.has_realized_pnl);
+    }
+
     // Chronos-2 journal rows are price forecasts, not binary yes/no
     // contracts. The seeded chronos2 book must therefore open a concrete
     // tick-resolved paper position, preserving down forecasts as sell/short

@@ -1238,11 +1238,22 @@ KalshiPositionExitResult KalshiAutoEngine::evaluate_position_exit(
     result.reason = QStringLiteral("HOLD_EDGE_INTACT");
     // Nothing to manage without a real held side, size, and a live bid to sell
     // into. A held side with no bid cannot be cashed out — hold, fail closed.
+    // The bid may be a fully-priced 1.00 (the surest possible win, worth banking);
+    // only 0/negative or an above-par (>1.00, invalid) bid is rejected.
     const QString side = input.held_side.trimmed().toLower();
     if ((side != QStringLiteral("yes") && side != QStringLiteral("no")) ||
         input.contracts < 1 ||
         !(input.held_side_fair >= 0.0 && input.held_side_fair <= 1.0) ||
-        !(input.held_side_bid > 0.0 && input.held_side_bid < 1.0))
+        !(input.held_side_bid > 0.0 && input.held_side_bid <= 1.0))
+        return result;
+
+    // Never cash out on a KNOWN-stale fair/bid signal. The executor derives the
+    // signal from the latest reprice row; in the decisive final window that row
+    // can be minutes-to-hours old, and acting on it would sell into a price that
+    // no longer exists. A negative age means "unknown / caller vouches" and skips
+    // this gate (unit callers, legacy paths); production always supplies age>=0.
+    if (input.signal_age_seconds >= 0 &&
+        input.signal_age_seconds > constraints.max_signal_age_seconds)
         return result;
 
     const double fee = input.exit_fee_per_contract > 0.0 ? input.exit_fee_per_contract : 0.0;

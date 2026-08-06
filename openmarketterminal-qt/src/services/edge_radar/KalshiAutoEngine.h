@@ -245,6 +245,8 @@ struct KalshiPositionExitInput {
     double exit_fee_per_contract = 0.0;
     int seconds_left = -1;
     int trigger_streak = 0;          // consecutive ticks the exit condition has held (hysteresis)
+    int signal_age_seconds = -1;     // age of the fair/bid signal; -1 = unknown (caller vouches
+                                     // for freshness). >=0 gates cash-out on max_signal_age_seconds.
 };
 
 struct KalshiExitConstraints {
@@ -255,6 +257,10 @@ struct KalshiExitConstraints {
     double lock_win_max_slippage = 0.03; // ... but only bank it if cash-out is within
                                          // this of fair (never dump a winner into a
                                          // stale/thin bid for far less than it's worth)
+    int max_signal_age_seconds = 90;    // never act on a fair/bid signal older than this
+                                         // (a known-stale signal is refused -> HOLD; the
+                                         // executor supplies the age from the reprice row's
+                                         // created_at). age<0 (unknown) skips this gate.
 };
 
 struct KalshiPositionExitResult {

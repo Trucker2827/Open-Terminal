@@ -168,6 +168,41 @@ private slots:
         QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("bad", 0.90, 0.90, 60, 0), c).sell);
     }
 
+    // Correctness hardening (2026-08-06): the cash-out engine must never act on
+    // a STALE fair/bid signal (the executor was reading reprice rows up to hours
+    // old in the final window), and must be able to bank a FULLY-priced (1.00)
+    // near-certain winner (the old bid<1.0 guard rejected the surest win).
+    void kalshi_position_exit_staleness_and_full_bid_guards() {
+        namespace es = openmarketterminal::services::edge_radar;
+        es::KalshiExitConstraints c;  // max_signal_age_seconds = 90
+        // helper mirrors in() above but sets signal age (secs) explicitly.
+        auto in = [](const char* side, double fair, double bid, int secs, int streak, int age) {
+            es::KalshiPositionExitInput i;
+            i.held_side = side; i.entry_price = 0.50; i.contracts = 5;
+            i.held_side_fair = fair; i.held_side_bid = bid; i.exit_fee_per_contract = 0.01;
+            i.seconds_left = secs; i.trigger_streak = streak; i.signal_age_seconds = age;
+            return i;
+        };
+        // 1) STALE signal blocks a LOCK_WIN that would otherwise fire (age 200 > 90).
+        auto stale_lock = es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.95, 0.95, 60, 0, 200), c);
+        QVERIFY(!stale_lock.sell);
+        QCOMPARE(stale_lock.reason, QStringLiteral("HOLD_EDGE_INTACT"));
+        // 2) FRESH signal (age 10) allows the same LOCK_WIN -> not over-blocking.
+        QCOMPARE(es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.95, 0.95, 60, 0, 10), c).reason,
+                 QStringLiteral("LOCK_WIN"));
+        // 3) UNKNOWN age (-1) is backward-compatible: caller vouches -> LOCK_WIN.
+        QCOMPARE(es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.95, 0.95, 60, 0, -1), c).reason,
+                 QStringLiteral("LOCK_WIN"));
+        // 4) STALE signal blocks an economic CUT too (age 200 > 90).
+        QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.30, 0.42, 300, 2, 200), c).sell);
+        // 5) FULLY-priced winner (bid 1.00) is lockable, not rejected as invalid.
+        auto full = es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.99, 1.00, 30, 0, 0), c);
+        QVERIFY(full.sell);
+        QCOMPARE(full.reason, QStringLiteral("LOCK_WIN"));
+        // 6) Bid ABOVE 1.00 is invalid data -> HOLD (fail closed).
+        QVERIFY(!es::KalshiAutoEngine::evaluate_position_exit(in("yes", 0.99, 1.50, 30, 0, 0), c).sell);
+    }
+
     void kalshi_event_cycle_paces_paper_but_not_armed_live() {
         QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 0), 3000LL);
         QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 2999), 1LL);
