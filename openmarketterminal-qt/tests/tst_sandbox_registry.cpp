@@ -93,6 +93,33 @@ class TstSandboxRegistry : public QObject {
         QCOMPARE(count, 1);
     }
 
+    // Favorite Discipline lane (2026-08-06): seed_default_strategies must create
+    // the "kalshi-favorite" cohort with the discipline invariants intact --
+    // favorites only, capped $2 size, managed cut/lock exit, and no entry in the
+    // final gamma minutes. This is the "100% winner against human nature" lane;
+    // a regression that widens the band or drops the cap defeats its whole point.
+    void favorite_discipline_cohort_is_seeded_with_invariants() {
+        auto seeded = seed_default_strategies();
+        QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
+        auto rows = list_strategies();
+        QVERIFY(rows.is_ok());
+        int favorite_lanes = 0;
+        for (const auto& row : rows.value()) {
+            const QJsonObject p = QJsonDocument::fromJson(row.params_json.toUtf8()).object();
+            if (p.value(QStringLiteral("experiment_protocol")).toString()
+                    != QStringLiteral("kalshi-favorite"))
+                continue;
+            ++favorite_lanes;
+            QVERIFY(p.value(QStringLiteral("min_entry_probability")).toDouble() >= 0.70);  // favorites
+            QVERIFY(p.value(QStringLiteral("max_entry_probability")).toDouble() <= 0.95);
+            QCOMPARE(p.value(QStringLiteral("notional_usd")).toDouble(), 2.0);             // capped
+            QCOMPARE(p.value(QStringLiteral("exit_policy")).toString(),
+                     QStringLiteral("managed"));                                           // cut/lock
+            QVERIFY(p.value(QStringLiteral("min_seconds_left")).toInt() >= 120);           // no last-2min
+        }
+        QVERIFY2(favorite_lanes >= 1, "kalshi-favorite cohort not seeded");
+    }
+
     // (c) register, then register again with one param changed -> two rows;
     // first row's params_json (and notes) byte-identical to before — proves
     // register_strategy never touches an existing row, even when called
@@ -177,11 +204,11 @@ class TstSandboxRegistry : public QObject {
     void seed_default_strategies_is_idempotent() {
         auto first = seed_default_strategies();
         QVERIFY2(first.is_ok(), first.is_err() ? first.error().c_str() : "");
-        QCOMPARE(first.value().size(), 29);  // 28 (crypto/spot/etc, managed-only) + 1 kalshi_weather lane
+        QCOMPARE(first.value().size(), 31);  // 29 prior + 2 kalshi-favorite discipline lanes (15m,1h)
 
         auto second = seed_default_strategies();
         QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
-        QCOMPARE(second.value().size(), 29);
+        QCOMPARE(second.value().size(), 31);
         QCOMPARE(second.value(), first.value());
 
         auto rows = list_strategies();
@@ -217,8 +244,10 @@ class TstSandboxRegistry : public QObject {
                 kalshi_cohorts.insert(params.value(QStringLiteral("horizon")).toString() + QLatin1Char(':') +
                                       params.value(QStringLiteral("entry_cohort")).toString());
                 kalshi_exit_policies.insert(params.value(QStringLiteral("exit_policy")).toString());
-                QCOMPARE(params.value(QStringLiteral("experiment_protocol")).toString(),
-                         QStringLiteral("kalshi-v2"));
+                const QString protocol = params.value(QStringLiteral("experiment_protocol")).toString();
+                QVERIFY2(protocol == QStringLiteral("kalshi-v2")
+                             || protocol == QStringLiteral("kalshi-favorite"),
+                         qUtf8Printable(protocol));
             } else if (row.kind == QStringLiteral("long_short")) {
                 ++long_short_count;
             } else if (row.kind == QStringLiteral("maker")) {
@@ -226,7 +255,7 @@ class TstSandboxRegistry : public QObject {
                 maker_venues.insert(params.value(QStringLiteral("venue")).toString());
             }
         }
-        QCOMPARE(seed_row_count, 29);
+        QCOMPARE(seed_row_count, 31);
         QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "swing", "maker", "kalshi", "kalshi_weather", "long_short",
                                        "chronos2", "chronos2_1h", "chronos2_1d", "chronos2_equity"}));
         QCOMPARE(scalp_count, 6);  // 2 legacy + 4 honest grid (coinbase_advanced/kraken_pro maker+taker)
@@ -236,9 +265,9 @@ class TstSandboxRegistry : public QObject {
         QCOMPARE(spot_count, 3);
         // Managed (cash-out) exit is now the default; the `settlement` control
         // cohort was retired after the A/B (managed beat ride-to-settlement).
-        // 9 cohorts x 1 policy = 9 kalshi seeds (was 9 x 2 = 18).
-        QCOMPARE(kalshi_count, 9);
-        QCOMPARE(kalshi_cohorts.size(), 9);
+        // 9 full-range cohorts + 2 kalshi-favorite discipline lanes (15m,1h) = 11.
+        QCOMPARE(kalshi_count, 11);
+        QCOMPARE(kalshi_cohorts.size(), 11);  // +15m:favorite, +1h:favorite
         QCOMPARE(kalshi_exit_policies, QSet<QString>({"managed"}));
         QCOMPARE(long_short_count, 1);
         QCOMPARE(spot_horizons, QSet<int>({3600, 14400, 86400}));
@@ -376,8 +405,8 @@ class TstSandboxRegistry : public QObject {
         // Every expected kind must actually have been present and checked --
         // 3 rows for spot (horizon variants), 1 row for the rest.
         QCOMPARE(checked_count.value(QStringLiteral("spot")), 3);
-        QCOMPARE(checked_count.value(QStringLiteral("kalshi")), 9);  // 9 cohorts, managed-only
-                                                                     // (was 18: x2 exit policies)
+        QCOMPARE(checked_count.value(QStringLiteral("kalshi")), 11);  // 9 full-range + 2 favorite
+                                                                      // lanes, all "kalshi auto-plan"
         QCOMPARE(checked_count.value(QStringLiteral("long_short")), 1);
         QCOMPARE(checked_count.value(QStringLiteral("chronos2")), 1);
         QCOMPARE(checked_count.value(QStringLiteral("chronos2_1h")), 1);

@@ -438,6 +438,46 @@ Result<QList<QString>> seed_default_strategies() {
         }
     }
 
+    // Kalshi FAVORITE DISCIPLINE (2026-08-06) — the "better than the human"
+    // survival lane. Not an edge play: on an efficient book EV is ~-fees. The
+    // point is the OUTCOME SHAPE — bet only FAVORITES (chosen-side price 0.70-0.95)
+    // for a high win rate, enter only mid-life (never in the final gamma minutes),
+    // keep the $2 cap so a high win rate can't become a blow-up, and hand the
+    // endgame to the managed cut/lock exit. Runs in PARALLEL to the full-range
+    // cohorts above, tagged experiment_protocol="kalshi-favorite" so its win
+    // rate / drawdown / P&L are measured as a clean A/B against the whole-range
+    // book. Same journal_source, so it consumes the same auto-plan candidates,
+    // just filtered to favorites. paper-only.
+    struct FavoriteCohort { const char* horizon; int min_secs; int max_secs; int horizon_sec; };
+    static constexpr FavoriteCohort kFavoriteCohorts[] = {
+        {"15m", 180, 720, 900},    // 15-min: enter within [3min, 12min]-to-close
+        {"1h", 300, 3000, 3600},   // hourly: enter within [5min, 50min]-to-close
+    };
+    for (const FavoriteCohort& fav : kFavoriteCohorts) {
+        QJsonObject params{{"notional_usd", 2.0},
+                           {"source", "edge_journal"},
+                           {"journal_source", "kalshi auto-plan"},
+                           {"venue", "kalshi"},
+                           {"prediction", true},
+                           {"paper_only", true},
+                           {"experiment_protocol", "kalshi-favorite"},
+                           {"horizon", QString::fromLatin1(fav.horizon)},
+                           {"entry_cohort", QStringLiteral("favorite")},
+                           {"exit_policy", "managed"},
+                           {"allowed_side", "both"},
+                           {"min_seconds_left", fav.min_secs},
+                           {"max_seconds_left", fav.max_secs},
+                           {"min_entry_probability", 0.70},  // FAVORITES only
+                           {"max_entry_probability", 0.95},  // skip near-certain (no room)
+                           {"horizon_sec", fav.horizon_sec},
+                           {"max_age_sec", 5},
+                           {"max_open_positions", 3},         // capped exposure
+                           {"take_profit_pct", 0.20},
+                           {"stop_loss_pct", 0.20},
+                           {"fee_model", "journal_exact"}};
+        seeds.append(Seed{QStringLiteral("kalshi"), QStringLiteral("BTC-USD"), params});
+    }
+
     // Kalshi WEATHER (daily city high-temp) — paper lane for the validated
     // forecast edge. Distinct journal_source ("kalshi weather-plan") isolates it
     // from the BTC crypto lane and bypasses the BTC-only micro-evidence gate.
