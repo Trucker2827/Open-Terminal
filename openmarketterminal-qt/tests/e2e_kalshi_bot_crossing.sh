@@ -88,6 +88,12 @@ json.dump({
     "predictions": {tight: contract(0.82, 0.85), wide: contract(0.71, 0.96)},
 }, open(path, "w"))
 PY
+  # The KXBTC15M family now has its own calibrator: the bot filters 15-minute
+  # contracts OUT of calibrator.json (filter_predictions_for_family with
+  # keep_kxbtc15m=false) and reads them from kxbtc15m-calibrator.json instead.
+  # These fixtures predate that split, so the same report has to reach both
+  # families or the control tick sees NO_PREDICTIONS and proves nothing.
+  cp "$EVIDENCE/calibrator.json" "$EVIDENCE/kxbtc15m-calibrator.json"
 }
 
 # One field off the newest ledger row matching an action and a ticker. Prints
