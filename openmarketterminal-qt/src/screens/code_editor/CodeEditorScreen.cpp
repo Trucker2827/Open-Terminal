@@ -409,8 +409,8 @@ QWidget* CodeEditorScreen::build_toolbar() {
 
     add_sep();
 
-    btn_promote_strategy_ = make_btn(tr("PROMOTE TO STRATEGY"), "nbAccentBtn");
-    btn_promote_strategy_->setToolTip(tr("Open Strategy Builder with this research as context"));
+    btn_promote_strategy_ = make_btn(tr("OPEN STRATEGIES"), "nbAccentBtn");
+    btn_promote_strategy_->setToolTip(tr("Open Strategies (paper proof sandbox) with this research as context"));
     connect(btn_promote_strategy_, &QPushButton::clicked, this, [this]() {
         if (!notebook_path_.isEmpty())
             on_save_notebook();
@@ -1097,7 +1097,7 @@ void CodeEditorScreen::retranslateUi() {
     if (btn_clear_out_) btn_clear_out_->setText(tr("CLEAR OUT"));
     if (btn_run_all_) btn_run_all_->setText(tr("▶  RUN ALL"));
     if (btn_restart_) btn_restart_->setText(tr("RESTART KERNEL"));
-    if (btn_promote_strategy_) btn_promote_strategy_->setText(tr("PROMOTE TO STRATEGY"));
+    if (btn_promote_strategy_) btn_promote_strategy_->setText(tr("OPEN STRATEGIES"));
     if (btn_sidebar_) btn_sidebar_->setText(tr("SIDEBAR"));
     if (py_label_) py_label_->setText(tr("Python"));
     refresh_kernel_label();

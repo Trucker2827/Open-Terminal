@@ -72,6 +72,12 @@ json.dump({
     },
 }, open(sys.argv[1], "w"))
 PY
+  # The KXBTC15M family now has its own calibrator: the bot filters 15-minute
+  # contracts OUT of calibrator.json (filter_predictions_for_family with
+  # keep_kxbtc15m=false) and reads them from kxbtc15m-calibrator.json instead.
+  # These fixtures predate that split, so the same report has to reach both
+  # families or the control tick sees NO_PREDICTIONS and proves nothing.
+  cp "$EVIDENCE/calibrator.json" "$EVIDENCE/kxbtc15m-calibrator.json"
 }
 
 # grep -c exits 1 on zero matches, so the count is taken with the exit status

@@ -192,6 +192,11 @@ void SandboxBooksPanel::build_ui() {
     add_stat(tr("NO EDGE"), no_edge_count_);
     add_stat(tr("RESOLVED"), resolved_count_);
     add_stat(tr("PNL BY BOOK"), net_pnl_);
+    if (net_pnl_) {
+        net_pnl_->setToolTip(
+            tr("Books keep separate ledgers — totals are not summed across experiments. "
+               "SEPARATE means do not treat this chip as portfolio P&L."));
+    }
     add_stat(tr("PROMOTION READY"), eligible_count_);
     root->addWidget(stats);
 
@@ -603,13 +608,27 @@ void SandboxBooksPanel::populate_leaderboard() {
     }
     populate_position_counts();
     update_selected_detail();
+    const QString refreshed_at =
+        QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
+    QString score_day;
+    {
+        auto score_r = Database::instance().execute(QStringLiteral("SELECT MAX(score_date) FROM sandbox_score"), {});
+        if (score_r.is_ok() && score_r.value().next() && !score_r.value().value(0).isNull())
+            score_day = score_r.value().value(0).toString();
+    }
+    const QString freshness = score_day.isEmpty()
+                                  ? tr("refreshed %1").arg(refreshed_at)
+                                  : tr("score day %1 · refreshed %2").arg(score_day, refreshed_at);
     if (visible.isEmpty())
-        set_status(tr("No proof books exist yet. PREPARE BOOKS creates the default paper experiments."), ui::colors::AMBER());
+        set_status(tr("No proof books yet · %1 · PREPARE BOOKS seeds defaults").arg(freshness),
+                   ui::colors::AMBER());
     else if (no_edge_total > 0)
-        set_status(tr("%1 experiment(s) have enough samples and currently show no positive net edge after cost.").arg(no_edge_total),
+        set_status(tr("%1 experiment(s) show no positive net edge after cost · %2")
+                       .arg(no_edge_total)
+                       .arg(freshness),
                    ui::colors::NEGATIVE());
     else
-        set_status(tr("Paper evidence is accumulating. Promotion remains report-only and requires manual review."));
+        set_status(tr("Paper evidence accumulating · %1 · promotion is report-only").arg(freshness));
     apply_current_drilldown();
 }
 

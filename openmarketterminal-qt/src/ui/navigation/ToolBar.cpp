@@ -315,7 +315,7 @@ QMenu* ToolBar::build_trading_menu() {
     nav(m, tr("Edge Radar"), "edge_radar");
     m->addSeparator();
     nav(m, tr("Derivatives"), "derivatives");
-    nav(m, tr("Algo Trading"), "algo_trading");
+    nav(m, tr("Strategies"), "algo_trading");
     nav(m, tr("Backtesting"), "backtesting");
     nav(m, tr("Alpha Arena"), "alpha_arena");
     return m;
@@ -336,6 +336,7 @@ QMenu* ToolBar::build_research_menu() {
     nav(m, tr("Weather"), "weather");
     nav(m, tr("Surface Analytics"), "surface_analytics");
     m->addSeparator();
+    nav(m, tr("Research Lab"), "code_editor");
     nav(m, tr("AI Quant Lab"), "ai_quant_lab");
     nav(m, tr("QuantLib"), "quantlib");
     return m;
@@ -385,7 +386,7 @@ QMenu* ToolBar::build_view_menu() {
     panels->addSeparator();
     panels->addAction(tr("Crypto Trading"), this, [this]() { emit action_triggered("panel_crypto"); });
     panels->addAction(tr("Equity Trading"), this, [this]() { emit action_triggered("panel_equity"); });
-    panels->addAction(tr("Algo Trading"), this, [this]() { emit action_triggered("panel_algo"); });
+    panels->addAction(tr("Strategies"), this, [this]() { emit action_triggered("panel_algo"); });
     panels->addSeparator();
     panels->addAction(tr("Equity Research"), this, [this]() { emit action_triggered("panel_research"); });
     panels->addAction(tr("Economics"), this, [this]() { emit action_triggered("panel_economics"); });
@@ -402,7 +403,7 @@ QMenu* ToolBar::build_view_menu() {
     qs_trading->setStyleSheet(popup_ss());
     qs_trading->addAction(tr("Crypto Trading"), this, [this]() { emit action_triggered("perspective_trading"); });
     qs_trading->addAction(tr("Equity Trading"), this, [this]() { emit action_triggered("perspective_equity"); });
-    qs_trading->addAction(tr("Algo Trading"), this, [this]() { emit action_triggered("perspective_algo"); });
+    qs_trading->addAction(tr("Strategies"), this, [this]() { emit action_triggered("perspective_algo"); });
 
     auto* qs_research = persp->addMenu(tr("Research"));
     qs_research->setStyleSheet(popup_ss());

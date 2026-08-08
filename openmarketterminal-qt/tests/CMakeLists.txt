@@ -32,6 +32,18 @@ add_test(NAME test_ws_stream_account
 add_test(NAME test_spot_calibrator
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_spot_calibrator.py -v)
+add_test(NAME test_kxbtc15m_calibrator
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_kxbtc15m_calibrator.py -v)
+add_test(NAME test_commodities_15m_calibrator
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_commodities_15m_calibrator.py -v)
+add_test(NAME test_outside_info_features
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_outside_info_features.py -v)
+add_test(NAME test_bot_bid_postmortem
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_bot_bid_postmortem.py -v)
 add_test(NAME test_btc_event_impact
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_btc_event_impact.py -v)
@@ -813,6 +825,11 @@ add_executable(tst_bitcoin_evidence_engine tst_bitcoin_evidence_engine.cpp)
 target_include_directories(tst_bitcoin_evidence_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_bitcoin_evidence_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_bitcoin_evidence_engine COMMAND tst_bitcoin_evidence_engine)
+
+add_executable(tst_edge_tick_retention tst_edge_tick_retention.cpp)
+target_include_directories(tst_edge_tick_retention PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_edge_tick_retention PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_edge_tick_retention COMMAND tst_edge_tick_retention)
 
 # Strategy Sandbox Task 1 — migration v056 schema (sandbox_strategy,
 # sandbox_position, sandbox_fill, sandbox_score). Opens a real profile DB

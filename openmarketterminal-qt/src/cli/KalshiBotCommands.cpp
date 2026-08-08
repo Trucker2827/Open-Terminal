@@ -4,7 +4,8 @@
 // One tick (`once`/`run`) is: check the kill switch, settle whatever the
 // exchange has actually resolved, manage the orders already working (fill /
 // cancel on TTL / cancel on a vanished edge), then read calibrator.json and
-// journal one decision row for every contract it offers. Every row lands in
+// kxbtc15m-calibrator.json (threshold vs KXBTC15M directional) and journal
+// one decision row for every contract they offer. Every row lands in
 // kalshi-bot-decisions.jsonl, passes included: a tick that bids nothing still
 // has to say why.
 //
@@ -24,6 +25,12 @@
 // what changed is that it is no longer the only thing that does. A LIVE tick
 // deliberately does NOT re-evaluate: refreshing the verdict that admits it to
 // live is self-authorisation, whatever the arithmetic says.
+//
+// Paper bids pause when the *current generation's* drawdown exceeds the
+// sealed cap (`DRAWDOWN_CAP`), then auto-rotate the live ledger into the next
+// KeepAllGenerations slot so a fresh generation can keep learning. Lifetime
+// gate FAIL alone does not deadlock paper — live admission still requires a
+// full-record PASS via KalshiBotLive::permit.
 //
 // Rung 4 (the observable loop) adds three subcommands and one file:
 //   `kalshi bot stop`   — throws the kill switch (writes kalshi-bot-stop.json)
@@ -84,6 +91,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -92,10 +100,13 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QThread>
+#include <QTimeZone>
+#include <QVector>
 
 #include <algorithm>
 #include <cstdio>
 #include <functional>
+#include <unistd.h>
 
 namespace openmarketterminal::cli {
 
@@ -170,6 +181,23 @@ QJsonArray read_jsonl(const QString& path,
     return rows;
 }
 
+/// Settlements in the live generation only (base path — not `.1`, `.2`, …).
+/// Paper drawdown pause / auto-rotate score this slice; the sealed gate still
+/// scores every generation via `read_ledger`.
+QJsonArray read_live_generation_settlements(const QString& path) {
+    return read_jsonl(path, is_event(kSettlementEvent));
+}
+
+/// Archive the live paper ledger into the next KeepAllGenerations slot so a
+/// new generation can bid. Never deletes history and never backfills a gap
+/// (same rule as size-based rotation in append_jsonl).
+bool rotate_paper_generation(const QString& path) {
+    if (!QFileInfo::exists(path)) return true;
+    const QString target = kalshi_bot_next_generation_path(path);
+    if (QFileInfo::exists(target)) return false;
+    return QFile::rename(path, target);
+}
+
 bool write_json_file(const QString& path, const QJsonObject& object) {
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -196,14 +224,81 @@ void publish_funnel(const QJsonArray& ledger, qint64 now_ms) {
                      qUtf8Printable(path));
 }
 
-/// The calibrator's live report. An unreadable or unparseable file returns an
-/// empty object, which KalshiBotDecision::decide() journals as REPORT_MISSING
-/// — the bot never substitutes a previous report for a missing one.
-QJsonObject read_calibrator_report() {
-    QFile file(kalshi_evidence_path(QStringLiteral("calibrator.json")));
+/// One evidence JSON object. An unreadable or unparseable file returns an
+/// empty object — the bot never substitutes a previous report for a missing
+/// one.
+QJsonObject read_evidence_json(const QString& file_name) {
+    QFile file(kalshi_evidence_path(file_name));
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
     return document.isObject() ? document.object() : QJsonObject();
+}
+
+/// Threshold / hourly spot calibrator (calibrator.json).
+QJsonObject read_calibrator_report() {
+    return read_evidence_json(QStringLiteral("calibrator.json"));
+}
+
+/// KXBTC15M directional calibrator (kxbtc15m-calibrator.json).
+QJsonObject read_kxbtc15m_calibrator_report() {
+    return read_evidence_json(QStringLiteral("kxbtc15m-calibrator.json"));
+}
+
+/// Commodities 15m directional calibrator (commodities-15m-calibrator.json).
+QJsonObject read_commodities_15m_calibrator_report() {
+    return read_evidence_json(QStringLiteral("commodities-15m-calibrator.json"));
+}
+
+/// Decide once per family report so trust cannot leak across families: an
+/// untrusted 15m scoreboard must not block a trusted threshold bid, and
+/// directional families are stripped from the threshold report (each owns
+/// its own calibrator).
+QJsonArray decide_family_reports(const QJsonObject& threshold_report,
+                                 const QJsonObject& kxbtc15m_report,
+                                 const QJsonObject& commodities_15m_report,
+                                 const QJsonArray& open_positions,
+                                 const QJsonArray& settled_positions,
+                                 qint64 now_ms,
+                                 const KalshiBotDecision::Config& config,
+                                 const KalshiBotStopFile& stop,
+                                 const KalshiBotDecision::Exposure& exposure) {
+    const bool has_threshold =
+        threshold_report.value(QStringLiteral("generated_at_ms")).toDouble() > 0.0;
+    const bool has_15m =
+        kxbtc15m_report.value(QStringLiteral("generated_at_ms")).toDouble() > 0.0;
+    const bool has_commodities =
+        commodities_15m_report.value(QStringLiteral("generated_at_ms")).toDouble() > 0.0;
+    if (!has_threshold && !has_15m && !has_commodities)
+        return KalshiBotDecision::decide({}, open_positions, settled_positions, now_ms, config,
+                                         stop, exposure);
+
+    QJsonArray rows;
+    const auto append_filtered = [&](const QJsonObject& filtered) {
+        if (filtered.value(QStringLiteral("generated_at_ms")).toDouble() <= 0.0) return;
+        if (filtered.value(QStringLiteral("predictions")).toObject().isEmpty()) return;
+        const QJsonArray part = KalshiBotDecision::decide(
+            filtered, open_positions, settled_positions, now_ms, config, stop, exposure);
+        for (const auto& value : part) rows.append(value);
+    };
+    append_filtered(
+        KalshiBotDecision::filter_predictions_for_family(threshold_report, /*keep_kxbtc15m=*/false));
+    append_filtered(
+        KalshiBotDecision::filter_predictions_for_family(kxbtc15m_report, /*keep_kxbtc15m=*/true));
+    append_filtered(KalshiBotDecision::filter_commodity_15m_predictions(commodities_15m_report));
+    if (!rows.isEmpty()) return rows;
+    // Source file(s) exist but no family has a live prediction — one honest
+    // row from a present source, never a false REPORT_MISSING.
+    if (has_commodities)
+        return KalshiBotDecision::decide(
+            KalshiBotDecision::filter_commodity_15m_predictions(commodities_15m_report),
+            open_positions, settled_positions, now_ms, config, stop, exposure);
+    if (has_15m)
+        return KalshiBotDecision::decide(
+            KalshiBotDecision::filter_predictions_for_family(kxbtc15m_report, /*keep_kxbtc15m=*/true),
+            open_positions, settled_positions, now_ms, config, stop, exposure);
+    return KalshiBotDecision::decide(
+        KalshiBotDecision::filter_predictions_for_family(threshold_report, /*keep_kxbtc15m=*/false),
+        open_positions, settled_positions, now_ms, config, stop, exposure);
 }
 
 /// The published gate verdict (rung 2's kalshi-bot-gate.json), read exactly as
@@ -215,6 +310,121 @@ QJsonObject read_gate_verdict() {
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
     return document.isObject() ? document.object() : QJsonObject();
+}
+
+/// True when a calibrator report should be refreshed before the next decide.
+/// Proactive: kick at 2/3 of max age so LaunchAgent lag does not land on
+/// REPORT_STALE. Missing / negative age always needs a refresh.
+bool calibrator_needs_refresh(const QJsonObject& report, qint64 now_ms, qint64 max_age_ms) {
+    const qint64 generated_ms =
+        static_cast<qint64>(report.value(QStringLiteral("generated_at_ms")).toDouble());
+    if (generated_ms <= 0) return true;
+    const qint64 age_ms = now_ms - generated_ms;
+    if (age_ms < 0) return true;
+    const qint64 kick_after_ms = (max_age_ms * 2) / 3;
+    return age_ms >= kick_after_ms;
+}
+
+QString calibrator_python_for(const QString& script_name) {
+    // spot_calibrator needs the numpy venv; directional jobs are stdlib.
+    if (script_name.contains(QStringLiteral("spot_calibrator"))) {
+        const QString venv = QDir::homePath() + QStringLiteral(
+            "/Library/Application Support/org.openterminal.OpenTerminal/venv-numpy2/bin/python3");
+        if (QFileInfo::exists(venv)) return venv;
+    }
+    const QString found = QStandardPaths::findExecutable(QStringLiteral("python3"));
+    return found.isEmpty() ? QStringLiteral("/usr/bin/python3") : found;
+}
+
+QString calibrator_script_abs_path(const QString& script_name) {
+    const QString bundled = QDir(QCoreApplication::applicationDirPath())
+                                .filePath(QStringLiteral("scripts/kalshi_advise/") + script_name);
+    if (QFileInfo::exists(bundled)) return bundled;
+    const QString fallback =
+        QStringLiteral("/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/scripts/"
+                       "kalshi_advise/") +
+        script_name;
+    return QFileInfo::exists(fallback) ? fallback : QString();
+}
+
+/// Spawn a detached refresher WITHOUT inheriting our stdio.
+///
+/// QProcess::startDetached's static overload leaves the child attached to our
+/// stdout. A calibrator that prints its report then lands in the middle of
+/// `--json` output and corrupts it for any consumer -- observed as
+/// "JSONDecodeError: Extra data" when a caller piped `--json kalshi bot once`
+/// into json.load while a stale calibrator was being refreshed. The child is a
+/// background refresher; its output belongs to its own log, never to ours.
+bool start_detached_quiet(const QString& program, const QStringList& args,
+                          const QString& working_dir = QString()) {
+    QProcess process;
+    process.setProgram(program);
+    process.setArguments(args);
+    if (!working_dir.isEmpty()) process.setWorkingDirectory(working_dir);
+    process.setStandardOutputFile(QProcess::nullDevice());
+    process.setStandardErrorFile(QProcess::nullDevice());
+    return process.startDetached();
+}
+
+/// Kick one calibrator when its report is missing or aging toward stale.
+/// Non-blocking: prefers `launchctl kickstart` of the steady-state LaunchAgent,
+/// falls back to a detached `python once`. Throttled so a stuck publisher
+/// cannot fork-bomb the tick loop.
+void maybe_kick_calibrator(const QJsonObject& report, qint64 now_ms, qint64 max_age_ms,
+                           const QString& script_name, const QString& launch_label) {
+    if (!calibrator_needs_refresh(report, now_ms, max_age_ms)) return;
+
+    static QHash<QString, qint64> last_kick_ms;
+    constexpr qint64 kMinKickGapMs = 45'000;
+    const qint64 prev = last_kick_ms.value(script_name, 0);
+    if (prev > 0 && now_ms - prev < kMinKickGapMs) return;
+    last_kick_ms.insert(script_name, now_ms);
+
+    const qint64 generated_ms =
+        static_cast<qint64>(report.value(QStringLiteral("generated_at_ms")).toDouble());
+    const qint64 age_ms = generated_ms > 0 ? now_ms - generated_ms : -1;
+
+    bool kicked = false;
+    if (!launch_label.isEmpty()) {
+        const QString target =
+            QStringLiteral("gui/%1/%2").arg(static_cast<unsigned long>(::getuid())).arg(launch_label);
+        kicked = start_detached_quiet(QStringLiteral("/bin/launchctl"),
+                                      {QStringLiteral("kickstart"), QStringLiteral("-k"), target});
+        if (kicked) {
+            std::fprintf(stderr,
+                         "kalshi bot: auto-refresh kickstart %s (report_age_ms=%lld)\n",
+                         qUtf8Printable(launch_label), static_cast<long long>(age_ms));
+            return;
+        }
+    }
+
+    const QString path = calibrator_script_abs_path(script_name);
+    if (path.isEmpty()) return;
+    kicked = start_detached_quiet(calibrator_python_for(script_name),
+                                  {path, QStringLiteral("once")},
+                                  QFileInfo(path).absolutePath());
+    if (kicked) {
+        std::fprintf(stderr,
+                     "kalshi bot: auto-refresh once %s (report_age_ms=%lld)\n",
+                     qUtf8Printable(script_name), static_cast<long long>(age_ms));
+    }
+}
+
+/// Refresh every family the bot reads. LaunchAgents are the steady-state loop;
+/// this is the unattended safety net (overnight / App Nap / missed interval).
+void refresh_stale_calibrators(const QJsonObject& threshold_report,
+                               const QJsonObject& kxbtc15m_report,
+                               const QJsonObject& commodities_15m_report, qint64 now_ms,
+                               qint64 max_age_ms) {
+    maybe_kick_calibrator(threshold_report, now_ms, max_age_ms,
+                          QStringLiteral("spot_calibrator.py"),
+                          QStringLiteral("org.openterminal.spot-calibrator"));
+    maybe_kick_calibrator(kxbtc15m_report, now_ms, max_age_ms,
+                          QStringLiteral("kxbtc15m_calibrator.py"),
+                          QStringLiteral("org.openterminal.kxbtc15m-calibrator"));
+    maybe_kick_calibrator(commodities_15m_report, now_ms, max_age_ms,
+                          QStringLiteral("commodities_15m_calibrator.py"),
+                          QStringLiteral("org.openterminal.commodities-15m-calibrator"));
 }
 
 /// Evaluates the sealed promotion gate and publishes the verdict — the ONE
@@ -284,6 +494,8 @@ struct TickResult {
     int canceled = 0;
     int unconfirmed_cancels = 0;
     int resting = 0;
+    /// Paper cashout sells closed this tick (early_exit settlements).
+    int cashouts = 0;
     double settled_pnl = 0.0;
     double exposure_usd = 0.0;
     double resting_usd = 0.0;
@@ -292,6 +504,20 @@ struct TickResult {
     bool signal_trusted = false;
     bool stopped = false;
 };
+
+/// CUT_EDGE_REVERSED hysteresis across paper ticks in this process. Cleared on
+/// generation rotate so a fresh generation does not inherit stale streaks.
+KalshiBotDecision::CashoutStreak& paper_cashout_streak() {
+    static KalshiBotDecision::CashoutStreak streak;
+    return streak;
+}
+
+/// Per-position YES-mid samples while a paper fill is open. Attached onto
+/// settlement/cashout rows for gamma honesty; cleared on generation rotate.
+KalshiBotDecision::MidPathStore& paper_mid_path() {
+    static KalshiBotDecision::MidPathStore store;
+    return store;
+}
 
 /// The paper venue's canceller. The paper book IS the decision ledger, so a
 /// cancel is effective exactly when its row lands — there is no separate venue
@@ -306,7 +532,8 @@ bool paper_cancel(const QJsonObject&, const QString&) { return true; }
 /// `session_opened_usd` is this run's committed all-in so far; it is carried
 /// through every exit path, including the stopped one.
 TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
-                    const KalshiBotStopFile& stop, double session_opened_usd) {
+                    const KalshiBotStopFile& stop, double session_opened_usd,
+                    bool auto_refresh_calibrators = true) {
     const QString ledger_path = bot_ledger_path();
 
     // The lifetime session budget (issue #125) is a LIVE bounded-run safety;
@@ -389,19 +616,76 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
                                read_jsonl(kalshi_evidence_path(QStringLiteral("kalshi-settlements.jsonl")),
                                           keep_wanted(QStringLiteral("kalshi_market_id"))));
 
+    // --- calibrator reports (needed for mid-at-settle + reconcile) ---------
+    QJsonObject threshold_report = read_calibrator_report();
+    QJsonObject kxbtc15m_report = read_kxbtc15m_calibrator_report();
+    QJsonObject commodities_15m_report = read_commodities_15m_calibrator_report();
+    // Unattended refresh before decide/settle: LaunchAgents are primary; this
+    // kicks when a report ages toward max_report_age (avoids REPORT_STALE).
+    if (auto_refresh_calibrators) {
+        refresh_stale_calibrators(threshold_report, kxbtc15m_report, commodities_15m_report,
+                                  now_ms, paper_config.max_report_age_ms);
+        // Re-read once after kicks so a fast publisher can still serve this tick.
+        threshold_report = read_calibrator_report();
+        kxbtc15m_report = read_kxbtc15m_calibrator_report();
+        commodities_15m_report = read_commodities_15m_calibrator_report();
+    }
+    const QJsonObject report = KalshiBotDecision::merge_family_reports(
+        threshold_report, kxbtc15m_report, now_ms, paper_config, commodities_15m_report);
+    QHash<QString, double> market_mid_by_ticker;
+    const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
+    for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it) {
+        const double mid = it.value().toObject().value(QStringLiteral("market_yes_mid")).toDouble();
+        if (mid > 0.0 && mid < 1.0) market_mid_by_ticker.insert(it.key(), mid);
+    }
+
     // --- settle filled positions first, against those results only ---------
+    // Sample mid path before close so the settle-tick mid is on the path.
+    // Bid snapshot + optional YES mid + mid_path go on the settlement row.
     if (!book.positions.isEmpty()) {
-        const QJsonArray fresh =
-            KalshiBotDecision::settle_paper(book.positions, settlements, now_ms);
+        KalshiBotDecision::sample_mid_path(
+            book.positions, predictions, now_ms, &paper_mid_path());
+        const QJsonArray fresh = KalshiBotDecision::settle_paper(
+            book.positions, settlements, now_ms, market_mid_by_ticker);
         for (const auto& value : fresh) {
-            journal(value.toObject());
-            result.settled_pnl += value.toObject().value(QStringLiteral("realized_pnl")).toDouble();
+            QJsonObject row = value.toObject();
+            KalshiBotDecision::attach_mid_path(row, &paper_mid_path());
+            journal(row);
+            result.settled_pnl += row.value(QStringLiteral("realized_pnl")).toDouble();
         }
         result.settled = static_cast<int>(fresh.size());
     }
 
+    // --- paper cashout (sell-to-close) before resting reconcile -------------
+    // Exchange settlements already won above. Cashout sells at the observed
+    // held-side bid only; hold-to-settle remains when the evaluator says HOLD.
+    book = KalshiBotOrders::replay(ledger);
+    if (paper_config.enable_paper_cashout && !book.positions.isEmpty()) {
+        KalshiBotDecision::sample_mid_path(
+            book.positions, predictions, now_ms, &paper_mid_path());
+        const QJsonArray cashout_rows = KalshiBotDecision::paper_cashout(
+            book.positions, report, now_ms, paper_config, &paper_cashout_streak());
+        for (const auto& value : cashout_rows) {
+            QJsonObject row = value.toObject();
+            if (row.value(QStringLiteral("event")).toString() ==
+                QLatin1String("kalshi_bot_paper_settlement")) {
+                KalshiBotDecision::attach_mid_path(row, &paper_mid_path());
+                journal(row);
+                ++result.cashouts;
+                ++result.settled;
+                result.settled_pnl += row.value(QStringLiteral("realized_pnl")).toDouble();
+            } else {
+                journal(row);
+                if (row.value(QStringLiteral("action")).toString() ==
+                    QStringLiteral("pass")) {
+                    ++result.passes;
+                }
+            }
+        }
+        if (result.cashouts > 0) book = KalshiBotOrders::replay(ledger);
+    }
+
     // --- then manage what is still working (rung 6) ------------------------
-    const QJsonObject report = read_calibrator_report();
     const QJsonArray lifecycle =
         KalshiBotOrders::reconcile(book, report, settlements, now_ms, paper_config, paper_cancel);
     for (const auto& value : lifecycle) {
@@ -416,8 +700,87 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
             ++result.canceled;
     }
 
-    // --- only then decide, against the book as it now stands ---------------
+    // --- current-gen drawdown: pause + auto-rotate before deciding ---------
+    // Score settlements in the LIVE file only. Lifetime gate FAIL must not
+    // deadlock paper (that used to require a manual ledger reset); live still
+    // needs a full-record PASS. When the sealed cap is breached on this
+    // generation, journal DRAWDOWN_CAP, archive the live file, and continue
+    // deciding on a fresh generation so learning does not need a human reset.
     book = KalshiBotOrders::replay(ledger);
+    const QJsonObject gate_now = publish_gate_verdict(now_ms, ledger);
+    const KalshiBotDecision::PaperGenerationRisk current_gen =
+        KalshiBotDecision::score_paper_generation(read_live_generation_settlements(ledger_path));
+    const KalshiBotDecision::PaperBidPause pause =
+        KalshiBotDecision::paper_bid_pause(gate_now, current_gen);
+    if (pause.paused) {
+        const QJsonObject pause_row{
+            {QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
+            {QStringLiteral("ts_ms"), static_cast<double>(now_ms)},
+            {QStringLiteral("ts"),
+             QDateTime::fromMSecsSinceEpoch(now_ms, QTimeZone::UTC).toString(Qt::ISODateWithMs)},
+            {QStringLiteral("mode"), QStringLiteral("paper")},
+            {QStringLiteral("live_eligible"), false},
+            {QStringLiteral("ticker"), QString()},
+            {QStringLiteral("action"), QStringLiteral("pass")},
+            {QStringLiteral("reason_code"), pause.reason_code},
+            {QStringLiteral("pause_detail"), pause.detail},
+            {QStringLiteral("current_gen_settled_bids"), current_gen.settled_bids},
+            {QStringLiteral("current_gen_max_drawdown_usd"), current_gen.max_drawdown_usd},
+            {QStringLiteral("current_gen_net_pnl_usd"), current_gen.net_pnl_usd},
+            {QStringLiteral("signal_trusted"), false},
+            {QStringLiteral("gate_verdict"),
+             gate_now.value(QStringLiteral("verdict")).toString()}};
+        journal(pause_row);
+        ++result.passes;
+
+        const QString archive_target = kalshi_bot_next_generation_path(ledger_path);
+        const bool rotated = pause.should_rotate && rotate_paper_generation(ledger_path);
+        if (rotated) {
+            const int archived_gen =
+                kalshi_bot_generation_index(QFileInfo(ledger_path).fileName(),
+                                            QFileInfo(archive_target).fileName());
+            const QJsonObject rotate_row{
+                {QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
+                {QStringLiteral("ts_ms"), static_cast<double>(now_ms)},
+                {QStringLiteral("ts"),
+                 QDateTime::fromMSecsSinceEpoch(now_ms, QTimeZone::UTC)
+                     .toString(Qt::ISODateWithMs)},
+                {QStringLiteral("mode"), QStringLiteral("paper")},
+                {QStringLiteral("live_eligible"), false},
+                {QStringLiteral("ticker"), QString()},
+                {QStringLiteral("action"), QStringLiteral("pass")},
+                {QStringLiteral("reason_code"),
+                 QString::fromLatin1(KalshiBotDecision::kPaperGenerationRotated)},
+                {QStringLiteral("pause_detail"),
+                 QStringLiteral("archived current paper generation to .%1 — bidding resumes "
+                                "on a fresh generation; sealed gate still scores full record")
+                     .arg(archived_gen)},
+                {QStringLiteral("archived_generation"), archived_gen},
+                {QStringLiteral("signal_trusted"), false},
+                {QStringLiteral("gate_verdict"),
+                 gate_now.value(QStringLiteral("verdict")).toString()}};
+            journal_ledger_row(ledger_path, rotate_row);
+            ledger = read_ledger(ledger_path, kalshi_bot_is_replay_event);
+            book = KalshiBotOrders::replay(ledger);
+            paper_cashout_streak().clear();
+            paper_mid_path().clear();
+            result.state = QString::fromLatin1(KalshiBotDecision::kPaperGenerationRotated);
+            // Fall through to decide on the fresh generation.
+        } else {
+            // Rotate failed (target slot occupied) — hard-pause this tick only.
+            result.state = pause.reason_code;
+            result.signal_trusted = false;
+            result.still_open = static_cast<int>(book.positions.size());
+            result.resting = static_cast<int>(book.resting.size());
+            result.exposure_usd = book.exposure_usd;
+            result.resting_usd = book.resting_usd;
+            result.session_opened_usd = session_opened_usd;
+            publish_funnel(ledger, now_ms);
+            return result;
+        }
+    }
+
+    // --- only then decide, against the book as it now stands ---------------
     KalshiBotDecision::Exposure exposure;
     exposure.at_risk_usd = book.exposure_usd;
     exposure.session_opened_usd = session_opened_usd;
@@ -428,8 +791,11 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     // through its market's resolution settles into no position and leaves no
     // settlement row, and without its CANCELED_MARKET_SETTLED the contract
     // would be quoted again on the next tick.
-    const QJsonArray rows = KalshiBotDecision::decide(report, book.positions, book.settled,
-                                                      now_ms, paper_config, stop, exposure);
+    // Per-family decide: each calibrator owns its trust. Untrusted families
+    // still journal SIGNAL_UNTRUSTED and never bid.
+    const QJsonArray rows = decide_family_reports(
+        threshold_report, kxbtc15m_report, commodities_15m_report, book.positions, book.settled,
+        now_ms, paper_config, stop, exposure);
     for (const auto& value : rows) {
         const QJsonObject row = value.toObject();
         journal(row);
@@ -442,7 +808,10 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     }
     // The decision math's own predicate, not a second reading of the flag: a
     // tick that passed every contract SIGNAL_UNTRUSTED must never print TRUSTED.
-    result.signal_trusted = KalshiBotDecision::signal_trusted(report);
+    // Families may be trusted independently.
+    result.signal_trusted = KalshiBotDecision::signal_trusted(threshold_report) ||
+                            KalshiBotDecision::signal_trusted(kxbtc15m_report) ||
+                            KalshiBotDecision::signal_trusted(commodities_15m_report);
     result.state = QStringLiteral("ok");
     if (rows.size() == 1) {
         const QString reason = rows.first().toObject().value(QStringLiteral("reason_code")).toString();
@@ -467,12 +836,9 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     // a record the tick knows it just added to — would be the worse lie, and
     // KeepAllGenerations makes a failed append loud rather than silent.)
     publish_funnel(ledger, now_ms);
-    // The promotion verdict, re-evaluated on the SAME rows, every tick (issue
-    // #167). The gate used to be written only when a human ran `kalshi bot
-    // gate`, so the cockpit could show a five-hour-old verdict as current. The
-    // evaluation is pure computation over rows this tick has already read, so
-    // the marginal cost is the computation and one small write — no second
-    // full-record read.
+    // Re-score after any new bids/passes so the published verdict matches the
+    // record including this tick (gate was already scored once for the pause
+    // check above, before decide).
     publish_gate_verdict(now_ms, ledger);
     return result;
 }
@@ -490,7 +856,7 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
 TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config& config,
                          qint64 now_ms, const KalshiBotStopFile& stop,
                          const KalshiBotLive::Permission& permission,
-                         double session_opened_usd) {
+                         double session_opened_usd, bool auto_refresh_calibrators = true) {
     const QString ledger_path = bot_ledger_path();
     const auto journal = [&ledger_path](const QJsonObject& row) {
         journal_ledger_row(ledger_path, row);
@@ -513,7 +879,16 @@ TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config
         return result;
     }
 
-    const QJsonObject report = read_calibrator_report();
+    QJsonObject threshold_report = read_calibrator_report();
+    QJsonObject kxbtc15m_report = read_kxbtc15m_calibrator_report();
+    QJsonObject commodities_15m_report = read_commodities_15m_calibrator_report();
+    if (auto_refresh_calibrators) {
+        refresh_stale_calibrators(threshold_report, kxbtc15m_report, commodities_15m_report, now_ms,
+                                  config.max_report_age_ms);
+        threshold_report = read_calibrator_report();
+        kxbtc15m_report = read_kxbtc15m_calibrator_report();
+        commodities_15m_report = read_commodities_15m_calibrator_report();
+    }
     // No book of any kind is replayed here. A live order's fills and lifecycle
     // live at the venue, and the paper model would invent them; and the bot's
     // own ledger is not the authority on what the venue holds. One bot order
@@ -522,7 +897,8 @@ TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config
     // re-bid therefore reaches submit_order and is refused there, before the
     // adapter, and the refusal is journaled like any other.
     const QJsonArray rows =
-        KalshiBotDecision::decide(report, {}, {}, now_ms, config, stop);
+        decide_family_reports(threshold_report, kxbtc15m_report, commodities_15m_report, {}, {},
+                              now_ms, config, stop, {});
     for (const auto& value : rows) {
         const QJsonObject row = value.toObject();
         if (row.value(QStringLiteral("action")).toString() != QStringLiteral("bid")) {
@@ -577,7 +953,9 @@ TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config
 
     // The decision math's own predicate, not a second reading of the flag: a
     // tick that passed every contract SIGNAL_UNTRUSTED must never print TRUSTED.
-    result.signal_trusted = KalshiBotDecision::signal_trusted(report);
+    result.signal_trusted = KalshiBotDecision::signal_trusted(threshold_report) ||
+                            KalshiBotDecision::signal_trusted(kxbtc15m_report) ||
+                            KalshiBotDecision::signal_trusted(commodities_15m_report);
     result.state = QStringLiteral("ok");
     if (rows.size() == 1) {
         const QString reason =
@@ -603,6 +981,7 @@ QJsonObject tick_summary(const TickResult& tick, const KalshiBotDecision::Config
         {QStringLiteral("passes"), tick.passes},
         {QStringLiteral("settled"), tick.settled},
         {QStringLiteral("settled_pnl"), tick.settled_pnl},
+        {QStringLiteral("cashouts"), tick.cashouts},
         {QStringLiteral("open_positions"), tick.still_open},
         {QStringLiteral("filled"), tick.filled},
         {QStringLiteral("canceled"), tick.canceled},
@@ -622,6 +1001,7 @@ QJsonObject tick_summary(const TickResult& tick, const KalshiBotDecision::Config
         {QStringLiteral("session_budget_usd"), config.session_budget_usd},
         {QStringLiteral("min_runway_seconds"), config.min_runway_seconds},
         {QStringLiteral("max_report_age_ms"), static_cast<double>(config.max_report_age_ms)},
+        {QStringLiteral("enable_paper_cashout"), config.enable_paper_cashout},
         {QStringLiteral("ledger"), kalshi_evidence_path(QString::fromLatin1(kLedgerFile))}};
 }
 
@@ -656,8 +1036,10 @@ void print_tick(const GlobalOpts& opts, const TickResult& tick,
     if (tick.filled > 0 || tick.canceled > 0 || tick.unconfirmed_cancels > 0)
         std::printf("  filled %d · canceled %d · UNCONFIRMED cancels %d (still counted as risk)\n",
                     tick.filled, tick.canceled, tick.unconfirmed_cancels);
-    if (tick.settled > 0)
-        std::printf("  settled %d · realized $%.2f\n", tick.settled, tick.settled_pnl);
+    if (tick.settled > 0 || tick.cashouts > 0)
+        std::printf("  settled %d · cashouts %d · realized $%.2f%s\n", tick.settled, tick.cashouts,
+                    tick.settled_pnl,
+                    config.enable_paper_cashout ? "" : " · paper-cashout OFF");
     if (tick.state == QLatin1String("ok"))
         std::printf("  signal %s\n",
                     tick.signal_trusted
@@ -675,13 +1057,34 @@ void bot_usage() {
                  "                          [--max-report-age-sec N] [--quote-ttl-sec N]\n"
                  "                          [--max-exposure X] [--session-budget X]\n"
                  "                          [--cross-margin X] [--rest-premium X]\n"
+                 "                          [--no-paper-cashout]  (paper: disable sell-to-close)\n"
+                 "                          [--no-auto-refresh-calibrators]  (disable stale kicks)\n"
                  "       kalshi bot run [--interval N] [--iterations N]\n"
                  "       kalshi bot gate [--json]\n"
                  "       kalshi bot gate seal '{\"min_settled_bids\":300,\"max_drawdown_usd\":5}'\n"
                  "       kalshi bot stop [--reason \"why\"]   throw the kill switch\n"
                  "       kalshi bot resume                  clear it\n"
                  "       kalshi bot status                  what the GUI BOT chip shows\n"
+                 "       kalshi bot scoreboard [--json]     threshold + BTC15m + commodities15m + gate\n"
+                 "       kalshi bot calibrate once|report|run [--family all|threshold|kxbtc15m|commodities15m]\n"
+                 "                                            [--interval N]\n"
                  "       kalshi bot lessons [--refresh]     what the record teaches (issue #174)\n"
+                 "       kalshi bot postmortem [--json] [--post-gate|--since-ms N]\n"
+                 "                                          per-settlement bid autopsy (esp. losses)\n"
+                 "\n"
+                 "`scoreboard` prints every paper calibrator report the bot reads (no GUI).\n"
+                 "`calibrate` runs the same Python publishers launchd/kickstart use.\n"
+                 "`postmortem` joins every paper settlement back to its bid and classifies\n"
+                 "wins/losses (favourite arithmetic, near-close fades, early_exit cashouts).\n"
+                 "Always writes HISTORIC (learning/gate) + CURRENT RULES (new-trading scorecard)\n"
+                 "when mid_path / fade markers exist. Cockpit PM judges CURRENT, not lifetime.\n"
+                 "`--post-gate` requires markers (exit 3 if none); `--since-ms` overrides window.\n"
+                 "Paper cashout (default ON): sell-to-close at held-side bid on LOCK_WIN /\n"
+                 "CUT_EDGE_REVERSED; hold-to-settle otherwise. `--no-paper-cashout` disables.\n"
+                 "Auto-refresh calibrators (default ON): each tick kickstarts LaunchAgents\n"
+                 "(or runs `once`) when a report ages past 2/3 of --max-report-age-sec, so\n"
+                 "REPORT_STALE does not stick without human intervention. Opt out with\n"
+                 "`--no-auto-refresh-calibrators`.\n"
                  "\n"
                  "`lessons` renders %s — the edge autopsy's conclusions, one short line per\n"
                  "question, each with its verdict, its key numbers, the SAMPLE SIZE it was\n"
@@ -853,6 +1256,51 @@ KalshiBotFunnelFile current_funnel_file() {
         kalshi_evidence_path(QString::fromLatin1(kKalshiBotFunnelFile)));
 }
 
+QJsonObject read_postmortem_summary_file(const QString& name) {
+    QFile file(kalshi_evidence_path(name));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    return document.isObject() ? document.object() : QJsonObject{};
+}
+
+QJsonObject read_postmortem_summary() {
+    return read_postmortem_summary_file(QStringLiteral("kalshi-bot-postmortem-summary.json"));
+}
+
+QJsonObject read_postmortem_summary_current() {
+    return read_postmortem_summary_file(
+        QStringLiteral("kalshi-bot-postmortem-summary-current.json"));
+}
+
+/// Compact operator line from one bid-autopsy cohort (display only).
+QString postmortem_status_line(const QJsonObject& summary, const QString& label) {
+    const QJsonValue settled_v = summary.value(QStringLiteral("settled"));
+    // Qt 6.9+ may store whole numbers outside isDouble(); type-exclude non-numerics.
+    const bool settled_known =
+        settled_v.isDouble() ||
+        (settled_v.type() != QJsonValue::Null && settled_v.type() != QJsonValue::Bool &&
+         settled_v.type() != QJsonValue::String && settled_v.type() != QJsonValue::Array &&
+         settled_v.type() != QJsonValue::Object && settled_v.type() != QJsonValue::Undefined);
+    if (summary.isEmpty() || !settled_known)
+        return QStringLiteral("%1 UNAVAILABLE · run `kalshi bot postmortem`").arg(label);
+    const int wins = summary.value(QStringLiteral("wins")).toInt();
+    const int losses = summary.value(QStringLiteral("losses")).toInt();
+    const double net = summary.value(QStringLiteral("net_realized_pnl_usd")).toDouble();
+    QString top = QStringLiteral("n/a");
+    const QJsonArray modes = summary.value(QStringLiteral("loss_primary_modes")).toArray();
+    if (!modes.isEmpty()) {
+        const QJsonArray pair = modes.first().toArray();
+        if (pair.size() >= 1) top = pair.at(0).toString(top);
+    }
+    const int early = summary.value(QStringLiteral("early_exits")).toInt();
+    return QStringLiteral("%1 %2W/%3L · %4 cashouts · net $%5 · top=%6")
+        .arg(label)
+        .arg(wins)
+        .arg(losses)
+        .arg(early)
+        .arg(QString::number(net, 'f', 2), top);
+}
+
 QJsonObject status_summary(const BotStatusReading& reading, qint64 now_ms,
                            const KalshiBotFunnelFile& funnel) {
     const KalshiBotLoopStatus& status = reading.status;
@@ -906,6 +1354,30 @@ QJsonObject status_summary(const BotStatusReading& reading, qint64 now_ms,
     // neither can the window (criterion 5).
     out.insert(QStringLiteral("funnel_lines"),
                QJsonArray::fromStringList(kalshi_bot_funnel_lines(funnel, now_ms)));
+    const QJsonObject historic = read_postmortem_summary();
+    const QJsonObject current = read_postmortem_summary_current();
+    out.insert(QStringLiteral("postmortem_current_line"),
+               postmortem_status_line(current, QStringLiteral("CURRENT RULES")));
+    out.insert(QStringLiteral("postmortem_historic_line"),
+               postmortem_status_line(historic, QStringLiteral("HISTORIC")));
+    // Backward-compatible single line: prefer current-rules scorecard.
+    const auto settled_ok = [](const QJsonObject& o) {
+        const QJsonValue v = o.value(QStringLiteral("settled"));
+        if (o.isEmpty()) return false;
+        if (v.isDouble()) return true;
+        return v.type() != QJsonValue::Null && v.type() != QJsonValue::Bool &&
+               v.type() != QJsonValue::String && v.type() != QJsonValue::Array &&
+               v.type() != QJsonValue::Object && v.type() != QJsonValue::Undefined;
+    };
+    out.insert(QStringLiteral("postmortem_line"),
+               settled_ok(current)
+                   ? postmortem_status_line(current, QStringLiteral("CURRENT RULES"))
+                   : postmortem_status_line(historic, QStringLiteral("HISTORIC")));
+    if (!current.isEmpty()) out.insert(QStringLiteral("postmortem_current"), current);
+    if (!historic.isEmpty()) {
+        out.insert(QStringLiteral("postmortem_historic"), historic);
+        out.insert(QStringLiteral("postmortem"), historic); // legacy key = lifetime
+    }
     return out;
 }
 
@@ -923,6 +1395,8 @@ int bot_status_command(const GlobalOpts& opts, QStringList& args) {
     const BotStatusReading reading = current_loop_status(now_ms);
     const KalshiBotLoopStatus& status = reading.status;
     const KalshiBotFunnelFile funnel = current_funnel_file();
+    const QJsonObject historic = read_postmortem_summary();
+    const QJsonObject current = read_postmortem_summary_current();
     if (opts.json) {
         std::printf("%s\n", QJsonDocument(status_summary(reading, now_ms, funnel))
                                 .toJson(QJsonDocument::Compact).constData());
@@ -940,6 +1414,11 @@ int bot_status_command(const GlobalOpts& opts, QStringList& args) {
     // from. Unavailable prints one refusal line and no numbers at all.
     for (const QString& line : kalshi_bot_funnel_lines(funnel, now_ms))
         std::printf("  %s\n", qUtf8Printable(line));
+    // Current-rules first: cockpit/status judge new trading here, not lifetime.
+    std::printf("  %s\n", qUtf8Printable(postmortem_status_line(
+                              current, QStringLiteral("CURRENT RULES"))));
+    std::printf("  %s\n", qUtf8Printable(postmortem_status_line(
+                              historic, QStringLiteral("HISTORIC (learn/gate)"))));
     std::printf("  funnel %s\n",
                 qUtf8Printable(kalshi_evidence_path(QString::fromLatin1(kKalshiBotFunnelFile))));
     std::printf("  ledger %s\n", qUtf8Printable(bot_ledger_path()));
@@ -1194,14 +1673,330 @@ bool take_int(QStringList& args, const QString& flag, int& out, bool& bad, int m
     return true;
 }
 
+/// Resolve scripts/kalshi_advise/<name> next to the binary, then the repo path.
+QString calibrator_script_path(const QString& script_name) {
+    const QString bundled = QDir(QCoreApplication::applicationDirPath())
+                                .filePath(QStringLiteral("scripts/kalshi_advise/") + script_name);
+    if (QFileInfo::exists(bundled)) return bundled;
+    const QString fallback =
+        QStringLiteral("/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/scripts/"
+                       "kalshi_advise/") +
+        script_name;
+    return QFileInfo::exists(fallback) ? fallback : QString();
+}
+
+/// Run one calibrator publisher synchronously; stdout is the JSON report/cycle.
+int run_calibrator_script(const QString& script_name, const QStringList& script_args) {
+    const QString path = calibrator_script_path(script_name);
+    if (path.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot calibrate: %s not found\n", qUtf8Printable(script_name));
+        return 5;
+    }
+    const QString python = QStandardPaths::findExecutable(QStringLiteral("python3"));
+    if (python.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot calibrate: python3 not found\n");
+        return 5;
+    }
+    QProcess process;
+    process.setProcessChannelMode(QProcess::ForwardedChannels);
+    process.setWorkingDirectory(QFileInfo(path).absolutePath());
+    QStringList argv{path};
+    argv.append(script_args);
+    process.start(python, argv);
+    if (!process.waitForStarted(30'000)) {
+        std::fprintf(stderr, "kalshi bot calibrate: failed to start %s\n", qUtf8Printable(python));
+        return 1;
+    }
+    // once/report finish in seconds; run is indefinite — wait forever for it.
+    if (!process.waitForFinished(-1)) {
+        process.kill();
+        process.waitForFinished(5'000);
+        std::fprintf(stderr, "kalshi bot calibrate: %s did not finish\n", qUtf8Printable(script_name));
+        return 1;
+    }
+    if (process.exitStatus() != QProcess::NormalExit) return 1;
+    return process.exitCode();
+}
+
+QJsonObject scoreboard_family_summary(const QJsonObject& report, const QString& label,
+                                      const QString& file) {
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    const qint64 generated_ms =
+        static_cast<qint64>(report.value(QStringLiteral("generated_at_ms")).toDouble());
+    const qint64 age_ms = generated_ms > 0 ? now_ms - generated_ms : -1;
+    const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
+    QJsonObject out{
+        {QStringLiteral("family"), label},
+        {QStringLiteral("file"), file},
+        {QStringLiteral("present"), !report.isEmpty()},
+        {QStringLiteral("schema"), report.value(QStringLiteral("schema"))},
+        {QStringLiteral("generated_at_ms"), generated_ms > 0 ? generated_ms : QJsonValue()},
+        {QStringLiteral("age_ms"), age_ms},
+        {QStringLiteral("scored_contracts"), report.value(QStringLiteral("scored_contracts"))},
+        {QStringLiteral("min_scored_contracts"),
+         report.value(QStringLiteral("min_scored_contracts"))},
+        {QStringLiteral("training_observations"),
+         report.value(QStringLiteral("training_observations"))},
+        {QStringLiteral("brier_full"), report.value(QStringLiteral("brier_full"))},
+        {QStringLiteral("brier_market_mid_raw"),
+         report.value(QStringLiteral("brier_market_mid_raw"))},
+        {QStringLiteral("adds_value_over_market"),
+         report.value(QStringLiteral("adds_value_over_market")).toBool()},
+        {QStringLiteral("trusted_variant"), report.value(QStringLiteral("trusted_variant"))},
+        {QStringLiteral("open_predictions"), predictions.size()},
+        {QStringLiteral("tickers"),
+         [&] {
+             QJsonArray tickers;
+             for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it)
+                 tickers.append(it.key());
+             return tickers;
+         }()}};
+    // Outside-info Phase 1–3 detail the bot already scores — surface it for
+    // agents/operators without forcing them to open the raw JSON files.
+    if (report.contains(QStringLiteral("ablations")))
+        out.insert(QStringLiteral("ablations"), report.value(QStringLiteral("ablations")));
+    if (report.contains(QStringLiteral("settlement_parity")))
+        out.insert(QStringLiteral("settlement_parity"),
+                   report.value(QStringLiteral("settlement_parity")));
+    if (report.contains(QStringLiteral("spot_feeds")))
+        out.insert(QStringLiteral("spot_feeds"), report.value(QStringLiteral("spot_feeds")));
+    return out;
+}
+
+void print_scoreboard_ablations_human(const QJsonObject& ablations) {
+    if (ablations.isEmpty()) return;
+    QStringList parts;
+    for (auto it = ablations.constBegin(); it != ablations.constEnd(); ++it) {
+        const QJsonObject row = it.value().toObject();
+        const QJsonValue brier = row.value(QStringLiteral("brier"));
+        const int n = row.value(QStringLiteral("scored_contracts")).toInt();
+        const bool beats = row.value(QStringLiteral("beats_mid")).toBool();
+        parts << QStringLiteral("%1 brier=%2 n=%3 %4")
+                     .arg(it.key(),
+                          brier.isDouble() ? QString::number(brier.toDouble(), 'f', 4)
+                                           : QStringLiteral("—"))
+                     .arg(n)
+                     .arg(beats ? QStringLiteral("beats_mid") : QStringLiteral("no_edge"));
+    }
+    std::printf("  ablations: %s\n", qUtf8Printable(parts.join(QStringLiteral(" · "))));
+}
+
+void print_scoreboard_family_human(const QJsonObject& summary) {
+    const bool present = summary.value(QStringLiteral("present")).toBool();
+    const bool trusted = summary.value(QStringLiteral("adds_value_over_market")).toBool();
+    const qint64 age_ms = static_cast<qint64>(summary.value(QStringLiteral("age_ms")).toDouble(-1));
+    const QString variant = summary.value(QStringLiteral("trusted_variant")).toString();
+    std::printf("%s  file=%s  %s  age=%s  scored=%s/%s  obs=%s  brier=%s vs mid=%s  trust=%s  "
+                "variant=%s  open=%d\n",
+                qUtf8Printable(summary.value(QStringLiteral("family")).toString()),
+                qUtf8Printable(summary.value(QStringLiteral("file")).toString()),
+                present ? "present" : "MISSING",
+                age_ms < 0 ? "?"
+                           : qUtf8Printable(QStringLiteral("%1s").arg(age_ms / 1000)),
+                qUtf8Printable(summary.value(QStringLiteral("scored_contracts")).toVariant().toString()),
+                qUtf8Printable(
+                    summary.value(QStringLiteral("min_scored_contracts")).toVariant().toString()),
+                qUtf8Printable(
+                    summary.value(QStringLiteral("training_observations")).toVariant().toString()),
+                qUtf8Printable(summary.value(QStringLiteral("brier_full")).toVariant().toString()),
+                qUtf8Printable(
+                    summary.value(QStringLiteral("brier_market_mid_raw")).toVariant().toString()),
+                !present            ? "n/a"
+                : trusted           ? "ADDS_VALUE"
+                                    : "NO_EDGE_YET",
+                variant.isEmpty() ? "—" : qUtf8Printable(variant),
+                summary.value(QStringLiteral("open_predictions")).toInt());
+    print_scoreboard_ablations_human(summary.value(QStringLiteral("ablations")).toObject());
+    const QJsonObject parity = summary.value(QStringLiteral("settlement_parity")).toObject();
+    if (!parity.isEmpty()) {
+        const QJsonValue rate = parity.value(QStringLiteral("match_rate"));
+        std::printf("  settlement_parity: checked=%s matched=%s rate=%s\n",
+                    qUtf8Printable(parity.value(QStringLiteral("checked")).toVariant().toString()),
+                    qUtf8Printable(parity.value(QStringLiteral("matched")).toVariant().toString()),
+                    rate.isDouble() ? qUtf8Printable(QString::number(rate.toDouble(), 'f', 3))
+                                    : "—");
+    }
+    const QJsonArray tickers = summary.value(QStringLiteral("tickers")).toArray();
+    if (!tickers.isEmpty()) {
+        QStringList names;
+        for (const auto& value : tickers) names << value.toString();
+        std::printf("  tickers: %s\n", qUtf8Printable(names.join(QStringLiteral(" "))));
+    }
+}
+
+int bot_scoreboard_command(const GlobalOpts& opts, QStringList& args) {
+    if (!args.isEmpty()) {
+        std::fprintf(stderr,
+                     "kalshi bot scoreboard: unknown option '%s' (JSON is the global flag: "
+                     "`openterminalcli --json kalshi bot scoreboard`)\n",
+                     qUtf8Printable(args.first()));
+        return 2;
+    }
+    const QJsonObject threshold = read_calibrator_report();
+    const QJsonObject kxbtc15m = read_kxbtc15m_calibrator_report();
+    const QJsonObject commodities = read_commodities_15m_calibrator_report();
+    const QJsonObject gate = read_gate_verdict();
+    const QJsonObject out{
+        {QStringLiteral("event"), QStringLiteral("kalshi_bot_scoreboard")},
+        {QStringLiteral("threshold"),
+         scoreboard_family_summary(threshold, QStringLiteral("threshold"),
+                                   QStringLiteral("calibrator.json"))},
+        {QStringLiteral("kxbtc15m"),
+         scoreboard_family_summary(kxbtc15m, QStringLiteral("kxbtc15m"),
+                                   QStringLiteral("kxbtc15m-calibrator.json"))},
+        {QStringLiteral("commodities15m"),
+         scoreboard_family_summary(commodities, QStringLiteral("commodities15m"),
+                                   QStringLiteral("commodities-15m-calibrator.json"))},
+        {QStringLiteral("gate"),
+         QJsonObject{{QStringLiteral("verdict"), gate.value(QStringLiteral("verdict"))},
+                     {QStringLiteral("evaluated"), gate.value(QStringLiteral("evaluated"))},
+                     {QStringLiteral("settled_bids"),
+                      gate.value(QStringLiteral("ledger")).toObject().value(
+                          QStringLiteral("settled_bids"))},
+                     {QStringLiteral("max_drawdown_usd"),
+                      gate.value(QStringLiteral("ledger")).toObject().value(
+                          QStringLiteral("max_drawdown_usd"))},
+                     {QStringLiteral("net_pnl_usd"),
+                      gate.value(QStringLiteral("ledger")).toObject().value(
+                          QStringLiteral("net_pnl_usd"))}}}};
+    if (opts.json) {
+        std::printf("%s\n",
+                    QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("KALSHI BOT SCOREBOARD (paper calibrators the bot actually reads)\n");
+    print_scoreboard_family_human(out.value(QStringLiteral("threshold")).toObject());
+    print_scoreboard_family_human(out.value(QStringLiteral("kxbtc15m")).toObject());
+    print_scoreboard_family_human(out.value(QStringLiteral("commodities15m")).toObject());
+    const QJsonObject g = out.value(QStringLiteral("gate")).toObject();
+    std::printf("gate  verdict=%s  settled=%s  drawdown=%s  net_pnl=%s\n",
+                qUtf8Printable(g.value(QStringLiteral("verdict")).toString(QStringLiteral("?"))),
+                qUtf8Printable(g.value(QStringLiteral("settled_bids")).toVariant().toString()),
+                qUtf8Printable(g.value(QStringLiteral("max_drawdown_usd")).toVariant().toString()),
+                qUtf8Printable(g.value(QStringLiteral("net_pnl_usd")).toVariant().toString()));
+    return 0;
+}
+
+/// Per-settlement bid autopsy — joins paper settlements to originating bids
+/// and writes kalshi-bot-postmortems.jsonl + summary. Display/analysis only.
+int bot_postmortem_command(const GlobalOpts& opts, QStringList& args) {
+    QStringList script_args;
+    if (opts.json) script_args << QStringLiteral("--json");
+    while (!args.isEmpty()) {
+        const QString arg = args.takeFirst();
+        if (arg == QLatin1String("--post-gate")) {
+            script_args << arg;
+            continue;
+        }
+        if (arg == QLatin1String("--since-ms")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "kalshi bot postmortem: --since-ms needs a value\n");
+                return 2;
+            }
+            script_args << arg << args.takeFirst();
+            continue;
+        }
+        if (arg.startsWith(QLatin1String("--since-ms="))) {
+            script_args << QStringLiteral("--since-ms") << arg.mid(QStringLiteral("--since-ms=").size());
+            continue;
+        }
+        std::fprintf(stderr,
+                     "kalshi bot postmortem: unknown option '%s'\n"
+                     "usage: kalshi bot postmortem [--json] [--post-gate|--since-ms N]\n"
+                     "(JSON may also be the global flag: `openterminalcli --json kalshi bot postmortem`)\n",
+                     qUtf8Printable(arg));
+        return 2;
+    }
+    return run_calibrator_script(QStringLiteral("bot_bid_postmortem.py"), script_args);
+}
+
+int bot_calibrate_command(const GlobalOpts& /*opts*/, QStringList& args) {
+    const QString action = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
+    if (action != QStringLiteral("once") && action != QStringLiteral("report") &&
+        action != QStringLiteral("run")) {
+        std::fprintf(stderr,
+                     "usage: kalshi bot calibrate once|report|run "
+                     "[--family all|threshold|kxbtc15m|commodities15m] [--interval N]\n");
+        return 2;
+    }
+    QString family = QStringLiteral("all");
+    take_string_option(args, QStringLiteral("--family"), family);
+    family = family.trimmed().toLower();
+    int interval = 60;
+    const int interval_idx = args.indexOf(QStringLiteral("--interval"));
+    if (interval_idx >= 0) {
+        if (interval_idx + 1 >= args.size()) {
+            std::fprintf(stderr, "kalshi bot calibrate: --interval needs a value\n");
+            return 2;
+        }
+        bool ok = false;
+        interval = args.at(interval_idx + 1).toInt(&ok);
+        if (!ok || interval < 10) {
+            std::fprintf(stderr, "kalshi bot calibrate: bad --interval\n");
+            return 2;
+        }
+        args.removeAt(interval_idx + 1);
+        args.removeAt(interval_idx);
+    }
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot calibrate: unknown option '%s'\n",
+                     qUtf8Printable(args.first()));
+        return 2;
+    }
+
+    struct Job {
+        QString family;
+        QString script;
+    };
+    QVector<Job> jobs;
+    if (family == QStringLiteral("all") || family == QStringLiteral("threshold"))
+        jobs.append({QStringLiteral("threshold"), QStringLiteral("spot_calibrator.py")});
+    if (family == QStringLiteral("all") || family == QStringLiteral("kxbtc15m") ||
+        family == QStringLiteral("btc15m"))
+        jobs.append({QStringLiteral("kxbtc15m"), QStringLiteral("kxbtc15m_calibrator.py")});
+    if (family == QStringLiteral("all") || family == QStringLiteral("commodities15m") ||
+        family == QStringLiteral("commodities"))
+        jobs.append(
+            {QStringLiteral("commodities15m"), QStringLiteral("commodities_15m_calibrator.py")});
+    if (jobs.isEmpty()) {
+        std::fprintf(stderr,
+                     "kalshi bot calibrate: unknown --family '%s' "
+                     "(all|threshold|kxbtc15m|commodities15m)\n",
+                     qUtf8Printable(family));
+        return 2;
+    }
+
+    QStringList script_args{action};
+    if (action == QStringLiteral("run")) {
+        script_args << QStringLiteral("--interval") << QString::number(interval);
+        if (jobs.size() > 1) {
+            std::fprintf(stderr,
+                         "kalshi bot calibrate run: pick one --family "
+                         "(cannot foreground-loop multiple publishers)\n");
+            return 2;
+        }
+    }
+
+    int rc = 0;
+    for (const Job& job : jobs) {
+        std::fprintf(stderr, "kalshi bot calibrate: %s → %s %s\n", qUtf8Printable(job.family),
+                     qUtf8Printable(job.script), qUtf8Printable(script_args.join(QLatin1Char(' '))));
+        std::fflush(stderr);
+        const int job_rc = run_calibrator_script(job.script, script_args);
+        if (job_rc != 0) rc = job_rc;
+    }
+    return rc;
+}
+
 } // namespace
 
 int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
-    static const QStringList kSubcommands{QStringLiteral("once"),   QStringLiteral("run"),
-                                          QStringLiteral("gate"),   QStringLiteral("status"),
-                                          QStringLiteral("stop"),   QStringLiteral("resume"),
-                                          QStringLiteral("lessons")};
+    static const QStringList kSubcommands{QStringLiteral("once"),       QStringLiteral("run"),
+                                          QStringLiteral("gate"),       QStringLiteral("status"),
+                                          QStringLiteral("stop"),       QStringLiteral("resume"),
+                                          QStringLiteral("lessons"),    QStringLiteral("scoreboard"),
+                                          QStringLiteral("calibrate"),  QStringLiteral("postmortem")};
     if (opts.help || sub.isEmpty() || !kSubcommands.contains(sub)) {
         bot_usage();
         return opts.help ? 0 : 2;
@@ -1216,6 +2011,9 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     if (sub == QStringLiteral("stop")) return bot_stop_command(opts, args);
     if (sub == QStringLiteral("resume")) return bot_resume_command(opts, args);
     if (sub == QStringLiteral("lessons")) return bot_lessons_command(opts, args);
+    if (sub == QStringLiteral("scoreboard")) return bot_scoreboard_command(opts, args);
+    if (sub == QStringLiteral("calibrate")) return bot_calibrate_command(opts, args);
+    if (sub == QStringLiteral("postmortem")) return bot_postmortem_command(opts, args);
 
     // PAPER is the default, and stays the default: `--mode` has to be given
     // explicitly, and the only other value it accepts is `live`.
@@ -1253,6 +2051,11 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     int max_age_sec = static_cast<int>(config.max_report_age_ms / 1000);
     if (take_int(args, QStringLiteral("--max-report-age-sec"), max_age_sec, bad, 1))
         config.max_report_age_ms = static_cast<qint64>(max_age_sec) * 1000;
+    if (take_bool_flag(args, QStringLiteral("--no-paper-cashout")))
+        config.enable_paper_cashout = false;
+    // Default ON: unattended safety net against REPORT_STALE when LaunchAgents lag.
+    const bool auto_refresh_calibrators =
+        !take_bool_flag(args, QStringLiteral("--no-auto-refresh-calibrators"));
 
     int interval = kKalshiBotIntervalSeconds;
     int iterations = 0; // 0 = until interrupted
@@ -1293,12 +2096,14 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
             apply_session_caps(permission);
             print_tick(opts,
                        run_live_tick(opts, config, now_ms,
-                                     kalshi_bot_read_stop_file(bot_stop_path()), permission, 0.0),
+                                     kalshi_bot_read_stop_file(bot_stop_path()), permission, 0.0,
+                                     auto_refresh_calibrators),
                        config);
             return 0;
         }
         print_tick(opts,
-                   run_tick(config, now_ms, kalshi_bot_read_stop_file(bot_stop_path()), 0.0),
+                   run_tick(config, now_ms, kalshi_bot_read_stop_file(bot_stop_path()), 0.0,
+                            auto_refresh_calibrators),
                    config);
         return 0;
     }
@@ -1320,9 +2125,10 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
             const KalshiBotLive::Permission permission = admit(now_ms);
             if (!permission.permitted) return 4;
             apply_session_caps(permission);
-            tick = run_live_tick(opts, config, now_ms, stop, permission, session_opened_usd);
+            tick = run_live_tick(opts, config, now_ms, stop, permission, session_opened_usd,
+                                 auto_refresh_calibrators);
         } else {
-            tick = run_tick(config, now_ms, stop, session_opened_usd);
+            tick = run_tick(config, now_ms, stop, session_opened_usd, auto_refresh_calibrators);
         }
         session_opened_usd = tick.session_opened_usd;
         print_tick(opts, tick, config);

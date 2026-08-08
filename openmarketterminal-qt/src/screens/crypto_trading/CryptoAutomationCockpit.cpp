@@ -280,9 +280,18 @@ void CryptoAutomationCockpit::refresh() {
     set_metric(engine_value_, engine_caption_,
                engine_running ? style + tr(" · RUNNING") : style + tr(" · OFFLINE"),
                engine_running ? colors::POSITIVE() : colors::NEGATIVE());
-    guard_caption_->setText(tr("AUTOMATION GUARD"));
-    set_metric(guard_value_, guard_caption_, live_armed ? tr("LIVE ARMED") : tr("PAPER ONLY"),
+    guard_caption_->setText(tr("SCALP CANARY"));
+    set_metric(guard_value_, guard_caption_, live_armed ? tr("CANARY ON") : tr("PAPER SCALP"),
                live_armed ? colors::WARNING() : colors::CYAN());
+    if (guard_value_) {
+        guard_value_->setToolTip(
+            tr("Spot/scalp live canary for Coinbase/Kraken automation — not Kalshi session arm. "
+               "Arm the canary from Profile; Kalshi live arm stays in Predictions."));
+    }
+    if (guard_caption_) {
+        guard_caption_->setToolTip(
+            tr("Spot/scalp live canary for Coinbase/Kraken automation — not Kalshi session arm."));
+    }
     const double required_bps = decision.value(QStringLiteral("required_edge_bps")).toDouble();
     hurdle_caption_->setText(tr("MOVE REQUIRED"));
     set_metric(hurdle_value_, hurdle_caption_, required_bps > 0 ? bps_text(required_bps) : QStringLiteral("--"), colors::WARNING());

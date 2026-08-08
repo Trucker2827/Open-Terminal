@@ -167,7 +167,7 @@ QWidget* DocsScreen::page_keyboard_shortcuts() {
                          {tr("NAVIGATE MENU"), tr("Access 30+ screens organized in sub-menus:\n"
                                                   "■  Trading & Portfolio — Equity Trading, Derivatives, Watchlist\n"
                                                   "■  Research — Equity Research, M&A, Geopolitics, Surface Analytics\n"
-                                                  "■  Tools — Report Builder, Node Editor, Code Editor, Excel, Notes")},
+                                                  "■  Tools — Report Builder, Node Editor, Research Lab, Excel, Notes")},
                          {tr("VIEW MENU"), tr("Fullscreen (F11) — Use full monitor space\n"
                                               "Focus Mode (F10) — Hide chrome for maximum content area\n"
                                               "Refresh (F5) — Reload current screen\n"

@@ -978,6 +978,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v066_kalshi_execution_ledger.cpp
     src/storage/sqlite/migrations/v067_edge_advisory_challenge.cpp
     src/storage/sqlite/migrations/v068_advisory_competition_pair.cpp
+    src/storage/sqlite/migrations/v069_edge_ticks_exchange_index.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -1507,15 +1508,6 @@ set(UI_SOURCES
     src/ui/widgets/NotifBell.cpp
     src/ui/widgets/NotifPanel.cpp
 
-    # Algo Trading visual strategy builder widgets
-    src/ui/widgets/algo/ConditionBlock.cpp
-    src/ui/widgets/algo/OperandEditor.cpp
-    src/ui/widgets/algo/GroupBlock.cpp
-    src/ui/widgets/algo/BacktestReportPanel.cpp
-    src/ui/widgets/algo/ConditionSection.cpp
-    src/ui/widgets/algo/RiskManagementPanel.cpp
-    src/ui/widgets/algo/SymbolSearchCombo.cpp
-    src/ui/widgets/algo/SymbolChipInput.cpp
 )
 
 # Screens
@@ -1658,7 +1650,6 @@ set(SCREEN_SOURCES
     src/screens/crypto_trading/CryptoCredentials.cpp
     src/screens/crypto_trading/CryptoTimeSales.cpp
     src/screens/crypto_trading/CryptoDepthChart.cpp
-    src/screens/crypto_trading/CryptoPredictionsPanel.cpp
     # EquityTradingScreen split; see header comment.
     src/screens/equity_trading/EquityTradingScreen.cpp
     src/screens/equity_trading/EquityTradingScreen_Streams.cpp
@@ -2047,15 +2038,8 @@ set_source_files_properties(
     src/screens/algo_trading/AlgoTradingScreen.cpp
     src/screens/algo_trading/StrategyOpsMapPanel.cpp
     src/screens/algo_trading/StrategyWorkspacePanels.cpp
-    src/screens/algo_trading/DeploymentDashboard.cpp
     src/screens/algo_trading/StrategyAutomationPanel.cpp
-    src/screens/algo_trading/ScannerPanel.cpp
-    src/screens/algo_trading/UniverseScannerPanel.cpp
-    src/screens/algo_trading/AlertsPanel.cpp
-    src/screens/algo_trading/StrategyBuilderPanel.cpp
-    src/screens/algo_trading/StrategyListPanel.cpp
     src/screens/algo_trading/SandboxBooksPanel.cpp
-    src/screens/algo_trading/AlgoDeployDialog.cpp
     src/screens/alpha_arena/AlphaArenaScreen.cpp
     src/screens/alpha_arena/panels/LeaderboardPanel.cpp
     src/screens/alpha_arena/panels/ModelChatPanel.cpp
@@ -2442,6 +2426,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v066_kalshi_execution_ledger.cpp
     src/storage/sqlite/migrations/v067_edge_advisory_challenge.cpp
     src/storage/sqlite/migrations/v068_advisory_competition_pair.cpp
+    src/storage/sqlite/migrations/v069_edge_ticks_exchange_index.cpp
     # DecisionContext.cpp — defines an anonymous-namespace `enum class
     # EdgeCol` (scoped enumerators, but the type name itself still lives in
     # the anon namespace); excluded defensively so a Release unity batch can
@@ -3445,6 +3430,13 @@ if(APPLE)
     target_sources(openterminalcli PRIVATE src/services/stt/AppleSpeechProvider.mm)
     target_link_libraries(openterminalcli PRIVATE
         "-framework Speech" "-framework AVFoundation" "-framework Foundation")
+    # Paper bot LaunchAgent points at build/openterminalcli — kick it after every
+    # CLI rebuild so pause/rotate fixes take effect without a manual reset.
+    add_custom_command(TARGET openterminalcli POST_BUILD
+        COMMAND "${CMAKE_SOURCE_DIR}/scripts/deploy/restart-kalshi-bot.sh"
+                "$<TARGET_FILE:openterminalcli>"
+        COMMENT "Kickstarting org.openterminal.kalshi-bot (best-effort)..."
+        VERBATIM)
 endif()
 
 option(OPENTERMINALCLI_INSTALL_OT_ALIAS "Install 'ot' symlink alias for openterminalcli on Unix" ON)

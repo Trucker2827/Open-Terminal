@@ -223,6 +223,39 @@ Result<int> EdgePredictionModelRepository::count_raw_ticks(const QString& symbol
     return Result<int>::ok(q.value(0).toInt());
 }
 
+Result<int> EdgePredictionModelRepository::prune_raw_ticks(const QStringList& sources,
+                                                          qint64 cutoff_ms, int batch_size,
+                                                          int max_batches) {
+    if (sources.isEmpty() || cutoff_ms <= 0 || batch_size <= 0 || max_batches <= 0)
+        return Result<int>::ok(0);
+    QStringList placeholders;
+    QVariantList base_params;
+    for (const auto& source : sources) {
+        const QString normalized = source.trimmed().toLower();
+        if (normalized.isEmpty()) continue;
+        placeholders << QStringLiteral("?");
+        base_params << normalized;
+    }
+    if (placeholders.isEmpty())
+        return Result<int>::ok(0);
+    const QString sql = QStringLiteral(
+        "DELETE FROM edge_prediction_raw_ticks WHERE rowid IN ("
+        "SELECT rowid FROM edge_prediction_raw_ticks "
+        "WHERE LOWER(source) IN (%1) AND received_ts < ? LIMIT ?)").arg(placeholders.join(QStringLiteral(",")));
+    int deleted = 0;
+    for (int batch = 0; batch < max_batches; ++batch) {
+        QVariantList params = base_params;
+        params << cutoff_ms << batch_size;
+        auto r = db().execute(sql, params);
+        if (r.is_err())
+            return Result<int>::err(r.error());
+        const int affected = r.value().numRowsAffected();
+        if (affected <= 0) break;
+        deleted += affected;
+    }
+    return Result<int>::ok(deleted);
+}
+
 Result<void> EdgePredictionModelRepository::add_market_snapshot(const EdgePredictionMarketSnapshot& in) {
     EdgePredictionMarketSnapshot s = in;
     if (s.id.isEmpty())

@@ -139,6 +139,12 @@ QJsonObject calibration_for(const QVector<EvidenceHistorySample>& history, const
 
 } // namespace
 
+QString evidence_settlement_key(const QString& contract_ticker, qint64 observed_at_ms) {
+    const QString ticker = contract_ticker.trimmed();
+    if (!ticker.isEmpty()) return QStringLiteral("contract:") + ticker;
+    return QString::number(observed_at_ms) + QStringLiteral(":SETTLEMENT");
+}
+
 BitcoinEvidenceResult BitcoinEvidenceEngine::analyze(const BitcoinEvidenceInput& input) {
     BitcoinEvidenceResult result;
     result.as_of_ms = input.decision_ts_ms;

@@ -391,8 +391,14 @@ void StrategyRiskPanel::build_ui() {
     auto* gates = new QHBoxLayout;
     gates->addWidget(stat_box(this, tr("KILL SWITCH"), kill_value_), 1);
     gates->addWidget(stat_box(this, tr("PAPER GATE"), paper_value_), 1);
-    gates->addWidget(stat_box(this, tr("LIVE ARM"), live_value_), 1);
-    gates->addWidget(stat_box(this, tr("FAST ARM"), fast_value_), 1);
+    // Global CLI telemetry only — Strategies does not arm Kalshi live here.
+    auto* live_gate = stat_box(this, tr("LIVE GATE"), live_value_);
+    live_gate->setToolTip(tr("Global CLI LIVE gate telemetry. Arm/disarm spot-scalp canary from "
+                             "Profile; Kalshi session arm only from Predictions."));
+    gates->addWidget(live_gate, 1);
+    auto* fast_gate = stat_box(this, tr("FAST GATE"), fast_value_);
+    fast_gate->setToolTip(tr("Global CLI FAST live-mode telemetry — not Kalshi session arming."));
+    gates->addWidget(fast_gate, 1);
     gates->addWidget(stat_box(this, tr("DAEMON"), daemon_value_), 1);
     root->addLayout(gates);
 
@@ -450,8 +456,8 @@ void StrategyRiskPanel::refresh() {
     const bool fast = mcp::cli_fast_live_armed();
     set_gate(kill_value_, kill ? tr("ENGAGED") : tr("CLEAR"), kill ? ui::colors::NEGATIVE() : ui::colors::POSITIVE());
     set_gate(paper_value_, yes_no(paper), paper ? ui::colors::POSITIVE() : ui::colors::AMBER());
-    set_gate(live_value_, live ? tr("ARMED") : tr("OFF"), live ? ui::colors::NEGATIVE() : ui::colors::POSITIVE());
-    set_gate(fast_value_, fast ? tr("ARMED") : tr("OFF"), fast ? ui::colors::NEGATIVE() : ui::colors::POSITIVE());
+    set_gate(live_value_, live ? tr("OPEN") : tr("CLOSED"), live ? ui::colors::NEGATIVE() : ui::colors::POSITIVE());
+    set_gate(fast_value_, fast ? tr("OPEN") : tr("CLOSED"), fast ? ui::colors::NEGATIVE() : ui::colors::POSITIVE());
     const QString account = mcp::cli_allowed_account();
     const QStringList venues = mcp::cli_allowed_venues();
     set_gate(account_value_, account.isEmpty() ? tr("NONE") : account,
@@ -598,7 +604,17 @@ StrategyRunHistoryPanel::StrategyRunHistoryPanel(QWidget* parent) : QWidget(pare
     build_ui();
     refresh_timer_.setInterval(5000);
     connect(&refresh_timer_, &QTimer::timeout, this, &StrategyRunHistoryPanel::refresh);
+}
+
+void StrategyRunHistoryPanel::showEvent(QShowEvent* event) {
+    QWidget::showEvent(event);
+    refresh();
     refresh_timer_.start();
+}
+
+void StrategyRunHistoryPanel::hideEvent(QHideEvent* event) {
+    QWidget::hideEvent(event);
+    refresh_timer_.stop();
 }
 
 void StrategyRunHistoryPanel::build_ui() {

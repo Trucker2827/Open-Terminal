@@ -107,6 +107,12 @@ class EdgePredictionModelRepository : public BaseRepository<EdgePredictionObserv
     Result<QVector<EdgePredictionRawTick>> list_spot_price_series_since(
         const QString& symbol, qint64 since_ms, int max_rows = 300000);
     Result<int> count_raw_ticks(const QString& symbol = {}, qint64 since_ms = 0);
+    // Bounded retention for the high-volume exchange tape. Deletes in batches so
+    // a multi-million-row prune never holds one long write lock against the
+    // live daemon. Returns rows deleted. A cutoff of 0 deletes nothing --
+    // see edge_tick_retention_cutoff_ms.
+    Result<int> prune_raw_ticks(const QStringList& sources, qint64 cutoff_ms,
+                                int batch_size = 100000, int max_batches = 500);
     Result<void> add_market_snapshot(const EdgePredictionMarketSnapshot& snapshot);
 
     Result<EdgePredictionObservation> add_observation(const EdgePredictionObservation& in);

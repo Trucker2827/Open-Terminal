@@ -1,8 +1,6 @@
 #include "screens/algo_trading/StrategyAutomationPanel.h"
 
 #include "core/config/ProfileManager.h"
-#include "core/events/EventBus.h"
-#include "storage/repositories/SettingsRepository.h"
 #include "ui/theme/Theme.h"
 
 #include <QAbstractItemView>
@@ -10,13 +8,11 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QMessageBox>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTableWidgetItem>
@@ -62,7 +58,8 @@ QString cadence(int seconds) {
 }
 
 bool strategy_job(const QJsonObject& job) {
-    if (job.value(QStringLiteral("managed_by")).toString() == QStringLiteral("strategy-sandbox"))
+    const QString managed = job.value(QStringLiteral("managed_by")).toString();
+    if (managed == QStringLiteral("strategy-sandbox") || managed == QStringLiteral("automation-24-7"))
         return true;
     const QString text = (job.value(QStringLiteral("name")).toString() + QLatin1Char(' ') +
                           job.value(QStringLiteral("description")).toString()).toLower();
@@ -151,82 +148,19 @@ void StrategyAutomationPanel::build_ui() {
     program_row->addStretch(1);
     root->addLayout(program_row);
 
-    kalshi_authority_status_ = new QLabel(
-        tr("LEGACY LIVE SESSION: UNKNOWN / FAIL CLOSED  |  CODEX CANARY: UNKNOWN / FAIL CLOSED"), this);
-    kalshi_authority_status_->setWordWrap(true);
-    kalshi_authority_status_->setStyleSheet(QStringLiteral(
-        "color:%1;background:%2;border:2px solid %1;padding:7px;font-size:10px;font-weight:800;%3")
-        .arg(ui::colors::AMBER(), ui::colors::BG_SURFACE(), QString::fromLatin1(kMono)));
-    root->addWidget(kalshi_authority_status_);
-
-    auto* live_row = new QHBoxLayout;
-    auto* live_label = new QLabel(tr("LEGACY KALSHI LIVE SESSION · NOT CODEX CANARY"), this);
-    live_label->setStyleSheet(QStringLiteral("color:%1;font-size:9px;font-weight:800;%2")
-                                  .arg(ui::colors::CYAN(), QString::fromLatin1(kMono)));
-    live_row->addWidget(live_label);
-    for (const QString& duration : {QStringLiteral("1H"), QStringLiteral("6H"),
-                                    QStringLiteral("12H"), QStringLiteral("24/7")}) {
-        auto* button = new QPushButton(duration, this);
-        button->setCursor(Qt::PointingHandCursor);
-        button->setText(duration == QStringLiteral("1H")
-                            ? tr("ARM CURRENT HOUR") : tr("ARM %1").arg(duration));
-        button->setToolTip(duration == QStringLiteral("1H")
-                               ? tr("Arm the legacy deterministic session now and stop at the next :00. This does not enable the Codex canary.")
-                               : tr("Arm the legacy deterministic session. This does not enable or qualify the Codex canary."));
-        button->setStyleSheet(button_style(ui::colors::CYAN()));
-        connect(button, &QPushButton::clicked, this, [this, duration]() {
-            const auto answer = QMessageBox::warning(
-                this, tr("Arm legacy deterministic Kalshi automation"),
-                tr("This is the LEGACY deterministic session, not the Codex canary. For %1, it may submit REAL Kalshi orders without approving each bet.%2\n\n"
-                   "Limits: at most 10 orders in any rolling hour, $2 contract stake, fees may bring "
-                   "all-in cost to $3, $120 experiment exposure, one bot order per contract. The kill "
-                   "switch, quote freshness, depth, time-left, edge, credentials, and session expiry are "
-                   "checked again before every submission.")
-                    .arg(duration,
-                         duration == QStringLiteral("1H")
-                             ? tr(" This CURRENT HOUR session stops at the next :00 boundary.")
-                             : QString()),
-                QMessageBox::Cancel | QMessageBox::Yes, QMessageBox::Cancel);
-            if (answer != QMessageBox::Yes) return;
-            run_cli({QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("live"),
-                     QStringLiteral("session"), duration.toLower()},
-                    tr("Arming the %1 bounded autonomous Kalshi session...").arg(duration));
-        });
-        live_row->addWidget(button);
-    }
-    auto* prepare = new QPushButton(tr("MANUAL NEXT $2 BET"), this);
-    prepare->setCursor(Qt::PointingHandCursor);
-    prepare->setToolTip(tr("Prepare one fresh real-market draft. This does not submit money."));
-    prepare->setStyleSheet(button_style(ui::colors::AMBER()));
-    connect(prepare, &QPushButton::clicked, this, [this]() {
-        run_cli({QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("live"),
-                 QStringLiteral("prepare-next"), QStringLiteral("--max-stake"), QStringLiteral("2"),
-                 QStringLiteral("--experiment-cap"), QStringLiteral("120")},
-                tr("Preparing the next eligible Kalshi live draft..."));
-    });
-    live_row->addWidget(prepare);
-    auto* kill = new QPushButton(tr("KILL AUTOMATED TRADING"), this);
-    kill->setCursor(Qt::PointingHandCursor);
-    kill->setToolTip(tr("Immediately engage the global trading kill switch and stop this session."));
-    kill->setStyleSheet(button_style(ui::colors::NEGATIVE()));
-    connect(kill, &QPushButton::clicked, this, [this]() {
-        if (QMessageBox::question(this, tr("Kill automated trading"),
-                                  tr("Engage the global kill switch and stop the Kalshi live evidence session?"))
-            != QMessageBox::Yes) return;
-        SettingsRepository::instance().set(QStringLiteral("cli.kill_switch"), QStringLiteral("true"),
-                                           QStringLiteral("cli"));
-        SettingsRepository::instance().set(QStringLiteral("cli.kill_switch_latched"),
-                                           QStringLiteral("true"), QStringLiteral("cli"));
-        EventBus::instance().publish(
-            QStringLiteral("settings.changed"),
-            QVariantMap{{QStringLiteral("key"), QStringLiteral("cli.kill_switch")}});
-        run_cli({QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("live"),
-                 QStringLiteral("session"), QStringLiteral("stop")},
-                tr("Global kill switch engaged. Stopping the Kalshi session..."));
-    });
-    live_row->addWidget(kill);
-    live_row->addStretch(1);
-    root->addLayout(live_row);
+    // Kalshi session arm stays Predictions; global kill stays Strategies → Risk.
+    auto* predictions_pointer = new QLabel(
+        tr("PAPER ONLY HERE · Kalshi live arming is in Predictions (Kalshi trading / BOT). "
+           "Global kill switch: Strategies → Risk & Safety (reset in Settings → Security). "
+           "This tab runs daemon research jobs and paper crypto programs only — never places "
+           "Kalshi live orders."),
+        this);
+    predictions_pointer->setWordWrap(true);
+    predictions_pointer->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %1;padding:7px;font-size:10px;font-weight:700;%3")
+                                           .arg(ui::colors::AMBER(), ui::colors::BG_SURFACE(),
+                                                QString::fromLatin1(kMono)));
+    root->addWidget(predictions_pointer);
 
     auto* stats = new QHBoxLayout;
     auto add_stat = [&](const QString& label, QLabel*& value) {
@@ -307,7 +241,6 @@ QString StrategyAutomationPanel::selected_job_id() const {
 void StrategyAutomationPanel::refresh() {
     const QString cli = cli_path();
     if (cli.isEmpty()) { status_label_->setText(tr("openterminalcli was not found")); return; }
-    refresh_kalshi_authority_status();
     auto* process = new QProcess(this);
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
             [this, process](int code, QProcess::ExitStatus status) {
@@ -324,43 +257,6 @@ void StrategyAutomationPanel::refresh() {
     process->start(cli, {QStringLiteral("--json"), QStringLiteral("--profile"),
                          ProfileManager::instance().active(), QStringLiteral("daemon"),
                          QStringLiteral("jobs"), QStringLiteral("list")});
-}
-
-void StrategyAutomationPanel::refresh_kalshi_authority_status() {
-    if (!kalshi_authority_status_) return;
-    const QString cli = cli_path();
-    if (cli.isEmpty()) return;
-    auto* process = new QProcess(this);
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, process](int code, QProcess::ExitStatus status) {
-        const QJsonDocument document = QJsonDocument::fromJson(process->readAllStandardOutput());
-        process->deleteLater();
-        const QString root = ProfileManager::instance().profile_root() + QStringLiteral("/daemon/");
-        const auto read_object = [](const QString& path) {
-            QFile file(path);
-            if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QJsonObject{};
-            const auto parsed = QJsonDocument::fromJson(file.readAll());
-            return parsed.isObject() ? parsed.object() : QJsonObject{};
-        };
-        const QJsonObject promotion = read_object(root + QStringLiteral("advisor_promotion_state.json"));
-        const QJsonObject canary = read_object(root + QStringLiteral("advisor_canary_config.json"));
-        const QString state = promotion.value(QStringLiteral("state")).toString();
-        const bool legacy_known = status == QProcess::NormalExit && code == 0 && document.isObject();
-        const bool legacy_armed = legacy_known && document.object().value(QStringLiteral("session_active")).toBool();
-        const bool canary_enabled = canary.value(QStringLiteral("enabled")).toBool() &&
-                                    state == QStringLiteral("CANARY_ENABLED");
-        kalshi_authority_status_->setText(
-            tr("LEGACY LIVE SESSION: %1  |  CODEX CANARY: %2  |  These are independent authorities.")
-                .arg(!legacy_known ? tr("UNKNOWN / FAIL CLOSED") : legacy_armed ? tr("ARMED") : tr("DISARMED"),
-                     state.isEmpty() ? tr("UNKNOWN / FAIL CLOSED") : canary_enabled ? tr("ENABLED") : state));
-        kalshi_authority_status_->setStyleSheet(QStringLiteral(
-            "color:%1;background:%2;border:2px solid %1;padding:7px;font-size:10px;font-weight:800;%3")
-            .arg(legacy_armed || canary_enabled ? ui::colors::NEGATIVE() : ui::colors::AMBER(),
-                 ui::colors::BG_SURFACE(), QString::fromLatin1(kMono)));
-    });
-    process->start(cli, {QStringLiteral("--json"),QStringLiteral("--headless"),QStringLiteral("--profile"),
-        ProfileManager::instance().active(),QStringLiteral("kalshi"),QStringLiteral("auto"),
-        QStringLiteral("live"),QStringLiteral("status")});
 }
 
 void StrategyAutomationPanel::populate(const QJsonObject& document) {

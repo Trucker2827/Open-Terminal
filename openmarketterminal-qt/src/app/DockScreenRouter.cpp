@@ -84,7 +84,7 @@ QString DockScreenRouter::title_for_id(const QString& id) {
         {"agent_config", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Agent Config")},
         {"mcp_servers", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "MCP Servers")},
         {"node_editor", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Workflows")},
-        {"code_editor", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Notebooks")},
+        {"code_editor", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Research Lab")},
         {"excel", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Excel")},
         {"report_builder", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Report Builder")},
         {"trade_viz", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Trade Intelligence")},

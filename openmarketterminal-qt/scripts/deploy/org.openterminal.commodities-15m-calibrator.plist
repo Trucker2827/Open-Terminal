@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Commodities 15m directional calibrator — GOLD/SILVER/WTI paper scoreboard.
+  DOCUMENTED, NOT AUTO-LOADED — install by hand:
+
+      cp org.openterminal.commodities-15m-calibrator.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.commodities-15m-calibrator.plist
+
+  UNINSTALL:
+
+      launchctl bootout gui/$UID/org.openterminal.commodities-15m-calibrator
+      rm ~/Library/LaunchAgents/org.openterminal.commodities-15m-calibrator.plist
+
+  RESTART after editing the script:
+
+      launchctl kickstart -k gui/$UID/org.openterminal.commodities-15m-calibrator
+
+  WHAT IT DOES: every 60s runs
+      python3 scripts/kalshi_advise/commodities_15m_calibrator.py once
+  which scores P(close>open) for open KXGOLD15M / KXSILVER15M / KXWTI15M
+  contracts (Yahoo spot proxy + Kalshi floor_strike), settles against Kalshi
+  recorded results (Yahoo fallback), and rewrites
+
+      ~/Library/Application Support/Open Terminal/Open Terminal/commodities-15m-calibrator.json
+
+  Trust (`adds_value_over_market`) flips true only after ≥100 scored contracts
+  with Brier strictly better than the raw mid. Until then `kalshi bot` journals
+  SIGNAL_UNTRUSTED for that family and places no commodity-15m bid.
+
+  ADVISORY / PAPER PATH ONLY. Never arms live trading.
+
+  VERIFY:
+      python3 scripts/kalshi_advise/commodities_15m_calibrator.py report
+-->
+<plist version="1.0"><dict>
+  <key>Label</key><string>org.openterminal.commodities-15m-calibrator</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/scripts/kalshi_advise/commodities_15m_calibrator.py</string>
+    <string>once</string>
+  </array>
+  <key>StartInterval</key><integer>60</integer>
+  <key>RunAtLoad</key><true/>
+  <key>WorkingDirectory</key><string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt</string>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/commodities-15m-calibrator.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/commodities-15m-calibrator.err.log</string>
+</dict></plist>

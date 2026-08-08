@@ -2,7 +2,7 @@
 
 Use when the user wants an analysis they can **run and tweak themselves** (interactive
 DCF, comps, fundamentals) rather than a static chat answer or a Report Builder memo.
-Call **`notebook_create(title, cells)`** — it writes a Python notebook into the Notebooks
+Call **`notebook_create(title, cells)`** — it writes a Python notebook into the Research Lab
 screen and opens it; the **user runs the cells**.
 
 `cells` is an ordered list of `{type: "code"|"markdown", source: string}`.

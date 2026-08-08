@@ -1,5 +1,6 @@
 #include "services/prediction/kalshi/KalshiBotDecision.h"
 
+#include "services/edge_radar/KalshiAutoEngine.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 // For the fill model's NAME only (kFillModel), so a bid row can state the model
 // that will decide whether it ever becomes a position instead of restating it
@@ -13,6 +14,7 @@
 #include <QTimeZone>
 #include <QString>
 
+#include <algorithm>
 #include <cmath>
 
 namespace openmarketterminal::services::prediction::kalshi_ns {
@@ -91,6 +93,34 @@ bool KalshiBotDecision::signal_trusted(const QJsonObject& report) {
     return report.value(QStringLiteral("adds_value_over_market")).toBool() &&
            report.value(QStringLiteral("brier_full")).isDouble() &&
            report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
+}
+
+QJsonObject KalshiBotDecision::merge_family_reports(const QJsonObject& threshold_report,
+                                                    const QJsonObject& kxbtc15m_report,
+                                                    qint64 now_ms,
+                                                    const Config& config,
+                                                    const QJsonObject& commodities_15m_report) {
+    QJsonObject merged_predictions;
+    qint64 newest_ms = 0;
+    const auto take_fresh_filtered = [&](const QJsonObject& filtered_report) {
+        const qint64 generated_ms =
+            static_cast<qint64>(filtered_report.value(QStringLiteral("generated_at_ms")).toDouble());
+        if (generated_ms <= 0) return;
+        const qint64 age_ms = now_ms - generated_ms;
+        if (age_ms >= config.max_report_age_ms || age_ms < 0) return;
+        const QJsonObject filtered =
+            filtered_report.value(QStringLiteral("predictions")).toObject();
+        for (auto it = filtered.constBegin(); it != filtered.constEnd(); ++it)
+            merged_predictions.insert(it.key(), it.value());
+        newest_ms = std::max(newest_ms, generated_ms);
+    };
+    take_fresh_filtered(filter_predictions_for_family(threshold_report, /*keep_kxbtc15m=*/false));
+    take_fresh_filtered(filter_predictions_for_family(kxbtc15m_report, /*keep_kxbtc15m=*/true));
+    take_fresh_filtered(filter_commodity_15m_predictions(commodities_15m_report));
+    if (merged_predictions.isEmpty() || newest_ms <= 0) return {};
+    return QJsonObject{{QStringLiteral("generated_at_ms"), static_cast<double>(newest_ms)},
+                       {QStringLiteral("predictions"), merged_predictions},
+                       {QStringLiteral("event"), QStringLiteral("merged_family_calibrators")}};
 }
 
 QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
@@ -262,6 +292,30 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
         const double side_edge = side_p - side_mid;   // == |edge|, by construction
         const double rest_price = std::floor(side_mid * 100.0 + 1e-9) / 100.0;
 
+        // Postmortem lesson: ban NO fades of already-high YES near close.
+        // Worst paper losses were cheap NO crosses while YES mid ≥ ~0.85 and
+        // the market still resolved YES. Lift only when venue lead confirms
+        // down or BRTI avg60 is below open; missing confirm → ban stands.
+        if (!yes_side && config.ban_no_fade_yes_mid > 0.0 &&
+            market_mid + 1e-9 >= config.ban_no_fade_yes_mid &&
+            runway_seconds <= static_cast<double>(config.ban_no_fade_max_runway_sec) + 1e-9) {
+            const QString lift_reason = outside_info_no_fade_lift_reason(prediction);
+            if (!lift_reason.isEmpty()) {
+                row.insert(QStringLiteral("fade_ban_lifted"), true);
+                row.insert(QStringLiteral("fade_ban_lift_reason"), lift_reason);
+                // Fall through — allow the NO bid path.
+            } else {
+                row.insert(QStringLiteral("reason_code"), QString::fromLatin1(kFadeYesNearClose));
+                row.insert(QStringLiteral("side"), QStringLiteral("NO"));
+                row.insert(QStringLiteral("side_edge"), side_edge);
+                row.insert(QStringLiteral("ban_no_fade_yes_mid"), config.ban_no_fade_yes_mid);
+                row.insert(QStringLiteral("ban_no_fade_max_runway_sec"),
+                           config.ban_no_fade_max_runway_sec);
+                rows.append(finish(row));
+                continue;
+            }
+        }
+
         // The CROSSING tier prices off the side's own REAL ask, as observed by
         // the daemon and passed through by the calibrator. Kalshi's NO book is
         // a book: the NO ask is read directly, never inferred from the YES bid.
@@ -293,6 +347,7 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
         double spread_cost = 0.0;
         double cross_fee = 0.0;
         double net_ev = 0.0;
+        double effective_cross_margin = config.cross_margin_usd;
         bool cross = false;
         if (book_priced) {
             spread_cost = cross_price - side_mid;
@@ -304,7 +359,14 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
             // below at the price this choice picks.
             cross_fee = KalshiEvidenceEngine::conservative_taker_fee(cross_price, 1.0);
             net_ev = side_p - cross_price - cross_fee;
-            cross = net_ev > config.cross_margin_usd + 1e-9;
+            // Postmortem lesson: favourite asymmetry — avg win $0.89 vs avg
+            // loss $1.79. Crossing an expensive ask needs more surviving EV
+            // before we pay for the fill; else rest (or pass on rest premium).
+            if (config.favourite_cross_extra_margin_usd > 0.0 &&
+                cross_price + 1e-9 >= config.favourite_cross_price)
+                effective_cross_margin =
+                    config.cross_margin_usd + config.favourite_cross_extra_margin_usd;
+            cross = net_ev > effective_cross_margin + 1e-9;
             style_reason = cross ? kCrossEdgeClearsCost : kRestEdgeBelowCost;
         }
 
@@ -338,6 +400,12 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
             row.insert(QStringLiteral("cross_fee_usd"), cross_fee);
             row.insert(QStringLiteral("cross_cost_usd"), spread_cost + cross_fee);
             row.insert(QStringLiteral("net_ev_usd"), net_ev);
+            row.insert(QStringLiteral("effective_cross_margin_usd"), effective_cross_margin);
+            if (effective_cross_margin > config.cross_margin_usd + 1e-9) {
+                row.insert(QStringLiteral("favourite_cross_price"), config.favourite_cross_price);
+                row.insert(QStringLiteral("favourite_cross_extra_margin_usd"),
+                           config.favourite_cross_extra_margin_usd);
+            }
         }
 
         // --- the resting tier's adverse-selection premium (issue #165) ------
@@ -496,9 +564,38 @@ QJsonArray KalshiBotDecision::normalize_settlements(const QJsonArray& account_se
     return out;
 }
 
+namespace {
+
+/// Decision fields already on the filled position (from the bid row). Copied
+/// onto the settlement so a postmortem can classify without re-joining the
+/// ledger. Absent on the position → absent on the settlement (never zeroed).
+void copy_bid_snapshot_into(QJsonObject& settlement, const QJsonObject& position) {
+    static const char* const kKeys[] = {
+        "calibrated_p", "market_mid",     "edge",           "side_edge",
+        "runway_seconds", "quote_style",  "quote_style_reason", "net_ev_usd",
+        "cross_cost_usd", "fill_model",   "ttl_ms",         "signal_trusted",
+        "reason_code"};
+    for (const char* key : kKeys) {
+        const QString k = QString::fromLatin1(key);
+        if (position.contains(k)) settlement.insert(k, position.value(k));
+    }
+}
+
+void maybe_insert_mid_at_settle(QJsonObject& settlement, const QString& ticker,
+                                const QHash<QString, double>& market_mid_by_ticker) {
+    const auto it = market_mid_by_ticker.constFind(ticker);
+    if (it == market_mid_by_ticker.constEnd()) return;
+    const double mid = it.value();
+    if (!(mid > 0.0 && mid < 1.0)) return;
+    settlement.insert(QStringLiteral("market_mid_at_settle"), mid);
+}
+
+} // namespace
+
 QJsonArray KalshiBotDecision::settle_paper(const QJsonArray& open_positions,
                                            const QJsonArray& settlements,
-                                           qint64 now_ms) {
+                                           qint64 now_ms,
+                                           const QHash<QString, double>& market_mid_by_ticker) {
     QHash<QString, QJsonObject> by_ticker;
     for (const auto& value : settlements) {
         const QJsonObject row = value.toObject();
@@ -551,7 +648,7 @@ QJsonArray KalshiBotDecision::settle_paper(const QJsonArray& open_positions,
         const double fee = position.value(QStringLiteral("fee_usd")).toDouble();
         const bool won = result == side;
         const double payout = won ? contracts * 1.0 : 0.0;
-        out.append(QJsonObject{
+        QJsonObject row{
             {QStringLiteral("event"), QString::fromLatin1(kSettlementEvent)},
             {QStringLiteral("ts_ms"), static_cast<double>(now_ms)},
             {QStringLiteral("ts"), iso(now_ms)},
@@ -569,7 +666,306 @@ QJsonArray KalshiBotDecision::settle_paper(const QJsonArray& open_positions,
             {QStringLiteral("payout_usd"), payout},
             {QStringLiteral("realized_pnl"), round_cents(payout - stake - fee)},
             {QStringLiteral("settlement_source"), found->value(QStringLiteral("source"))},
-            {QStringLiteral("settled_time"), found->value(QStringLiteral("settled_time"))}});
+            {QStringLiteral("settled_time"), found->value(QStringLiteral("settled_time"))}};
+        copy_bid_snapshot_into(row, position);
+        maybe_insert_mid_at_settle(row, ticker, market_mid_by_ticker);
+        out.append(row);
+    }
+    return out;
+}
+
+namespace {
+
+bool venue_lead_confirms_no_fade(const QJsonObject& features) {
+    // Fail closed: without explicit lead fields there is no confirm to lift on.
+    if (!features.contains(QStringLiteral("lead_confirms_direction")) ||
+        !features.contains(QStringLiteral("lead_conflicts")) ||
+        !features.value(QStringLiteral("venue_lead_bps_30s")).isDouble())
+        return false;
+    if (features.value(QStringLiteral("lead_conflicts")).toBool()) return false;
+    if (!features.value(QStringLiteral("lead_confirms_direction")).toBool()) return false;
+    // Downward venue lead agrees with fading YES (NO thesis).
+    return features.value(QStringLiteral("venue_lead_bps_30s")).toDouble() < 0.0;
+}
+
+bool brti_avg60_confirms_no_fade(const QJsonObject& features) {
+    // KXBTC15M pays on CF BRTI 60s average vs open. Avg60 below open confirms
+    // the NO thesis when fading a high YES. Fail closed without both prices.
+    if (!features.value(QStringLiteral("brti_avg_60s")).isDouble() ||
+        !features.value(QStringLiteral("open_price")).isDouble())
+        return false;
+    const double avg60 = features.value(QStringLiteral("brti_avg_60s")).toDouble();
+    const double open = features.value(QStringLiteral("open_price")).toDouble();
+    if (!(avg60 > 0.0 && open > 0.0) || !(avg60 < open)) return false;
+    // When physics-on-BRTI is present it must agree NO (< 0.5).
+    if (features.value(QStringLiteral("p_brti_avg60")).isDouble() &&
+        features.value(QStringLiteral("p_brti_avg60")).toDouble() >= 0.5)
+        return false;
+    return true;
+}
+
+} // namespace
+
+QString KalshiBotDecision::outside_info_no_fade_lift_reason(const QJsonObject& prediction) {
+    const QJsonObject features = prediction.value(QStringLiteral("features")).toObject();
+    if (venue_lead_confirms_no_fade(features))
+        return QStringLiteral("lead_confirms_down");
+    if (brti_avg60_confirms_no_fade(features))
+        return QStringLiteral("brti_avg60_below_open");
+    return {};
+}
+
+bool KalshiBotDecision::outside_info_confirms_no_fade(const QJsonObject& prediction) {
+    return !outside_info_no_fade_lift_reason(prediction).isEmpty();
+}
+
+void KalshiBotDecision::sample_mid_path(const QJsonArray& open_positions,
+                                        const QJsonObject& predictions,
+                                        qint64 now_ms,
+                                        MidPathStore* store,
+                                        int max_samples) {
+    if (!store || max_samples < 1) return;
+    for (const auto& value : open_positions) {
+        const QJsonObject position = value.toObject();
+        const QString pid = position.value(QStringLiteral("position_id")).toString();
+        const QString ticker = position.value(QStringLiteral("ticker")).toString();
+        if (pid.isEmpty() || ticker.isEmpty()) continue;
+        const QJsonObject prediction = predictions.value(ticker).toObject();
+        const QJsonValue mid_v = prediction.value(QStringLiteral("market_yes_mid"));
+        if (!mid_v.isDouble()) continue;
+        const double mid = mid_v.toDouble();
+        if (!(mid > 0.0 && mid < 1.0)) continue;
+        QJsonObject sample{{QStringLiteral("ts_ms"), static_cast<double>(now_ms)},
+                           {QStringLiteral("market_yes_mid"), mid}};
+        const QString side = position.value(QStringLiteral("side")).toString().toUpper();
+        const QJsonValue bid_v = prediction.value(
+            side == QLatin1String("NO") ? QStringLiteral("market_no_bid")
+                                        : QStringLiteral("market_yes_bid"));
+        if (bid_v.isDouble()) sample.insert(QStringLiteral("held_side_bid"), bid_v.toDouble());
+        QJsonArray path = store->value(pid);
+        if (!path.isEmpty()) {
+            const qint64 last =
+                static_cast<qint64>(path.last().toObject().value(QStringLiteral("ts_ms")).toDouble());
+            if (last == now_ms) continue;  // one sample per tick
+        }
+        path.append(sample);
+        while (path.size() > max_samples) path.removeFirst();
+        store->insert(pid, path);
+    }
+}
+
+void KalshiBotDecision::attach_mid_path(QJsonObject& settlement_or_close, MidPathStore* store) {
+    if (!store) return;
+    const QString pid = settlement_or_close.value(QStringLiteral("position_id")).toString();
+    if (pid.isEmpty() || !store->contains(pid)) return;
+    settlement_or_close.insert(QStringLiteral("mid_path"), store->take(pid));
+}
+
+QJsonArray KalshiBotDecision::paper_cashout(const QJsonArray& open_positions,
+                                            const QJsonObject& report,
+                                            qint64 now_ms,
+                                            const Config& config,
+                                            CashoutStreak* cut_streak) {
+    using openmarketterminal::services::edge_radar::KalshiAutoEngine;
+    using openmarketterminal::services::edge_radar::KalshiExitConstraints;
+    using openmarketterminal::services::edge_radar::KalshiPositionExitInput;
+
+    QJsonArray out;
+    if (!config.enable_paper_cashout || open_positions.isEmpty()) return out;
+
+    const qint64 generated_ms =
+        static_cast<qint64>(report.value(QStringLiteral("generated_at_ms")).toDouble());
+    const qint64 age_ms =
+        (generated_ms > 0 && now_ms >= generated_ms) ? (now_ms - generated_ms) : -1;
+    if (report.isEmpty() || generated_ms <= 0 || age_ms < 0 ||
+        age_ms > config.max_report_age_ms) {
+        // One refusal row for the tick — not per position — so a stale report
+        // does not spam the ledger while still documenting the fail-closed hold.
+        if (!open_positions.isEmpty()) {
+            out.append(base_row(now_ms, QString(), QStringLiteral("pass"),
+                                QString::fromLatin1(kCashoutStaleReport)));
+        }
+        return out;
+    }
+
+    const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
+    KalshiExitConstraints constraints;
+    constraints.max_signal_age_seconds =
+        static_cast<int>(std::min<qint64>(constraints.max_signal_age_seconds,
+                                          config.max_report_age_ms / 1000));
+
+    for (const auto& value : open_positions) {
+        const QJsonObject position = value.toObject();
+        if (position.value(QStringLiteral("action")).toString() != QStringLiteral("bid")) continue;
+        const QString ticker = position.value(QStringLiteral("ticker")).toString();
+        const QString side = position.value(QStringLiteral("side")).toString().trimmed().toUpper();
+        const int contracts = position.value(QStringLiteral("contracts")).toInt();
+        const double entry_price = position.value(QStringLiteral("price")).toDouble();
+        const double entry_fee = position.value(QStringLiteral("fee_usd")).toDouble();
+        const QString position_id = position.value(QStringLiteral("position_id")).toString();
+        if (ticker.isEmpty() || position_id.isEmpty() || contracts < 1 ||
+            (side != QStringLiteral("YES") && side != QStringLiteral("NO")) ||
+            !(entry_price > 0.0 && entry_price < 1.0))
+            continue;
+
+        const QJsonObject prediction = predictions.value(ticker).toObject();
+        if (prediction.isEmpty()) {
+            QJsonObject row = base_row(now_ms, ticker, QStringLiteral("pass"),
+                                       QString::fromLatin1(kCashoutNoBid));
+            row.insert(QStringLiteral("position_id"), position_id);
+            row.insert(QStringLiteral("side"), side);
+            row.insert(QStringLiteral("detail"),
+                       QStringLiteral("no prediction for held ticker — cannot price cashout"));
+            out.append(row);
+            if (cut_streak) cut_streak->remove(ticker);
+            continue;
+        }
+
+        const bool yes_side = side == QStringLiteral("YES");
+        const QJsonValue bid_value = prediction.value(
+            yes_side ? QStringLiteral("market_yes_bid") : QStringLiteral("market_no_bid"));
+        // Fail closed: mid must never proxy a sell. Missing/invalid bid → HOLD.
+        if (!bid_value.isDouble()) {
+            QJsonObject row = base_row(now_ms, ticker, QStringLiteral("pass"),
+                                       QString::fromLatin1(kCashoutNoBid));
+            row.insert(QStringLiteral("position_id"), position_id);
+            row.insert(QStringLiteral("side"), side);
+            row.insert(QStringLiteral("detail"),
+                       QStringLiteral("held-side bid absent — refuse cashout (no mid proxy)"));
+            if (prediction.value(QStringLiteral("market_yes_mid")).isDouble())
+                row.insert(QStringLiteral("market_mid"),
+                           prediction.value(QStringLiteral("market_yes_mid")).toDouble());
+            out.append(row);
+            if (cut_streak) cut_streak->remove(ticker);
+            continue;
+        }
+        const double raw_bid = bid_value.toDouble();
+        if (!(raw_bid > 0.0 && raw_bid <= 1.0)) {
+            QJsonObject row = base_row(now_ms, ticker, QStringLiteral("pass"),
+                                       QString::fromLatin1(kCashoutNoBid));
+            row.insert(QStringLiteral("position_id"), position_id);
+            row.insert(QStringLiteral("side"), side);
+            out.append(row);
+            if (cut_streak) cut_streak->remove(ticker);
+            continue;
+        }
+        // Seller never assumes better than the book: floor to the cent.
+        const double exit_price = std::floor(raw_bid * 100.0 + 1e-9) / 100.0;
+        if (!(exit_price > 0.0 && exit_price <= 1.0)) {
+            if (cut_streak) cut_streak->remove(ticker);
+            continue;
+        }
+
+        const double calibrated_p = prediction.value(QStringLiteral("p_yes_full")).toDouble();
+        if (!(calibrated_p > 0.0 && calibrated_p < 1.0)) {
+            if (cut_streak) cut_streak->remove(ticker);
+            continue;
+        }
+        const double held_fair = yes_side ? calibrated_p : (1.0 - calibrated_p);
+
+        const QJsonObject features = prediction.value(QStringLiteral("features")).toObject();
+        const double sqrt_minutes_left =
+            features.value(QStringLiteral("sqrt_minutes_left")).toDouble();
+        int seconds_left = -1;
+        if (sqrt_minutes_left > 0.0) {
+            const double runway =
+                sqrt_minutes_left * sqrt_minutes_left * 60.0 - static_cast<double>(age_ms) / 1000.0;
+            seconds_left = static_cast<int>(std::floor(runway));
+        }
+
+        const double exit_fee_per =
+            KalshiEvidenceEngine::conservative_taker_fee(exit_price, 1.0);
+        const double cash_out = exit_price - exit_fee_per;
+        // Streak tracks the economic-cut CONDITION across ticks (AutoEngine
+        // only sells once streak >= min_trigger_streak).
+        int streak = 0;
+        if (cut_streak) {
+            if (cash_out >= held_fair + constraints.economic_margin)
+                streak = cut_streak->value(ticker, 0) + 1;
+            else
+                streak = 0;
+            cut_streak->insert(ticker, streak);
+        }
+
+        KalshiPositionExitInput input;
+        input.held_side = side.toLower();
+        input.entry_price = entry_price;
+        input.contracts = contracts;
+        input.held_side_fair = held_fair;
+        input.held_side_bid = exit_price;
+        input.exit_fee_per_contract = exit_fee_per;
+        input.seconds_left = seconds_left;
+        input.trigger_streak = streak;
+        input.signal_age_seconds = static_cast<int>(age_ms / 1000);
+
+        const auto verdict = KalshiAutoEngine::evaluate_position_exit(input, constraints);
+        if (!verdict.sell) {
+            // Quiet HOLD — journaling every intact hold would drown the ledger.
+            continue;
+        }
+
+        const double exit_fee =
+            KalshiEvidenceEngine::conservative_taker_fee(exit_price, contracts);
+        const double stake = round_cents(contracts * entry_price);
+        const double proceeds = round_cents(contracts * exit_price);
+        const double realized =
+            round_cents(proceeds - stake - entry_fee - exit_fee);
+
+        QJsonObject sell = base_row(now_ms, ticker, QStringLiteral("sell"), verdict.reason);
+        sell.insert(QStringLiteral("position_id"), position_id);
+        sell.insert(QStringLiteral("side"), side);
+        sell.insert(QStringLiteral("contracts"), contracts);
+        sell.insert(QStringLiteral("entry_price"), entry_price);
+        sell.insert(QStringLiteral("exit_price"), exit_price);
+        sell.insert(QStringLiteral("held_side_fair"), held_fair);
+        sell.insert(QStringLiteral("held_side_bid"), exit_price);
+        sell.insert(QStringLiteral("exit_fee_usd"), exit_fee);
+        sell.insert(QStringLiteral("entry_fee_usd"), entry_fee);
+        sell.insert(QStringLiteral("runway_seconds"), seconds_left);
+        sell.insert(QStringLiteral("trigger_streak"), streak);
+        sell.insert(QStringLiteral("quote_style"), QStringLiteral("cross"));
+        sell.insert(QStringLiteral("fill_model"),
+                    QString::fromLatin1(KalshiBotOrders::kCashoutFillModel));
+        sell.insert(QStringLiteral("fill_rule"),
+                    QString::fromLatin1(KalshiBotOrders::kCashoutFillRule));
+        sell.insert(QStringLiteral("signal_trusted"), signal_trusted(report));
+        out.append(sell);
+
+        QJsonObject close{
+            {QStringLiteral("event"), QString::fromLatin1(kSettlementEvent)},
+            {QStringLiteral("ts_ms"), static_cast<double>(now_ms)},
+            {QStringLiteral("ts"), iso(now_ms)},
+            {QStringLiteral("mode"), QStringLiteral("paper")},
+            {QStringLiteral("live_eligible"), false},
+            {QStringLiteral("position_id"), position_id},
+            {QStringLiteral("ticker"), ticker},
+            {QStringLiteral("side"), side},
+            {QStringLiteral("contracts"), contracts},
+            {QStringLiteral("price"), entry_price},
+            {QStringLiteral("exit_price"), exit_price},
+            {QStringLiteral("stake_usd"), stake},
+            {QStringLiteral("fee_usd"), round_cents(entry_fee + exit_fee)},
+            {QStringLiteral("entry_fee_usd"), entry_fee},
+            {QStringLiteral("exit_fee_usd"), exit_fee},
+            {QStringLiteral("resolution"), QStringLiteral("early_exit")},
+            {QStringLiteral("close_reason"), verdict.reason},
+            {QStringLiteral("won"), QJsonValue::Null},
+            {QStringLiteral("payout_usd"), proceeds},
+            {QStringLiteral("realized_pnl"), realized},
+            {QStringLiteral("settlement_source"), QStringLiteral("paper_cashout")},
+            {QStringLiteral("held_side_fair"), held_fair},
+            {QStringLiteral("runway_seconds"), seconds_left},
+            {QStringLiteral("fill_model"),
+             QString::fromLatin1(KalshiBotOrders::kCashoutFillModel)}};
+        copy_bid_snapshot_into(close, position);
+        if (prediction.value(QStringLiteral("market_yes_mid")).isDouble()) {
+            const double mid_now = prediction.value(QStringLiteral("market_yes_mid")).toDouble();
+            if (mid_now > 0.0 && mid_now < 1.0)
+                close.insert(QStringLiteral("market_mid_at_settle"), mid_now);
+        }
+        out.append(close);
+
+        if (cut_streak) cut_streak->remove(ticker);
     }
     return out;
 }

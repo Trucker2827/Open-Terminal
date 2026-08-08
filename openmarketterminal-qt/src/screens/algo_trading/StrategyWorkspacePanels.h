@@ -1,8 +1,10 @@
 #pragma once
 
+#include <QHideEvent>
 #include <QJsonObject>
 #include <QLabel>
 #include <QPushButton>
+#include <QShowEvent>
 #include <QTableWidget>
 #include <QTimer>
 #include <QWidget>
@@ -88,6 +90,10 @@ class StrategyRunHistoryPanel final : public QWidget {
   public slots:
     void refresh();
     void focus_outcomes();
+
+  protected:
+    void showEvent(QShowEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
 
   private:
     void build_ui();

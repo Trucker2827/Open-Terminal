@@ -75,6 +75,19 @@ struct BitcoinEvidenceResult {
     qint64 as_of_ms = 0;
 };
 
+// Idempotency key for a settlement outcome row.
+//
+// A settlement belongs to the CONTRACT, not to the snapshot that happened to be
+// looking at it: one 15-minute contract stays selected across many publish
+// cycles, so keying the scorer by snapshot timestamp re-settles the same
+// contract once per cycle and every duplicate is then counted as an independent
+// observation by the abstention/calibration maths. Directional outcomes are the
+// opposite -- each snapshot genuinely starts its own forward return -- so they
+// keep the per-snapshot key.
+//
+// Falls back to the per-snapshot key only for legacy rows that carry no ticker.
+QString evidence_settlement_key(const QString& contract_ticker, qint64 observed_at_ms);
+
 class BitcoinEvidenceEngine {
   public:
     static BitcoinEvidenceResult analyze(const BitcoinEvidenceInput& input);

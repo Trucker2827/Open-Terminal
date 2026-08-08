@@ -23,9 +23,11 @@ class PredictionMarketsScreen final : public QWidget, public IStatefulScreen {
 
   private:
     void show_venue(const QString& venue);
+    /// Construct the legacy Polymarket workspace on first use only.
+    void ensure_polymarket();
 
     QStackedWidget* stack_ = nullptr;
-    PolymarketScreen* polymarket_ = nullptr;
+    PolymarketScreen* polymarket_ = nullptr;  ///< nullptr until first Polymarket switch
     kalshi::KalshiScreen* kalshi_ = nullptr;
     QString venue_ = QStringLiteral("kalshi");
 };

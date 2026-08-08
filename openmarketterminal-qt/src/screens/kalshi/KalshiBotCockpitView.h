@@ -1,6 +1,6 @@
 #pragma once
 
-// The BOT COCKPIT scene widget (issue #146): the decision-rain view the
+// The BOT COCKPIT scene widget (issue #146): the L→R decision-flow view the
 // Predictions screen opens over the BOT tab while `kalshi bot` is trading.
 //
 // This class paints and nothing else. Every value it draws — the mood, the
@@ -21,14 +21,20 @@
 //     keeps a stale cockpit from busy-looping — and it is the same boolean the
 //     tests assert on, not a separate widget-side rule.
 //
-// The widget has NO controls: it cannot arm, size, price, place, or stop
-// anything. The kill switch stays on the BOT tab where it already lives.
+// The widget has NO trading controls: it cannot arm, size, price, place, or
+// stop anything. Click is inspect-only (outside-info ablations / parity on the
+// scoreboard nodes, or the PM KPI for bid postmortem detail). Wheel / ↑↓
+// scrolls the FLOW lane list when more contracts are published than fit. The
+// kill switch stays on the BOT tab.
 
 #include "screens/kalshi/BotCockpitPresentation.h"
 
 #include <QHash>
 #include <QJsonObject>
+#include <QRect>
+#include <QRectF>
 #include <QString>
+#include <QVector>
 #include <QWidget>
 
 #include <functional>
@@ -56,16 +62,48 @@ class KalshiBotCockpitView : public QWidget {
     /// while visible, and is always false while hidden.
     bool animating() const;
 
+    /// Which inspectable orbit node / PM KPI is expanded (empty when closed).
+    /// Postmortem uses `kBotCockpitPostmortemInspectId`. Test hook.
+    QString inspect_node_id() const { return inspect_node_id_; }
+    /// Open the bid-postmortem inspect overlay (PM KPI). Read-only.
+    void open_postmortem_inspect();
+    /// First visible FLOW lane index (scroll offset). Test hook.
+    int lane_scroll() const { return lane_scroll_; }
+
   protected:
     void paintEvent(QPaintEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
 
   private:
     void apply_scene(const BotCockpitScene& scene);
     void sync_animation_timer();
     QColor role_color(const QString& role) const;
     QColor mood_color() const;
+    QRectF node_hit_rect(int index) const;
+    const BotCockpitNode* node_at(const QPoint& pos) const;
+    /// Per-scene-index KPI hit boxes matching paint (empty rect = not shown).
+    /// PM is always reserved when present so narrow widths cannot bury it.
+    QVector<QRect> kpi_entry_rects() const;
+    /// Index of the PM KPI entry, or -1.
+    int postmortem_kpi_index() const;
+    bool postmortem_kpi_at(const QPoint& pos) const;
+    struct KpiStripLayout {
+        QVector<QRect> entry_rects;
+        QRect overflow_rect;
+        QString overflow_text;
+    };
+    KpiStripLayout layout_kpi_strip() const;
+    QString inspect_detail_text() const;
+    QString inspect_title() const;
+    int flow_lane_capacity() const;
+    int max_lane_scroll() const;
+    void clamp_lane_scroll();
+    bool scroll_lanes_by(int delta_lanes);
 
     BotCockpitScene scene_;
     std::function<QJsonObject()> live_status_provider_;
@@ -78,6 +116,14 @@ class KalshiBotCockpitView : public QWidget {
     /// and never again — one flash per real journal row.
     QHash<QString, int> pulse_age_frames_;
     int frame_ = 0;
+    /// Click-to-inspect: id of the open scoreboard node, or empty.
+    QString inspect_node_id_;
+    /// First visible contract lane in the FLOW panel (0-based).
+    int lane_scroll_ = 0;
+    /// Last painted FLOW body rect — wheel scroll hit-tests against this.
+    QRect flow_body_rect_;
+    /// Trackpad pixel accumulator so fine gestures still advance one lane.
+    double wheel_accum_ = 0.0;
 };
 
 } // namespace openmarketterminal::screens::kalshi

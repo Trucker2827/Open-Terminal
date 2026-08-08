@@ -389,10 +389,10 @@ remain the primary short-horizon evidence.
 | Screen | Role in the current system |
 | --- | --- |
 | Profile and Settings | Local identity, AI providers, accounts, security, PIN behavior, and automation controls. |
-| Crypto | Coinbase/Kraken-oriented spot and scalp cockpit, DOM, order ticket, fee and cost views, positions, orders, fills, and history. |
-| Predictions | Kalshi contract discovery, settlement race, contract order book, position lifecycle, P/L, maker order flow, and auto cockpit. |
-| Strategies | Strategy evidence, proof books, experiments, calibration, deployments, scans, alerts, and research links. Old templates should never be presented as proof of a working edge. |
-| Notebooks / Research Lab | Postmortems, replay, calibration, cohort analysis, strategy experiments, and portfolio research backed by local evidence. |
+| Crypto | Coinbase/Kraken spot and scalp cockpit (DOM, ticket, fees, fills). Spot/scalp canary arm lives in Profile — not Kalshi. |
+| Predictions | Kalshi + Polymarket races/bets; human Kalshi live arm / kill; BOT cockpit; bid postmortem inspect. |
+| Strategies | Paper proof sandbox: evidence books, handlers, risk gates, daemon research jobs. Global kill on Risk; Kalshi arm is Predictions; spot execution is Crypto. Old templates are never proof of a working edge. |
+| Research Lab | Notebooks, postmortems, replay, calibration, cohort analysis, and portfolio research backed by local evidence (route id `code_editor`). |
 | AI Chat / Agent Studio | Model selection, tool run audit, agent work, and explanation. Agent output must identify model, local or cloud status, data sources, requested and executed tools, and results. |
 | Dashboard | Compact operating status and selected widgets, not duplicated page titles or decorative noise. |
 

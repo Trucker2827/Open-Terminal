@@ -619,7 +619,7 @@ static int command_help(const QString& topic) {
             "  notebook create <title> [--markdown TEXT] [--code TEXT] [--from-file PATH] [--open|--no-open]\n"
             "  notebook run <id-or-title-or-path> [--cell N]\n"
             "Catalog notebooks are copied into the local profile before editing. In GUI mode,\n"
-            "open/create can also focus the Notebooks screen; --headless prints/uses local files only.\n");
+            "open/create can also focus the Research Lab screen; --headless prints/uses local files only.\n");
         return 0;
     }
     if (topic == "strategy" || topic == "strategies" || topic == "strat") {
@@ -1326,7 +1326,7 @@ static const QList<ScreenEntry>& screen_catalog() {
         {"ai_quant_lab", "Quant Lab", "AI", {"qml", "ml", "ai_quant"}},
         {"agent_config", "Agents", "AI", {"agents", "teams", "agent_config"}},
         {"node_editor", "Workflows", "AI", {"node", "workflow", "builder"}},
-        {"code_editor", "Notebooks", "Tools", {"code", "notebook", "python"}},
+        {"code_editor", "Research Lab", "Tools", {"code", "notebook", "python", "research lab"}},
         {"excel", "Excel", "Tools", {"xl", "spreadsheet"}},
         {"file_manager", "Files", "Tools", {"files", "file"}},
         {"notes", "Notes", "Tools", {"note"}},
@@ -4166,6 +4166,15 @@ static int news_command(const GlobalOpts& opts, QStringList args) {
         QSet<QString> resolved;
         for (const auto& value : bitcoin_evidence_read_jsonl(output_path)) {
             const QJsonObject row = value.toObject();
+            // Settlements are keyed by contract (see evidence_settlement_key);
+            // directional rows stay per-snapshot because each snapshot starts
+            // its own forward return.
+            if (row.value(QStringLiteral("kind")).toString() == QStringLiteral("settlement")) {
+                resolved.insert(services::edge_radar::evidence_settlement_key(
+                    row.value(QStringLiteral("contract_ticker")).toString(),
+                    row.value(QStringLiteral("observed_at_ms")).toString().toLongLong()));
+                continue;
+            }
             resolved.insert(row.value(QStringLiteral("observed_at_ms")).toString() + QLatin1Char(':') +
                             row.value(QStringLiteral("horizon")).toString());
         }
@@ -4237,7 +4246,8 @@ static int news_command(const GlobalOpts& opts, QStringList args) {
 
             const QJsonObject contract = snapshot.value(QStringLiteral("selected_contract")).toObject();
             const int seconds_left = snapshot.value(QStringLiteral("seconds_left")).toInt(-1);
-            const QString settlement_key = QString::number(observed) + QStringLiteral(":SETTLEMENT");
+            const QString settlement_key = services::edge_radar::evidence_settlement_key(
+                contract.value(QStringLiteral("ticker")).toString(), observed);
             if (!resolved.contains(settlement_key) && seconds_left >= 0 && !contract.isEmpty()) {
                 double end = 0.0;
                 qint64 end_ts = 0;
@@ -25136,6 +25146,67 @@ static int edge_command(const GlobalOpts& opts, QStringList args) {
     if (sub == "scalp-gate" || sub == "scalp" || sub == "scalping" ||
         sub == "intraday-gate" || sub == "daytrade-gate") {
         return edge_scalp_gate_command(opts, args);
+    }
+
+    if (sub == "prune-ticks" || sub == "prune-raw-ticks" || sub == "tick-retention") {
+        int init_code = 0;
+        if (!init_headless_for_cli(opts, init_code)) return init_code;
+        int keep_days = 7;
+        bool dry_run = false;
+        QString raw_days;
+        if (take_string_option(args, QStringLiteral("--keep-days"), raw_days)) {
+            bool ok = false;
+            keep_days = raw_days.toInt(&ok);
+            if (!ok || keep_days < 1 || keep_days > 3650) {
+                std::fprintf(stderr, "--keep-days must be 1..3650\n");
+                return 2;
+            }
+        }
+        dry_run = take_bool_flag(args, QStringLiteral("--dry-run"));
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "usage: edge prune-ticks [--keep-days N] [--dry-run]\n");
+            return 2;
+        }
+        const QStringList sources = services::edge_radar::edge_tick_prunable_sources();
+        const qint64 cutoff = services::edge_radar::edge_tick_retention_cutoff_ms(
+            QDateTime::currentMSecsSinceEpoch(), keep_days);
+        auto& repo = EdgePredictionModelRepository::instance();
+        if (dry_run) {
+            // Count without deleting so the policy can be inspected first.
+            QStringList quoted;
+            for (const auto& source : sources) quoted << QStringLiteral("'%1'").arg(source);
+            auto r = Database::instance().execute(
+                QStringLiteral("SELECT COUNT(*) FROM edge_prediction_raw_ticks "
+                               "WHERE LOWER(source) IN (%1) AND received_ts < ?")
+                    .arg(quoted.join(QStringLiteral(","))), {cutoff});
+            int pending = 0;
+            if (r.is_ok() && r.value().next()) pending = r.value().value(0).toInt();
+            const QJsonObject out{{"event", "edge_tick_retention"}, {"dry_run", true},
+                                  {"keep_days", keep_days}, {"cutoff_ms", QString::number(cutoff)},
+                                  {"sources", QJsonArray::fromStringList(sources)},
+                                  {"would_delete", pending}};
+            if (opts.json)
+                std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+            else
+                std::printf("tick retention (dry run): would delete %d rows older than %d days from %s\n",
+                            pending, keep_days, qUtf8Printable(sources.join(QStringLiteral(", "))));
+            return 0;
+        }
+        auto pruned = repo.prune_raw_ticks(sources, cutoff);
+        if (pruned.is_err()) {
+            std::fprintf(stderr, "tick retention failed: %s\n", pruned.error().c_str());
+            return 5;
+        }
+        const QJsonObject out{{"event", "edge_tick_retention"}, {"dry_run", false},
+                              {"keep_days", keep_days}, {"cutoff_ms", QString::number(cutoff)},
+                              {"sources", QJsonArray::fromStringList(sources)},
+                              {"deleted", pruned.value()}};
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("tick retention: deleted %d rows older than %d days from %s\n",
+                        pruned.value(), keep_days, qUtf8Printable(sources.join(QStringLiteral(", "))));
+        return 0;
     }
 
     if (sub == "spot-swing-gate" || sub == "swing-gate" || sub == "spot-gate" ||

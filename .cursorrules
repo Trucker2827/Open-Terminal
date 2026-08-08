@@ -1,28 +1,15 @@
 # Open-Terminal — Cursor scratchpad & lessons
 
-## Scratchpad — Project audit (2026-07-17)
+## Scratchpad — FLOW empty after closed-15m filter (2026-08-08)
 
-Task: Audit `feat/ai-short-entries` after short-entry + Research Lab work.
+Task: After omitting closed races, FLOW showed no HH:MM. Root cause: at
+15m rollover WS universe lagged (stuck refresh / just-closed cohort ate a
+slot); kxbtc15m report went to 0 preds. Fix: still-open cohorts×4, REST+BRTI
+fallback, honest NO FLOW waiting copy; kick daemon.
 
-[X] Inventory branch commits vs main
-[X] Inspect staged vs unstaged vs HEAD
-[X] Architecture review (edge_direction_of / translate_action / CLI / runner)
-[X] Security / paper-vs-live arming review
-[X] Research Lab UI + CMake review
-[ ] Fix P0: un-poison git index (do not commit staged AI revert)
-[ ] Fix P1: `ai ctx` floor_permits short-edge semantics
-[ ] Commit Research Lab as separate coherent unit (when user asks)
-
-### Verdict
-- Shipped tip `ae1aa2cb` is coherent: edge-directional short/long entries, paper-only.
-- Working tree AI files match HEAD (good).
-- **Git index is poisoned** — staged AI diffs revert tip and won't compile (3-arg `translate_action` vs 4-arg header).
-- Research Lab UI is real, unstaged/untracked; CMake wires `CodeEditorScreen_ResearchLab.cpp` + unity-skip correctly.
-
-### Remediation (when user asks to fix)
-1. `git restore --staged` the 6 AI files OR `git add` working-tree versions so staged == HEAD for those files.
-2. Update `floor_permits` in `ai ctx` for short-aligned edges.
-3. Stage Research Lab set together: CMake + CodeEditorScreen* + ResearchLab.cpp.
+[X] ServeCommand: still-open only, 4 cohorts (was 2 + just-closed)
+[X] kxbtc15m REST fallback when WS snapshots have no open race
+[X] Census/empty FLOW: waiting for next open; tests; rebuild CLI+GUI
 
 ---
 
@@ -35,3 +22,30 @@ Task: Audit `feat/ai-short-entries` after short-entry + Research Lab work.
 - **`--no-floor` vs direction:** Runner floor can be skipped, but `edge_direction_of` still hard-requires full endorsement → Enter stays null without endorsed edge.
 - **Research Lab + Library unity:** `_Library.cpp` and `_ResearchLab.cpp` share anon-namespace helper names; both must stay in `SKIP_UNITY_BUILD_INCLUSION`.
 - **Paper arming:** `ai run strategy` / `ai handler run` refuse live; `StrategyRunner` submits `mode:paper`; handlers created disabled. Do not weaken these in UI work.
+- **Strategies ≠ Kalshi live:** Strategies header PAPER ONLY must not host Kalshi live ARM. Arm Kalshi live only from Predictions (Kalshi). Strategies = measure/paper proof; Crypto = spot; Predictions = bet/race + live arm. Global Strategies Risk kill is separate — do not claim all kill lives only in Predictions.
+- **Spot/scalp canary ≠ Kalshi arm:** Profile + Crypto cockpit arm Coinbase/Kraken canary only. Labels must say CANARY / PAPER SCALP, not LIVE ARMED / PAPER ONLY (Kalshi/Strategies vocabulary).
+- **Kalshi edge autopsy (2026-07-27):** Losing is often "no informational edge vs mid + fees", not bad tuning. Quote lag (~+2¢/15s after 3σ) ≈ fee after half-spread. Recalibration cannot beat raw mid. `KXBTC15M` directional tickers without strikes get dropped from outcome joins — prefer strike/threshold series (`KXBTCD`) when measuring from ticker alone; daemon snapshots still expose open as `reference_strike`/`floor_strike`.
+- **Charter carve-out:** Deterministic Kalshi bot may bid only when human-armed, hard caps ($2/$3), promotion gate PASS on paper, kill switch, GUI parity. AI cannot arm live.
+- **KXBTC15M vs spot_calibrator:** Hourly threshold calibrator must not own 15m race trust. Separate `kxbtc15m-calibrator.json`; `KalshiBotDecision::filter_predictions_for_family` + dual `decide` so trust cannot leak across families.
+- **Cockpit additive pins:** Dual-source rain changes census (`· N threshold · M kxbtc15m`), adds `kxbtc15m` orbit node, and always appends a KXBTC15M KPI line — update `health_fields_are_additive_*` pins when those land. Commodities 15m adds `commodities15m` node + COMMOD15M KPI. Postmortem adds a 6th KPI (`PM …` / `PM UNAVAILABLE`) — baseline pin is **8 nodes / 6 KPI**. Outside-info detail rides on those lines — do not add nodes without updating the pin. Commodities rain adds census `· K commodities15m` and a `COM` source tag — update rain/census pins when that lands; still prefer no 9th orbit node. Bid postmortem inspect opens from the **PM KPI** (or BOT VIEW), not a new node. Always reserve the PM cell in the KPI strip so narrow widths cannot bury it under `… N more`.
+- **Postmortem ≠ W/L:** Join settlements to bids by `position_id`; classify loss modes; never invent late-flip/gamma without path replay. `settle_paper` copies bid snapshot + optional `market_mid_at_settle`. Paper cashout closes with `early_exit` / `won:null`. Paper ticks attach `mid_path` when sampled. Always write **historic** + **current-rules** summaries when markers exist; cockpit/status PM judges CURRENT, not lifetime. Sealed gate still uses historic. Early exits are cashouts, not family L. GUI: Predictions BOT card + cockpit PM KPI inspect.
+- **Paper cashout:** Sell-to-close at floor(held-side bid) only (`LOCK_WIN` / `CUT_EDGE_REVERSED` via AutoEngine). Mid is never a sell proxy. Default ON for paper; `--no-paper-cashout` disables. Hold-to-settle when HOLD or bid missing.
+- **Postmortem → decide:** `FADE_YES_NEAR_CLOSE` lifts on venue-lead confirm-down **or** BRTI avg60 below open (p_brti < 0.5 when present); missing confirm → ban stands. Favourite cross asks ≥0.65 need +0.03 margin.
+- **Directional feature key:** Use `open_price` (not `signed_distance_bps`) to tell KXBTC15M from threshold — both families write signed distance. Commodities 15m races also carry `open_price` and fall the `open` glyph.
+- **Paper pause ≠ kill switch:** Current-gen `DRAWDOWN_CAP` auto-rotates and resumes; kill switch stops the whole tick. Lifetime gate FAIL must not deadlock paper.
+- **GUI rebuild ≠ CLI:** Paper LaunchAgent runs `build/openterminalcli`; rebuild CLI + kickstart (now POST_BUILD) or pause/rotate never loads.
+- **Kalshi category labels:** UI `"Weather"` must fetch `"Climate and Weather"`; commodities use the real API category `"Commodities"` (KXGOLD*, KXWTI*, …).
+- **Commodities 15m calibrator:** Own file `commodities-15m-calibrator.json`; reuses kxbtc15m Gaussian math; do not mix trust with BTC 15m or hourly threshold.
+- **Outside-info ladder:** Observe → ablation vs mid → veto/confirm → tiny tilt → trust at n≥100. Never retune Gaussian alone expecting profit. Phase 4 blocked while `adds_value_over_market` is false.
+- **Pyth commodities feeds:** Prefer Hermes `Metal.XAU/USD`, `Metal.XAG/USD`, `Metal.XTI/USD` for GOLD/SILVER/WTI; Yahoo is cold fallback; report settlement-parity match rate, do not invent trust from it.
+- **Lag ablations are family-local:** `physics_veto_on_conflict` / `physics_confirm_only` score beside physics on kxbtc15m only; trust needs paired n≥100 vs mid; daemon persists `venue_lead_bps_30s` / `lead_conflicts` on horizon.
+- **BRTI settlement underlier:** KXBTC15M pays on CF BRTI **60s average**, not last print. Daemon must parse `avg_60s_data`; calibrator ablation `physics_brti_avg60` scores that spot separately from last-print physics. Fade-ban lift may use avg60 < open.
+- **Phase-3 confirms:** Futures tape (Yahoo) near close and vol/session regime are confirm/veto only — shared via `outside_info_features.py`; quiet/weekend clamps to mid.
+- **FLOW HH:MM is contract close, not “as-of now”:** Rain labels parse ticker close (ET). If calibrator trusts frozen daemon `seconds_left`, closed races stay in the report and look like current FLOW. Derive `seconds_left` from ticker `close_ms` vs wall clock; refuse `now >= close`; cockpit also drops closed 15m and census-notes `N closed 15m omitted`.
+- **15m rollover empty FLOW:** Daemon universe must subscribe *still-open* cohorts (not just-closed); keep ≥4 close cohorts. When WS has no open KXBTC15M snapshot, `kxbtc15m_calibrator` fills from Kalshi REST + BRTI. Stuck `universe_timeouts` → kick `org.openterminal.cli.daemon.default`.
+- **Cockpit inspect is not arming:** Click on scoreboard nodes opens a read-only ablation/parity overlay; Esc/outside closes. PM KPI opens bid postmortem detail the same way. Never place/arm from the cockpit.
+- **Cockpit motion is L→R:** Contract lanes are horizontal; glyphs travel left→right toward DECIDE then LEDGER. Frozen = parked (no travel). Census says `NO FLOW` / `L→R`.
+- **Predictions idle:** `KalshiScreen` must stop clock/evidence/dom/spot/market timers (+ spot WS reconnect) in `hideEvent`, and unsubscribe ladder market WS (resubscribe on show). Polymarket must `unsubscribe_current()` on hide. Weather `bot_timer_` must stop on hide. Lazy-construct Polymarket in `PredictionMarketsScreen`.
+- **Calibrator auto-refresh:** Bot ticks kickstart LaunchAgents (or `python once`) when any family report ages past 2/3 of `max_report_age` — threshold included. Default ON; `--no-auto-refresh-calibrators` opts out. Throttle 45s/script. Does not replace LaunchAgents; prevents overnight `REPORT_STALE` stuck loops.
+- **Cockpit settlements ≠ sealed gate:** SETTLEMENTS / SETTLED / NET prefer current-rules postmortem (`CUR`); SEALED GATE + HIST DD stay lifetime for live promotion. Do not paint pre-gate −$35 as the new-rules scorecard.
+- **Qt JSON ints:** Prefer type-exclude `is_number` over `isDouble()` alone — Qt 6.9 may classify whole numbers outside Double; `isInteger()` may be unavailable on some Homebrew builds.

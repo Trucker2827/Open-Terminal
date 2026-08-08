@@ -11,9 +11,9 @@
     { "id": "politician_trades", "title": "Politicians",         "category": "Research",    "description": "US Congress (politician) stock trades by ticker (AInvest) — needs AINVEST_API_KEY", "tags": ["politician","congress","senate","house","stock act","ownership"] },
 
     { "id": "bitcoin",           "title": "Bitcoin",            "category": "Trading",     "description": "BTC-only live tape, candles, bid/ask book, paper orders",   "tags": ["bitcoin","btc","xbt","satoshi","order book","tape"] },
-    { "id": "crypto_trading",    "title": "Crypto Trading",     "category": "Trading",     "description": "Multi-asset crypto trading and real-time exchange books",   "tags": ["crypto","trading","order","altcoins"] },
+    { "id": "crypto_trading",    "title": "Crypto Trading",     "category": "Trading",     "description": "Spot crypto (Coinbase/Kraken) — book, ticket, scalp canary; not Kalshi bets", "tags": ["crypto","trading","order","altcoins","spot"] },
     { "id": "equity_trading",    "title": "Equity Trading",     "category": "Trading",     "description": "Multi-account equity trading across 16+ brokers",          "tags": ["equity","trading","brokers"] },
-    { "id": "algo_trading",      "title": "Strategies",         "category": "Strategies",  "description": "Build, test, scan, alert, and deploy trading strategies",    "tags": ["algo","strategy","execution"] },
+    { "id": "algo_trading",      "title": "Strategies",         "category": "Strategies",  "description": "Paper proof sandbox: evidence books, handlers, risk gates, daemon research jobs", "tags": ["algo","strategy","paper","sandbox"] },
     { "id": "backtesting",       "title": "Strategy Lab",       "category": "Strategies",  "description": "Advanced historical simulation and provider comparison",     "tags": ["backtest","simulation","advanced"] },
     { "id": "trade_viz",         "title": "Trade Intelligence", "category": "Economics",   "description": "UN Comtrade macro trade flows — partners, balance, and market-impact hints", "tags": ["trade","comtrade","intelligence","flows"] },
 
@@ -39,12 +39,12 @@
     { "id": "geopolitics",       "title": "Geopolitics",        "category": "Geopolitics", "description": "Relationship maps, conflicts, sanctions monitors",        "tags": ["geopolitics","conflict","sanctions"] },
     { "id": "gov_data",          "title": "Government Data",    "category": "Geopolitics", "description": "US/EU/UK government open-data feeds",                      "tags": ["government","opendata"] },
     { "id": "maritime",          "title": "Maritime",           "category": "Geopolitics", "description": "Vessel tracking, port activity, shipping flows",          "tags": ["maritime","ships","ports"] },
-    { "id": "polymarket",        "title": "Prediction Markets", "category": "Geopolitics", "description": "Polymarket and Kalshi event odds + order book",           "tags": ["polymarket","kalshi","prediction"] },
+    { "id": "polymarket",        "title": "Prediction Markets", "category": "Geopolitics", "description": "Kalshi + Polymarket races/bets; live Kalshi arm and bot cockpit live here", "tags": ["polymarket","kalshi","prediction","arm"] },
     { "id": "edge_radar",        "title": "Edge Radar",         "category": "Trading",     "description": "Local stock and prediction-market edge scoring",        "tags": ["edge","kalshi","polymarket","stocks","probability"] },
     { "id": "relationship_map",  "title": "Relationship Map",   "category": "Geopolitics", "description": "Entity relationship graph explorer",                      "tags": ["relationship","graph","entities"] },
 
     { "id": "node_editor",       "title": "Workflows",          "category": "Automation",  "description": "Advanced visual workflow automation",                      "tags": ["workflow","nodes","visual","automation"] },
-    { "id": "code_editor",       "title": "Notebooks",          "category": "Research",    "description": "Research notebooks with a persistent Python kernel",        "tags": ["code","python","cells","notebooks"] },
+    { "id": "code_editor",       "title": "Research Lab",       "category": "Research",    "description": "Research Lab: notebooks, experiments, reports, and a persistent Python kernel", "tags": ["code","python","cells","notebooks","research lab"] },
     { "id": "excel",             "title": "Excel",              "category": "Tools",       "description": "Spreadsheet grid with formulas, XLSX import/export",       "tags": ["excel","xlsx","spreadsheet"] },
     { "id": "report_builder",    "title": "Report Builder",     "category": "Tools",       "description": "PDF/HTML reports from terminal data",                     "tags": ["report","pdf","builder"] },
     { "id": "data_sources",      "title": "Data Sources",       "category": "Tools",       "description": "100+ connectors — APIs, DBs, websockets",                  "tags": ["data","sources","connectors"] },

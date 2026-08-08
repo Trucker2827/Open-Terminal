@@ -25,6 +25,8 @@ AlgoTradingScreen::AlgoTradingScreen(QWidget* parent) : QWidget(parent) {
     connect(poll_timer_, &QTimer::timeout, this, [this]() {
         if (active_tab_ == 1 && handlers_)
             handlers_->refresh();
+        else if (active_tab_ == 2 && proof_books_)
+            proof_books_->refresh();
         else if (active_tab_ == 3 && risk_)
             risk_->refresh();
         else if (active_tab_ == 4 && run_history_)
@@ -107,6 +109,16 @@ QWidget* AlgoTradingScreen::build_top_bar() {
                                     .arg(ui::colors::TEXT_PRIMARY()));
     hl->addWidget(title_label_);
 
+    caption_label_ = new QLabel(tr("measure / paper proof · not live tape"), bar);
+    caption_label_->setStyleSheet(QString("color:%1; font-size:9px; font-weight:600; font-family:%2;"
+                                          "background:transparent;")
+                                      .arg(ui::colors::TEXT_TERTIARY())
+                                      .arg(ui::fonts::DATA_FAMILY()));
+    caption_label_->setToolTip(
+        tr("Sandbox proof books and paper AI handlers. Spot crypto trading is Crypto; "
+           "Kalshi betting and live arm are Predictions."));
+    hl->addWidget(caption_label_);
+
     auto* div = new QWidget(bar);
     div->setFixedSize(1, 20);
     div->setStyleSheet(QString("background:%1;").arg(ui::colors::BORDER_DIM()));
@@ -138,7 +150,9 @@ QWidget* AlgoTradingScreen::build_top_bar() {
                                        "border:1px solid rgba(217,119,6,0.35); border-radius:2px;")
                                    .arg(ui::colors::AMBER())
                                    .arg(ui::fonts::DATA_FAMILY()));
-    mode_label_->setToolTip(tr("This workspace collects and scores evidence. It cannot place live orders."));
+    mode_label_->setToolTip(
+        tr("This workspace collects and scores paper evidence. It cannot place live orders. "
+           "Arm Kalshi live from Predictions."));
     hl->addWidget(mode_label_);
 
     return bar;
@@ -164,7 +178,7 @@ QWidget* AlgoTradingScreen::build_status_bar() {
     hl->addWidget(engine_caption_);
     hl->addWidget(v1);
     hl->addStretch();
-    status_label_ = new QLabel(tr("NO LIVE EXECUTION"), bar);
+    status_label_ = new QLabel(tr("NO LIVE EXECUTION · ARM KALSHI IN PREDICTIONS"), bar);
     status_label_->setStyleSheet(QString("color:%1; font-size:8px; font-weight:700; font-family:%2;")
                                      .arg(ui::colors::POSITIVE())
                                      .arg(ui::fonts::DATA_FAMILY));
@@ -247,10 +261,12 @@ void AlgoTradingScreen::changeEvent(QEvent* event) {
 void AlgoTradingScreen::retranslateUi() {
     if (title_label_)
         title_label_->setText(tr("STRATEGIES"));
+    if (caption_label_)
+        caption_label_->setText(tr("measure / paper proof · not live tape"));
     if (engine_caption_)
         engine_caption_->setText(tr("ENGINE:"));
     if (status_label_)
-        status_label_->setText(tr("NO LIVE EXECUTION"));
+        status_label_->setText(tr("NO LIVE EXECUTION · ARM KALSHI IN PREDICTIONS"));
     if (mode_label_)
         mode_label_->setText(tr("PAPER ONLY"));
 

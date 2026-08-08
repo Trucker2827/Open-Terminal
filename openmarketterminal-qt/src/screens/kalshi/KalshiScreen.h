@@ -21,6 +21,7 @@
 class QComboBox;
 class QDialog;
 class QDoubleSpinBox;
+class QHideEvent;
 class QJsonArray;
 class QLabel;
 class QLineEdit;
@@ -63,6 +64,7 @@ class KalshiScreen final : public QWidget {
 
   protected:
     void showEvent(QShowEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
   private:
@@ -154,6 +156,10 @@ class KalshiScreen final : public QWidget {
     /// evidence. Read-only, like the BOT tab it opens from: the scene has no
     /// control of any kind on it.
     void open_bot_cockpit();
+    /// Opens the cockpit with the bid-postmortem inspect overlay (read-only).
+    void open_bot_postmortem();
+    /// Rebuilds kalshi-bot-postmortem-summary.json via `kalshi bot postmortem`.
+    void rebuild_bot_postmortem();
     void refresh_daemon_status();
     void restart_daemon();
     void run_live_cli(const QStringList& args, const std::function<void(const QJsonObject&, const QString&)>& done);
@@ -189,23 +195,21 @@ class KalshiScreen final : public QWidget {
     QLabel* daemon_badge_ = nullptr;
     QPushButton* daemon_restart_button_ = nullptr;
     QLabel* count_label_ = nullptr;
-    QWidget* asset_bar_ = nullptr;
+    QWidget* asset_bar_ = nullptr;            ///< Crypto underliers (BTC/ETH/…)
+    QWidget* commodity_asset_bar_ = nullptr;  ///< Commodities underliers (GOLD/WTI/…)
     QWidget* cadence_bar_ = nullptr;
     // Tier 2 (weather window de-noise, additive-only): pointers to the
-    // crypto-only header chrome so set_family() can toggle their visibility
-    // for non-Crypto categories without touching anything about their
-    // creation, styling, or update logic. paper_badge_ is the one new
-    // widget added for this — everything else already existed.
+    // asset/cadence header chrome so set_family() can toggle their visibility
+    // for categories that do not use underlier filters. paper_badge_ is the
+    // one new widget added for this — everything else already existed.
     QLabel* asset_label_ = nullptr;
     QLabel* duration_label_ = nullptr;
     QLabel* lane_label_ = nullptr;
     QLabel* paper_badge_ = nullptr;
     // Category page-stack (Task 6, additive-only): page 0 is the existing
-    // crypto workspace (workspace_splitter_, reparented wholesale — none of
-    // its children are touched), page 1 is the embedded WeatherScreen, page
-    // 2 is a CategoryPlaceholderPage for every other category. Swapped only
-    // in set_family(); nothing about crypto's own rendering/fetch/trade path
-    // changes because of the stack's existence.
+    // ladder workspace (crypto + commodities share it), page 1 is the
+    // embedded WeatherScreen, page 2 is a CategoryPlaceholderPage for every
+    // other category. Swapped only in set_family().
     QStackedWidget* category_stack_ = nullptr;
     screens::WeatherScreen* weather_screen_ = nullptr;
     CategoryPlaceholderPage* category_placeholder_ = nullptr;
@@ -270,12 +274,16 @@ class KalshiScreen final : public QWidget {
     // WHAT THE RECORD TEACHES (issue #174) — the edge autopsy's standing
     // conclusions, one line per question with its sample size. Display only.
     QLabel* bot_lessons_ = nullptr;
+    // Per-settlement bid postmortem (W/L modes / lessons). Display only.
+    QLabel* bot_postmortem_ = nullptr;
     // The BOT panel's one control: the kill switch. It can only stop the bot
     // or clear that stop — it cannot arm, size, price, or place anything.
     QPushButton* bot_stop_button_ = nullptr;
     // Opens the cockpit scene. Its label changes to a suggestion while the
     // loop is running — the scene model decides that, not this widget.
     QPushButton* bot_cockpit_button_ = nullptr;
+    QPushButton* bot_view_postmortem_button_ = nullptr;
+    QPushButton* bot_rebuild_postmortem_button_ = nullptr;
     QPointer<QDialog> bot_cockpit_dialog_;
     QListWidget* bot_decisions_ = nullptr;
     QLabel* live_positions_summary_ = nullptr;
@@ -386,6 +394,8 @@ class KalshiScreen final : public QWidget {
     qint64 last_account_activity_fetch_ms_ = 0;
     qint64 last_live_status_fetch_ms_ = 0;
     QJsonObject calibrator_report_;
+    QJsonObject kxbtc15m_calibrator_report_;
+    QJsonObject commodities_15m_calibrator_report_;
     qint64 calibrator_report_read_ms_ = 0;
     // advisor_competition_report.json is ~750KB and frozen once the duel ends,
     // so it is read at most once per session. Not gated on the verdict: the

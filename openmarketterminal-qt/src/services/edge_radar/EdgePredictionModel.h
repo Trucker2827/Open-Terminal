@@ -103,4 +103,29 @@ class EdgePredictionModel {
     static double heuristic_probability(const EdgePredictionFeatures& features);
 };
 
+// --- raw-tick retention -----------------------------------------------------
+//
+// edge_prediction_raw_ticks grows ~1.1-1.4M rows/day and was never pruned; it
+// reached 43.3M rows / 10GB, which is what made an unindexed scan expensive
+// enough to starve the Kalshi planner. Retention is deliberately narrow: only
+// the high-volume exchange tape whose research value has already been settled
+// is bounded. Everything else is kept forever.
+//
+// NEVER prunable, by design:
+//   cfbenchmarks:BRTI  -- the Kalshi settlement feed; our capture IS the
+//                         settlement reference (validated to median |err| $0.00
+//                         against Kalshi's published expiration_value).
+//   coinbase-1m-close  -- the long-history 1-minute series (back to 2025-12-19)
+//                         at only ~300k rows.
+//   coinbase, kraken   -- the spot aggregate that list_spot_price_series_since
+//                         reads, and the tape prior edge tests drew on.
+bool edge_tick_source_is_prunable(const QString& source);
+
+// Sources bounded by retention, in a stable order.
+QStringList edge_tick_prunable_sources();
+
+// Cutoff timestamp for a retention window. Returns 0 for a non-positive
+// keep_days so a misconfigured job deletes nothing rather than everything.
+qint64 edge_tick_retention_cutoff_ms(qint64 now_ms, int keep_days);
+
 } // namespace openmarketterminal::services::edge_radar

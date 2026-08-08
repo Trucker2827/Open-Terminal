@@ -120,6 +120,20 @@ bool kalshi_non_execution_process_timed_out(bool active, qint64 process_age_ms,
     return active && process_age_ms >= 0 && process_age_ms > timeout_ms;
 }
 
+qint64 kalshi_planner_process_timeout_ms(qint64 fetch_timeout_ms) {
+    // Allowance for everything the planner does OUTSIDE its network budget:
+    // process spawn, Qt/DB init, model load, surface build, optimize, journal
+    // write. Sized from measurement -- planner runs take 10.9-13.0s wall clock
+    // at rest with this 9s network budget, so 9s+30s = 39s is ~3x the slowest
+    // observed run, leaving headroom for daemon contention.
+    constexpr qint64 kNonNetworkAllowanceMs = 30'000;
+    // The engine serializes every kind of work behind one QProcess, so a wedged
+    // planner blocks paper, execution and account reconciliation too. Bound it.
+    constexpr qint64 kCeilingMs = 120'000;
+    return std::min<qint64>(kCeilingMs,
+                            std::max<qint64>(0, fetch_timeout_ms) + kNonNetworkAllowanceMs);
+}
+
 qint64 kalshi_event_cycle_delay_ms(bool live_session_active, bool paper_active,
                                    qint64 elapsed_ms) {
     // An armed live session gets the next fresh decision immediately. Paper
@@ -180,7 +194,7 @@ QStringList kalshi_event_planner_args() {
             // Twelve contracts keeps planning inside the executable-quote window;
             // an exhaustive surface scan belongs to the explicit CLI planner.
             QStringLiteral("--limit"), QStringLiteral("12"),
-        QStringLiteral("--timeout-ms"), QStringLiteral("9000"),
+        QStringLiteral("--timeout-ms"), QString::number(kKalshiPlannerFetchTimeoutMs),
             QStringLiteral("--max-positions"), QStringLiteral("5"),
             QStringLiteral("--unit-notional"), QStringLiteral("2"),
             QStringLiteral("--max-cost"), QStringLiteral("10"),
@@ -455,6 +469,40 @@ QJsonObject kalshi_flow_windows_to_json(const QVector<KalshiFlowLevel>& yes_bid_
         out.insert(window.first, row);
     }
     return out;
+}
+
+double kalshi_brti_avg_60s_from_payload(const QJsonObject& payload) {
+    const QJsonObject avg = payload.value(QStringLiteral("avg_60s_data")).toObject();
+    if (avg.isEmpty()) return 0.0;
+    const QJsonValue raw = avg.value(QStringLiteral("value"));
+    if (raw.isDouble()) {
+        const double v = raw.toDouble();
+        return v > 0.0 ? v : 0.0;
+    }
+    bool ok = false;
+    const double v = raw.toVariant().toString().trimmed().toDouble(&ok);
+    return ok && v > 0.0 ? v : 0.0;
+}
+
+QJsonObject kalshi_venue_lead_lag_to_json(double spot_change_bps,
+                                          double contract_change_cents) {
+    // Venue-lead / sticky-mid lag window (30s). Confirm/veto research only —
+    // never a trade instruction by itself.
+    const bool spot_up = spot_change_bps > 0.5;
+    const bool spot_down = spot_change_bps < -0.5;
+    const bool spot_moved = spot_up || spot_down;
+    const bool mid_up = contract_change_cents > 0.1;
+    const bool mid_down = contract_change_cents < -0.1;
+    const bool mid_sticky = !mid_up && !mid_down;
+    const bool lead_conflicts = (spot_up && mid_down) || (spot_down && mid_up);
+    const bool lead_confirms_direction =
+        spot_moved && !lead_conflicts && (mid_sticky || (spot_up && mid_up) || (spot_down && mid_down));
+    return QJsonObject{{QStringLiteral("venue_lead_bps_30s"), spot_change_bps},
+                       {QStringLiteral("mid_lag_cents_30s"), contract_change_cents},
+                       {QStringLiteral("lead_confirms_direction"), lead_confirms_direction},
+                       {QStringLiteral("lead_conflicts"), lead_conflicts},
+                       {QStringLiteral("mid_sticky"), mid_sticky},
+                       {QStringLiteral("advisory_only"), true}};
 }
 
 QJsonObject kalshi_flow_divergence_to_json(double spot_change_bps,
@@ -755,7 +803,7 @@ class KalshiLiveEventEngine final : public QObject {
                 });
         connect(adapter_, &KalshiAdapter::ws_cf_benchmark_event, this,
                 [this](const QString& index_id, double value, qint64 ts_ms,
-                       const QJsonObject&) {
+                       const QJsonObject& payload) {
                     if (index_id.compare(QStringLiteral("BRTI"), Qt::CaseInsensitive) != 0 ||
                         value <= 0.0)
                         return;
@@ -777,6 +825,11 @@ class KalshiLiveEventEngine final : public QObject {
                     ++cf_benchmark_events_;
                     latest_cf_benchmark_ = value;
                     latest_cf_benchmark_ms_ = tick.exchange_ts;
+                    const double avg60 = kalshi_brti_avg_60s_from_payload(payload);
+                    if (avg60 > 0.0) {
+                        latest_brti_avg_60s_ = avg60;
+                        latest_brti_avg_60s_ms_ = tick.exchange_ts;
+                    }
                     status_dirty_ = true;
                     schedule_decision(QStringLiteral("settlement_index_change"));
                 });
@@ -884,13 +937,16 @@ class KalshiLiveEventEngine final : public QObject {
         static constexpr qint64 kTransportDeadMs = 65000;
         static constexpr qint64 kReconnectCooldownMs = 15000;
         static constexpr qint64 kRecoveryDecisionMs = 15000;
-        static constexpr qint64 kPlannerTimeoutMs = 15000;
+        // Derived from the planner's own network budget, never an independent
+        // constant -- see kalshi_planner_process_timeout_ms.
+        const qint64 planner_timeout_ms =
+            kalshi_planner_process_timeout_ms(kKalshiPlannerFetchTimeoutMs);
         static constexpr qint64 kPaperTimeoutMs = 25000;
         static constexpr qint64 kAccountReadTimeoutMs = 18000;
         static constexpr qint64 kAccountReconcileIntervalMs = 30000;
 
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-        check_process_timeout(now_ms, kPlannerTimeoutMs, kPaperTimeoutMs,
+        check_process_timeout(now_ms, planner_timeout_ms, kPaperTimeoutMs,
                               kAccountReadTimeoutMs);
         const bool live_active = session_active();
         const bool workload_active = live_active || parallel_paper_active();
@@ -986,7 +1042,10 @@ class KalshiLiveEventEngine final : public QObject {
             const qint64 close_ms = close.toMSecsSinceEpoch();
             // The event engine is for the presently tradable 15m/hourly race,
             // not every future BTC ladder returned by the category endpoint.
-            if (close_ms < now_ms - 60000 || close_ms > now_ms + 90 * 60 * 1000LL)
+            // Still-open only: a just-closed cohort used to consume one of two
+            // slots for ~60s and left FLOW empty at the :00/:15/:30/:45 rollover
+            // whenever the next window was late to subscribe.
+            if (close_ms <= now_ms || close_ms > now_ms + 90 * 60 * 1000LL)
                 continue;
             candidates.append(Candidate{&market, close_ms,
                                         market.volume + 2.0 * market.liquidity +
@@ -996,14 +1055,15 @@ class KalshiLiveEventEngine final : public QObject {
             if (a.close_ms != b.close_ms) return a.close_ms < b.close_ms;
             return a.activity > b.activity;
         });
-        // Keep the nearest two settlement cohorts and at most 32 liquid
-        // contracts. The planner still obtains the complete ladder over REST;
-        // this bounded set is only the low-latency event trigger surface.
+        // Keep the nearest four still-open settlement cohorts (covers the next
+        // hour of 15m races) and at most 32 liquid contracts. The planner still
+        // obtains the complete ladder over REST; this bounded set is only the
+        // low-latency event trigger surface.
         QVector<qint64> cohorts;
         QHash<qint64, int> cohort_counts;
         for (const Candidate& candidate : candidates) {
             if (!cohorts.contains(candidate.close_ms)) {
-                if (cohorts.size() >= 2) continue;
+                if (cohorts.size() >= 4) continue;
                 cohorts.append(candidate.close_ms);
             }
             if (!cohorts.contains(candidate.close_ms) ||
@@ -1275,6 +1335,26 @@ class KalshiLiveEventEngine final : public QObject {
         const QJsonObject realized_vol = realized_vol_json(underlying_symbol, now_ms);
         if (!realized_vol.isEmpty())
             horizon.insert(QStringLiteral("realized_volatility"), realized_vol);
+        const QJsonObject lead_lag = kalshi_venue_lead_lag_to_json(
+            spot_change_bps, contract_change_cents);
+        horizon.insert(QStringLiteral("venue_lead_bps_30s"),
+                       lead_lag.value(QStringLiteral("venue_lead_bps_30s")));
+        horizon.insert(QStringLiteral("mid_lag_cents_30s"),
+                       lead_lag.value(QStringLiteral("mid_lag_cents_30s")));
+        horizon.insert(QStringLiteral("lead_confirms_direction"),
+                       lead_lag.value(QStringLiteral("lead_confirms_direction")));
+        horizon.insert(QStringLiteral("lead_conflicts"),
+                       lead_lag.value(QStringLiteral("lead_conflicts")));
+        horizon.insert(QStringLiteral("mid_sticky"),
+                       lead_lag.value(QStringLiteral("mid_sticky")));
+        // Settlement-aligned BRTI 60s average (Phase 2). Last-print remains
+        // horizon.spot; avg60 is the payout-relevant underlier when present.
+        if (latest_brti_avg_60s_ > 0.0) {
+            horizon.insert(QStringLiteral("brti_avg_60s"), latest_brti_avg_60s_);
+            horizon.insert(QStringLiteral("brti_avg_60s_ms"),
+                           QString::number(latest_brti_avg_60s_ms_));
+            horizon.insert(QStringLiteral("brti_last"), latest_cf_benchmark_);
+        }
         QJsonObject decision{{QStringLiteral("schema"), 1},
                              {QStringLiteral("ticker"), ticker},
                              {QStringLiteral("observed_at_ms"), QString::number(now_ms)},
@@ -1291,7 +1371,11 @@ class KalshiLiveEventEngine final : public QObject {
                              {QStringLiteral("underlying"), QJsonObject{{QStringLiteral("price"), latest_independent_spot_},
                                  {QStringLiteral("source"), latest_independent_spot_source_},
                                  {QStringLiteral("observed_at_ms"), QString::number(latest_independent_spot_ms_)},
-                                 {QStringLiteral("change_30s_bps"), spot_change_bps}}},
+                                 {QStringLiteral("change_30s_bps"), spot_change_bps},
+                                 {QStringLiteral("brti_avg_60s"), latest_brti_avg_60s_ > 0.0
+                                     ? latest_brti_avg_60s_ : QJsonValue(QJsonValue::Null)},
+                                 {QStringLiteral("brti_avg_60s_ms"),
+                                  QString::number(latest_brti_avg_60s_ms_)}}},
                              {QStringLiteral("contract"), QJsonObject{{QStringLiteral("question"), market.question},
                                  {QStringLiteral("event_ticker"), market.key.event_id},
                                  {QStringLiteral("close_time"), market.end_date_iso},
@@ -1341,6 +1425,11 @@ class KalshiLiveEventEngine final : public QObject {
         // Only this path — real Kalshi market data — sets it.
         last_market_event_at_ = last_event_at_;
         last_transport_activity_ms_ = QDateTime::currentMSecsSinceEpoch();
+        // Real market data resumed — clear a stale reconnect banner so HARVEST
+        // does not keep advertising "liveness lost" after the stream is live.
+        if (!last_error_.isEmpty()) {
+            last_error_.clear();
+        }
         capture_exchange_timestamp(payload);
         status_dirty_ = true;
         // Raw depth deltas are retained for transport health and sequence
@@ -1621,6 +1710,8 @@ class KalshiLiveEventEngine final : public QObject {
             {QStringLiteral("cf_benchmark_events"), QString::number(cf_benchmark_events_)},
             {QStringLiteral("latest_cf_benchmark"), latest_cf_benchmark_},
             {QStringLiteral("latest_cf_benchmark_ms"), QString::number(latest_cf_benchmark_ms_)},
+            {QStringLiteral("latest_brti_avg_60s"), latest_brti_avg_60s_},
+            {QStringLiteral("latest_brti_avg_60s_ms"), QString::number(latest_brti_avg_60s_ms_)},
             {QStringLiteral("independent_spot_events"), QString::number(independent_spot_events_)},
             {QStringLiteral("latest_independent_spot"), latest_independent_spot_},
             {QStringLiteral("latest_independent_spot_source"), latest_independent_spot_source_},
@@ -1727,8 +1818,10 @@ class KalshiLiveEventEngine final : public QObject {
     qint64 cf_benchmark_events_ = 0;
     qint64 independent_spot_events_ = 0;
     qint64 latest_cf_benchmark_ms_ = 0;
+    qint64 latest_brti_avg_60s_ms_ = 0;
     qint64 latest_independent_spot_ms_ = 0;
     double latest_cf_benchmark_ = 0.0;
+    double latest_brti_avg_60s_ = 0.0;
     double latest_independent_spot_ = 0.0;
     qint64 decision_cycles_ = 0;
     qint64 paper_cycles_ = 0;
@@ -6773,6 +6866,18 @@ QVector<SandboxJobSpec> sandbox_job_specs() {
              {QStringLiteral("news"), QStringLiteral("bitcoin-intelligence-score"),
               QStringLiteral("--limit"), QStringLiteral("500")},
              3600, 60},
+            // edge_prediction_raw_ticks grows ~1.1-1.4M rows/day and was never
+            // pruned; it reached 43.3M rows / 10GB, which is what made an
+            // unindexed scan expensive enough to starve the Kalshi planner.
+            // Retention is narrow by construction -- the allow-list in
+            // edge_tick_prunable_sources() covers only the settled high-volume
+            // tape; BRTI (the Kalshi settlement feed), coinbase-1m-close,
+            // coinbase and kraken are never touched.
+            {QStringLiteral("edge-tick-retention"), QStringLiteral("Raw tick retention"),
+             QStringLiteral("Bound the high-volume exchange tape in edge_prediction_raw_ticks; never prunes the BRTI settlement feed or the long-history series."),
+             {QStringLiteral("edge"), QStringLiteral("prune-ticks"),
+              QStringLiteral("--keep-days"), QStringLiteral("7")},
+             86400, 300},
             {QStringLiteral("kalshi-decision-settlements"), QStringLiteral("Strategy sandbox Kalshi settlement scorer"),
              QStringLiteral("Resolve matured Kalshi paper decisions from the official final YES/NO market result."),
              {QStringLiteral("edge"), QStringLiteral("resolve-kalshi-decisions"),

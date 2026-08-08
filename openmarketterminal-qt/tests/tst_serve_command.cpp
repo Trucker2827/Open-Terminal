@@ -244,6 +244,34 @@ private slots:
         QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 15000), 0LL);
     }
 
+    // Regression: the daemon killed the planner at a hardcoded 15s while
+    // handing it a 9s network budget, leaving under 6s for startup, DB/model
+    // init, surface build and journaling. The planner writes its journal row
+    // and kalshi-auto-plans.jsonl only at the END of a run, so 90 of 99 live
+    // cycles were killed before writing anything and the evidence file froze
+    // for a week. The deadline must be DERIVED from the network budget.
+    void kalshi_planner_deadline_clears_its_own_fetch_budget() {
+        const qint64 deadline = kalshi_planner_process_timeout_ms(kKalshiPlannerFetchTimeoutMs);
+        // Must leave a real allowance beyond the network budget for all the
+        // non-network work. Measured planner runs take 10.9-13.0s at rest.
+        QVERIFY(deadline >= kKalshiPlannerFetchTimeoutMs + 30'000);
+        // ...and comfortably clear the slowest measured at-rest run.
+        QVERIFY(deadline > 13'000 * 2);
+    }
+
+    // Pins the structural property that actually prevents a recurrence: the
+    // deadline tracks the fetch budget instead of being an independent
+    // constant that can silently drift below it.
+    void kalshi_planner_deadline_tracks_the_fetch_budget() {
+        QVERIFY(kalshi_planner_process_timeout_ms(20'000) >
+                kalshi_planner_process_timeout_ms(9'000));
+        QVERIFY(kalshi_planner_process_timeout_ms(0) > 0);
+        // A wedged planner must still be bounded: the engine serializes all
+        // work behind one QProcess, so an unbounded deadline would stall
+        // paper, execution and account reconciliation too.
+        QCOMPARE(kalshi_planner_process_timeout_ms(10'000'000), 120'000LL);
+    }
+
     // GUI daemon indicator: the badge derives from this pure classifier so
     // indicator truth never depends on the CLI binary being present.
     void daemon_indicator_classifies_evidence_freshness() {
@@ -392,6 +420,39 @@ private slots:
         QVERIFY(row.value("price_diverges").toBool());
         QVERIFY(row.value("flow_diverges").toBool());
         QCOMPARE(row.value("advisory_only").toBool(), true);
+    }
+
+    void kalshi_venue_lead_lag_marks_conflict_and_confirm() {
+        const auto conflict = kalshi_venue_lead_lag_to_json(12.0, -1.2);
+        QCOMPARE(conflict.value("venue_lead_bps_30s").toDouble(), 12.0);
+        QCOMPARE(conflict.value("mid_lag_cents_30s").toDouble(), -1.2);
+        QVERIFY(conflict.value("lead_conflicts").toBool());
+        QVERIFY(!conflict.value("lead_confirms_direction").toBool());
+        QCOMPARE(conflict.value("advisory_only").toBool(), true);
+
+        const auto confirm_sticky = kalshi_venue_lead_lag_to_json(12.0, 0.0);
+        QVERIFY(confirm_sticky.value("lead_confirms_direction").toBool());
+        QVERIFY(!confirm_sticky.value("lead_conflicts").toBool());
+        QVERIFY(confirm_sticky.value("mid_sticky").toBool());
+
+        const auto quiet = kalshi_venue_lead_lag_to_json(0.1, 0.0);
+        QVERIFY(!quiet.value("lead_confirms_direction").toBool());
+        QVERIFY(!quiet.value("lead_conflicts").toBool());
+    }
+
+    void kalshi_brti_avg_60s_parses_cf_payload() {
+        QJsonObject payload{
+            {QStringLiteral("avg_60s_data"),
+             QJsonObject{{QStringLiteral("value"), QStringLiteral("64837.56550000")},
+                         {QStringLiteral("window_size"), 60}}},
+            {QStringLiteral("value"), QStringLiteral("64827.44")},
+        };
+        QCOMPARE(kalshi_brti_avg_60s_from_payload(payload), 64837.5655);
+        QCOMPARE(kalshi_brti_avg_60s_from_payload(QJsonObject{}), 0.0);
+        QCOMPARE(kalshi_brti_avg_60s_from_payload(
+                     QJsonObject{{QStringLiteral("avg_60s_data"),
+                                  QJsonObject{{QStringLiteral("value"), 0.0}}}}),
+                 0.0);
     }
 
     void kalshi_flow_meter_shows_real_immediate_taker_cost() {

@@ -8,8 +8,12 @@
 // This changes only the LABEL text: the rain still draws the same live
 // calibrator contracts it always did.
 
+#include <QDate>
+#include <QDateTime>
 #include <QString>
 #include <QStringList>
+#include <QTime>
+#include <QTimeZone>
 
 namespace openmarketterminal::screens::kalshi {
 
@@ -30,12 +34,52 @@ inline QString bot_cockpit_column_head_fallback(const QString& ticker) {
     return previous.isEmpty() ? last : previous + QLatin1Char('-') + last;
 }
 
+/// Close instant (ms) for a *15M ticker from its YYMONDDHHMM segment, US/Eastern.
+/// Matches `kxbtc15m_calibrator.parse_close_ms`. -1 when unparseable / not 15m.
+inline qint64 bot_cockpit_15m_close_ms(const QString& ticker) {
+    const QStringList parts = ticker.split(QLatin1Char('-'));
+    if (parts.size() < 2) return -1;
+    if (!parts.first().endsWith(QStringLiteral("15M"))) return -1;
+    const QString token = parts.at(1);
+    if (token.size() != 11) return -1;
+    static const QStringList kMonths = {
+        QStringLiteral("JAN"), QStringLiteral("FEB"), QStringLiteral("MAR"),
+        QStringLiteral("APR"), QStringLiteral("MAY"), QStringLiteral("JUN"),
+        QStringLiteral("JUL"), QStringLiteral("AUG"), QStringLiteral("SEP"),
+        QStringLiteral("OCT"), QStringLiteral("NOV"), QStringLiteral("DEC")};
+    const int month = kMonths.indexOf(token.mid(2, 3).toUpper()) + 1;
+    if (month <= 0) return -1;
+    bool ok = false;
+    const int yy = token.mid(0, 2).toInt(&ok);
+    if (!ok) return -1;
+    const int dd = token.mid(5, 2).toInt(&ok);
+    if (!ok) return -1;
+    const int hh = token.mid(7, 2).toInt(&ok);
+    if (!ok) return -1;
+    const int mm = token.mid(9, 2).toInt(&ok);
+    if (!ok) return -1;
+    const QDate date(2000 + yy, month, dd);
+    const QTime time(hh, mm);
+    if (!date.isValid() || !time.isValid()) return -1;
+    const QDateTime dt(date, time, QTimeZone(QByteArrayLiteral("America/New_York")));
+    return dt.isValid() ? dt.toMSecsSinceEpoch() : -1;
+}
+
+/// True when a 15m race is still open (or the ticker is not a parseable 15m).
+/// Closed 15m windows must not paint as current FLOW.
+inline bool bot_cockpit_15m_still_open(const QString& ticker, qint64 now_ms) {
+    const qint64 close_ms = bot_cockpit_15m_close_ms(ticker);
+    if (close_ms <= 0) return true;
+    return now_ms < close_ms;
+}
+
 } // namespace bot_cockpit_detail
 
 /// The head of a rain column, human-readable rather than a raw ticker
 /// segment:
-///  - a KXBTC15M contract shows its own close time HH:MM, parsed out of the
-///    ticker's YYMMMDDHHMM segment (`26JUL311730` -> `17:30`);
+///  - a *15M race (KXBTC15M / KXGOLD15M / KXSILVER15M / KXWTI15M) shows its
+///    close time HH:MM from the ticker's YYMMMDDHHMM segment
+///    (`26JUL311730` -> `17:30`);
 ///  - a KXBTCD threshold contract shows its strike compactly
 ///    (`T62899.99` -> `$62.9k`);
 ///  - anything unrecognized falls back to the previous segment-based label,
@@ -44,7 +88,7 @@ inline QString bot_cockpit_column_head(const QString& ticker) {
     const QStringList parts = ticker.split(QLatin1Char('-'));
     if (parts.size() >= 2) {
         const QString family = parts.first();
-        if (family.startsWith(QStringLiteral("KXBTC15M"))) {
+        if (family.endsWith(QStringLiteral("15M"))) {
             const QString time_segment = parts.at(1);
             if (time_segment.size() == 11) {
                 static const QStringList kMonths = {
@@ -76,5 +120,8 @@ inline QString bot_cockpit_column_head(const QString& ticker) {
     }
     return bot_cockpit_detail::bot_cockpit_column_head_fallback(ticker);
 }
+
+using bot_cockpit_detail::bot_cockpit_15m_close_ms;
+using bot_cockpit_detail::bot_cockpit_15m_still_open;
 
 } // namespace openmarketterminal::screens::kalshi

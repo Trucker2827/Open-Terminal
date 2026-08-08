@@ -351,6 +351,8 @@ void PolymarketScreen::hideEvent(QHideEvent* e) {
     QWidget::hideEvent(e);
     refresh_timer_->stop();
     if (crypto_dom_timer_) crypto_dom_timer_->stop();
+    // Drop market WS while hidden (showEvent resubscribes). Mirrors Kalshi idle stop.
+    unsubscribe_current();
 }
 
 // ── UI Build ────────────────────────────────────────────────────────────────

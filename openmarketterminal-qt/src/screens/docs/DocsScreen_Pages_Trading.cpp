@@ -139,25 +139,24 @@ QWidget* DocsScreen::page_paper_trading() {
 
 QWidget* DocsScreen::page_algo_trading() {
     return make_page(
-        tr("ALGO TRADING"), tr("Algorithmic strategy builder, scanner, and deployment"),
+        tr("STRATEGIES"), tr("Paper proof sandbox — evidence books, handlers, risk gates, daemon jobs"),
         {
-            {tr("OVERVIEW"), tr("The Algo Trading screen provides a complete environment for building, testing, "
-                                "and deploying algorithmic trading strategies. It includes a strategy builder, "
-                                "market scanner, and deployment dashboard.")},
-            {tr("KEY FEATURES"), tr("■  Strategy Builder — Define entry/exit rules, position sizing, risk limits\n"
-                                    "■  Market Scanner — Scan markets for strategy-matching conditions\n"
-                                    "■  Deployment Dashboard — Monitor live strategy performance\n"
-                                    "■  Strategy Library — 50+ pre-built strategies as templates\n"
-                                    "■  Risk Management — Max drawdown, position limits, daily loss limits\n"
-                                    "■  Real-time monitoring with P&L and trade logs")},
-            {tr("REAL-WORLD USAGE"), tr("■  Momentum strategies: Scan for breakouts, deploy auto-entry\n"
-                                        "■  Mean reversion: Detect overbought/oversold conditions\n"
-                                        "■  Pairs trading: Monitor spread and auto-execute when divergence detected\n"
-                                        "■  Market making: Automated bid/ask placement with spread capture")},
-            {tr("SKILL LEVELS"), tr("BEGINNER: Explore pre-built strategies, understand entry/exit logic\n"
-                                    "INTERMEDIATE: Modify strategy parameters, run scanner on your watchlist\n"
-                                    "ADVANCED: Build custom strategies, combine multiple signals, set risk limits\n"
-                                    "PRO: Deploy multi-strategy portfolios, optimize parameters, run live with real capital")},
+            {tr("OVERVIEW"), tr("Strategies is the paper proof sandbox. Use it to measure whether a paper "
+                                "strategy earned its keep before anyone arms live capital elsewhere. "
+                                "It is not live Kalshi arming (Predictions) and not spot crypto execution (Crypto).")},
+            {tr("KEY FEATURES"), tr("■  Evidence — Proof books, paper cycles, score cards (promotion is report-only)\n"
+                                    "■  Handlers — Paper AI strategy handlers (always mode:paper)\n"
+                                    "■  Risk & Safety — Global kill switch + CLI LIVE/FAST gate telemetry\n"
+                                    "■  Run History — Daemon research jobs and paper crypto programs\n"
+                                    "■  Ops map — Drill into evidence, handlers, and Research Lab notes")},
+            {tr("REAL-WORLD USAGE"), tr("■  Seed evidence books and run paper ticks until scores accumulate\n"
+                                        "■  Review blockers and hit-rate before promoting an idea for human review\n"
+                                        "■  Engage the global kill switch here when any automation must stop\n"
+                                        "■  Arm Kalshi live only from Predictions; arm spot/scalp canary from Profile")},
+            {tr("SKILL LEVELS"), tr("BEGINNER: Read evidence leaderboard and understand PAPER ONLY\n"
+                                    "INTERMEDIATE: Run paper cycles, inspect handlers, watch risk gates\n"
+                                    "ADVANCED: Install sandbox daemon jobs and track cost-net edge\n"
+                                    "PRO: Treat promotion-ready as a review queue — never auto-promote to live")},
         });
 }
 

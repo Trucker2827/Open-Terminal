@@ -580,7 +580,7 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
                 {"panel_markets", {"Markets", "markets"}},
                 {"panel_crypto", {"Crypto Trading", "crypto_trading"}},
                 {"panel_equity", {"Equity Trading", "equity_trading"}},
-                {"panel_algo", {"Algo Trading", "algo_trading"}},
+                {"panel_algo", {"Strategies", "algo_trading"}},
                 {"panel_research", {"Equity Research", "equity_research"}},
                 {"panel_economics", {"Economics", "economics"}},
                 {"panel_geopolitics", {"Geopolitics", "geopolitics"}},

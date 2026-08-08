@@ -12,8 +12,7 @@ namespace openmarketterminal::algo {
 /// Event-driven, single-symbol, long-only backtester.
 ///
 /// Pure computation: given candles + strategy parameters it returns a FLAT
-/// metrics JSON object matching exactly what
-/// `StrategyBuilderPanel::display_backtest_result` reads
+/// metrics JSON object with
 /// (total_return, sharpe_ratio, max_drawdown, total_trades, win_rate,
 ///  profit_factor, final_value), plus equity_curve and the raw trade list.
 ///
