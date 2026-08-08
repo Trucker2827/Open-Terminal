@@ -619,7 +619,7 @@ static int command_help(const QString& topic) {
             "  notebook create <title> [--markdown TEXT] [--code TEXT] [--from-file PATH] [--open|--no-open]\n"
             "  notebook run <id-or-title-or-path> [--cell N]\n"
             "Catalog notebooks are copied into the local profile before editing. In GUI mode,\n"
-            "open/create can also focus the Notebooks screen; --headless prints/uses local files only.\n");
+            "open/create can also focus the Research Lab screen; --headless prints/uses local files only.\n");
         return 0;
     }
     if (topic == "strategy" || topic == "strategies" || topic == "strat") {
@@ -1326,7 +1326,7 @@ static const QList<ScreenEntry>& screen_catalog() {
         {"ai_quant_lab", "Quant Lab", "AI", {"qml", "ml", "ai_quant"}},
         {"agent_config", "Agents", "AI", {"agents", "teams", "agent_config"}},
         {"node_editor", "Workflows", "AI", {"node", "workflow", "builder"}},
-        {"code_editor", "Notebooks", "Tools", {"code", "notebook", "python"}},
+        {"code_editor", "Research Lab", "Tools", {"code", "notebook", "python", "research lab"}},
         {"excel", "Excel", "Tools", {"xl", "spreadsheet"}},
         {"file_manager", "Files", "Tools", {"files", "file"}},
         {"notes", "Notes", "Tools", {"note"}},

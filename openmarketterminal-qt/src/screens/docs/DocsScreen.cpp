@@ -255,7 +255,7 @@ void DocsScreen::build_sidebar() {
     add_item(trading, tr("Crypto Trading"), "crypto_trading");
     add_item(trading, tr("Equity Trading"), "equity_trading");
     add_item(trading, tr("Paper Trading"), "paper_trading");
-    add_item(trading, tr("Algo Trading"), "algo_trading");
+    add_item(trading, tr("Strategies"), "algo_trading");
     add_item(trading, tr("Backtesting"), "backtesting");
 
     // ── Research & Analytics ─────────────────────────────────────────────────
@@ -291,7 +291,7 @@ void DocsScreen::build_sidebar() {
     auto* tools = add_category(tr("TOOLS"));
     add_item(tools, tr("Report Builder"), "report_builder");
     add_item(tools, tr("Node Editor"), "node_editor");
-    add_item(tools, tr("Code Editor"), "code_editor");
+    add_item(tools, tr("Research Lab"), "code_editor");
     add_item(tools, tr("Excel"), "excel");
     add_item(tools, tr("Notes"), "notes");
     add_item(tools, tr("MCP Servers"), "mcp_servers");

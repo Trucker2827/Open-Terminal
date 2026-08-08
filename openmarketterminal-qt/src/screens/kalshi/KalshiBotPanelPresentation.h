@@ -157,7 +157,14 @@ struct KalshiBotPanelView {
 
 namespace kalshi_bot_detail {
 
-inline bool is_number(const QJsonValue& value) { return value.isDouble(); }
+/// Numeric JSON values. Qt 6.9+ may store whole numbers outside `isDouble()`;
+/// accept any non-null/bool/string/container type so ints still count.
+inline bool is_number(const QJsonValue& value) {
+    if (value.isDouble()) return true;
+    const auto t = value.type();
+    return t != QJsonValue::Null && t != QJsonValue::Bool && t != QJsonValue::String &&
+           t != QJsonValue::Array && t != QJsonValue::Object && t != QJsonValue::Undefined;
+}
 
 inline QString money(double dollars) { return QStringLiteral("$%1").arg(dollars, 0, 'f', 2); }
 

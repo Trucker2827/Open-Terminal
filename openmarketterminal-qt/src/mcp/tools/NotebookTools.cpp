@@ -1,5 +1,5 @@
 // NotebookTools.cpp — let the in-app AI author runnable analysis notebooks into the
-// Notebooks screen (mirrors the report_* tools). Slice A: create + open; the user runs
+// Research Lab screen (mirrors the report_* tools). Slice A: create + open; the user runs
 // the cells (kernel-run from a tool is a later slice). GUI tool (touches CodeEditorScreen).
 #include "mcp/tools/NotebookTools.h"
 
@@ -65,7 +65,7 @@ std::vector<ToolDef> get_notebook_tools() {
     ToolDef t;
     t.name = "notebook_create";
     t.description =
-        "Create a runnable Python notebook in the Notebooks screen and open it for the user "
+        "Create a runnable Python notebook in the Research Lab screen and open it for the user "
         "to run/edit. Use for analysis that benefits from live, editable computation (DCF, comps, "
         "fundamentals): pass an ordered list of markdown + code cells. Code cells run in the "
         "notebook kernel, where edgartools, pandas, and numpy are available — fetch SEC data and "
@@ -120,7 +120,7 @@ std::vector<ToolDef> get_notebook_tools() {
         f.write(QJsonDocument(nb).toJson(QJsonDocument::Indented));
         f.close();
 
-        // Open it in the Notebooks screen. nav.switch_screen lazily constructs the screen;
+        // Open it in the Research Lab screen. nav.switch_screen lazily constructs the screen;
         // the open then runs on the main thread (open_notebook_path is a UI mutation).
         openmarketterminal::EventBus::instance().publish(
             "nav.switch_screen", QVariantMap{{"screen_id", "code_editor"}});
@@ -142,7 +142,7 @@ std::vector<ToolDef> get_notebook_tools() {
     ToolDef o;
     o.name = "notebook_open";
     o.description =
-        "Open a notebook in the Notebooks screen by bundled catalog id/title/query or by local .ipynb path. "
+        "Open a notebook in the Research Lab screen by bundled catalog id/title/query or by local .ipynb path. "
         "Args: id, title, query, or path.";
     o.category = "notebook-builder";
     o.input_schema.properties = QJsonObject{
@@ -197,7 +197,7 @@ std::vector<ToolDef> get_notebook_tools() {
     ToolDef r;
     r.name = "notebook_run";
     r.description =
-        "Execute Python in the live Notebooks kernel and return its output. The kernel is "
+        "Execute Python in the live Research Lab kernel and return its output. The kernel is "
         "STATEFUL and SHARED with the open notebook — variables persist across calls and across "
         "the user's own cell runs — and edgartools, pandas, and numpy are available. Use to run or "
         "verify analysis code and read the result, then interpret it for the user. Returns ok, "

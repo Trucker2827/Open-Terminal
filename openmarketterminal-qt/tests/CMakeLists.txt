@@ -32,6 +32,18 @@ add_test(NAME test_ws_stream_account
 add_test(NAME test_spot_calibrator
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_spot_calibrator.py -v)
+add_test(NAME test_kxbtc15m_calibrator
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_kxbtc15m_calibrator.py -v)
+add_test(NAME test_commodities_15m_calibrator
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_commodities_15m_calibrator.py -v)
+add_test(NAME test_outside_info_features
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_outside_info_features.py -v)
+add_test(NAME test_bot_bid_postmortem
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_bot_bid_postmortem.py -v)
 add_test(NAME test_btc_event_impact
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_btc_event_impact.py -v)

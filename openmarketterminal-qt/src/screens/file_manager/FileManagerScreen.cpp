@@ -671,12 +671,12 @@ void FileManagerScreen::render_files() {
             };
             static const SI sources[] = {
                 {"RPT", "Report Builder", "Saved reports and exported PDFs"},
-                {"NTB", "Code Editor", "Saved Jupyter notebooks (.ipynb)"},
+                {"NTB", "Research Lab", "Saved Jupyter notebooks (.ipynb)"},
                 {"XLS", "Excel", "Imported/exported spreadsheets & CSV"},
                 {"NOTE", "Notes", "Exported markdown note files"},
                 {"PFL", "Portfolio", "Portfolio CSV & JSON exports"},
                 {"DS", "Data Sources", "Connector configuration JSON"},
-                {"ALG", "Algo Trading", "Saved strategy definitions"},
+                {"ALG", "Strategies", "Saved strategy definitions"},
                 {"BT", "Backtesting", "Backtest result JSON exports"},
                 {"AQL", "AI Quant Lab", "Module result exports"},
                 {"NEWS", "News", "Saved article text files"},

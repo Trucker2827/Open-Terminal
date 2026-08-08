@@ -18,16 +18,13 @@ PredictionMarketsScreen::PredictionMarketsScreen(QWidget* parent) : QWidget(pare
     layout->setSpacing(0);
     stack_ = new QStackedWidget(this);
     stack_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
-    polymarket_ = new PolymarketScreen(stack_);
+    // Kalshi is the default Predictions workspace. Polymarket is constructed
+    // on first switch so opening the dock does not pay for a venue the
+    // operator may never open.
     kalshi_ = new kalshi::KalshiScreen(stack_);
     stack_->addWidget(kalshi_);
-    // Kalshi is added first so constructing the shell never briefly shows the
-    // legacy Polymarket workspace and triggers an unfiltered adapter request.
-    stack_->addWidget(polymarket_);
     layout->addWidget(stack_);
 
-    connect(polymarket_, &PolymarketScreen::venue_switch_requested,
-            this, &PredictionMarketsScreen::show_venue);
     connect(kalshi_, &kalshi::KalshiScreen::venue_switch_requested,
             this, &PredictionMarketsScreen::show_venue);
 
@@ -45,12 +42,23 @@ void PredictionMarketsScreen::restore_state(const QVariantMap& state) {
     show_venue(state.value(QStringLiteral("venue"), QStringLiteral("kalshi")).toString());
 }
 
+void PredictionMarketsScreen::ensure_polymarket() {
+    if (polymarket_) return;
+    polymarket_ = new PolymarketScreen(stack_);
+    stack_->addWidget(polymarket_);
+    connect(polymarket_, &PolymarketScreen::venue_switch_requested,
+            this, &PredictionMarketsScreen::show_venue);
+}
+
 void PredictionMarketsScreen::show_venue(const QString& venue) {
     venue_ = venue == QStringLiteral("polymarket") ? QStringLiteral("polymarket") : QStringLiteral("kalshi");
     services::prediction::PredictionExchangeRegistry::instance().set_active(venue_);
-    stack_->setCurrentWidget(venue_ == QStringLiteral("polymarket")
-                                 ? static_cast<QWidget*>(polymarket_)
-                                 : static_cast<QWidget*>(kalshi_));
+    if (venue_ == QStringLiteral("polymarket")) {
+        ensure_polymarket();
+        stack_->setCurrentWidget(polymarket_);
+    } else {
+        stack_->setCurrentWidget(kalshi_);
+    }
 }
 
 } // namespace openmarketterminal::screens

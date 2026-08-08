@@ -5,6 +5,7 @@
 #include "services/prediction/PredictionTypes.h"
 
 #include <QHash>
+#include <QHideEvent>
 #include <QShowEvent>
 #include <QTableWidget>
 #include <QWidget>
@@ -62,6 +63,7 @@ class WeatherScreen final : public QWidget, public IStatefulScreen {
 
   protected:
     void showEvent(QShowEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
 
   private:
     void build_ui();

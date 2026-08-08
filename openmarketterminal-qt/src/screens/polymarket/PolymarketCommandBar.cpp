@@ -230,6 +230,14 @@ void PolymarketCommandBar::build_ui() {
     hl->addWidget(exchange_combo_);
 
     hl->addSpacing(8);
+    auto* surface_caption = new QLabel(tr("bet / race · Polymarket venue"), this);
+    surface_caption->setStyleSheet(
+        QStringLiteral("color:%1;font-size:9px;font-weight:600;").arg(colors::TEXT_SECONDARY()));
+    surface_caption->setToolTip(
+        tr("Prediction-market discovery. Switch to Kalshi in Predictions for live "
+           "Kalshi arm / bot. Spot crypto is the Crypto window."));
+    hl->addWidget(surface_caption);
+    hl->addSpacing(8);
 
     // ── Account chip ──────────────────────────────────────────────────────
     account_chip_ = new QPushButton(tr("CONNECT"), this);
@@ -455,10 +463,11 @@ void PolymarketCommandBar::rebuild_kalshi_categories(QHBoxLayout* layout) {
     category_combo_->setStyleSheet(css);
     category_combo_->addItem(tr("ALL KALSHI"), QStringLiteral("ALL"));
 
-    static const QStringList priority = {QStringLiteral("Crypto"),        QStringLiteral("Sports"),
-                                         QStringLiteral("Politics"),      QStringLiteral("Economics"),
-                                         QStringLiteral("Financials"),    QStringLiteral("Weather"),
-                                         QStringLiteral("Entertainment"), QStringLiteral("Science/Tech")};
+    static const QStringList priority = {QStringLiteral("Crypto"),        QStringLiteral("Commodities"),
+                                         QStringLiteral("Sports"),        QStringLiteral("Politics"),
+                                         QStringLiteral("Economics"),     QStringLiteral("Financials"),
+                                         QStringLiteral("Weather"),       QStringLiteral("Entertainment"),
+                                         QStringLiteral("Science/Tech")};
     QStringList tags = priority;
     for (const QString& tag : current_tags_) {
         bool exists = false;

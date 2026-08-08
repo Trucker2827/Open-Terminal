@@ -104,6 +104,12 @@ class KalshiBotOrders {
         "its own limit, the price paid, never at the mid and never better, and all-or-nothing, "
         "because the report evidences an ask but never the depth resting at it. A stated model, "
         "not a measured fill.";
+    /// Paper cashout sell-to-close: sell the held side into the observed bid.
+    static constexpr auto kCashoutFillModel = "rung6_cashout_at_bid";
+    static constexpr auto kCashoutFillRule =
+        "paper cashout: sell-to-close crosses into the held side's observed bid (floor to the "
+        "cent), never the mid and never better; all-or-nothing; taker fee on the exit leg. A "
+        "stated model, not a measured fill. Missing bid refuses the cashout (HOLD).";
 
     /// The bot's order book, replayed from its own ledger.
     struct Book {

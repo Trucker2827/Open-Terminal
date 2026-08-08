@@ -179,31 +179,46 @@ QJsonObject KalshiEvidenceEngine::calibrator_readout(const QJsonObject& report,
     };
     const qint64 generated_ms =
         static_cast<qint64>(report.value(QStringLiteral("generated_at_ms")).toDouble());
+    const QString event = report.value(QStringLiteral("event")).toString();
+    const bool directional = event == QLatin1String("kxbtc15m_calibrator");
+    const QString label = directional ? QStringLiteral("KXBTC15M") : QStringLiteral("CALIBRATOR");
     if (generated_ms <= 0)
-        return without_numbers(QStringLiteral("missing"),
-                               QStringLiteral("CALIBRATOR MISSING · no calibrator.json evidence"));
+        return without_numbers(
+            QStringLiteral("missing"),
+            QStringLiteral("%1 MISSING · no %2 evidence")
+                .arg(label, directional ? QStringLiteral("kxbtc15m-calibrator.json")
+                                        : QStringLiteral("calibrator.json")));
     if (now_ms - generated_ms > max_age_ms)
         return without_numbers(
             QStringLiteral("stale"),
-            QStringLiteral("CALIBRATOR STALE · report is %1 min old · numbers withheld")
+            QStringLiteral("%1 STALE · report is %2 min old · numbers withheld")
+                .arg(label)
                 .arg((now_ms - generated_ms) / 60'000));
     const QJsonObject prediction = report.value(QStringLiteral("predictions"))
                                        .toObject().value(market_ticker).toObject();
     if (prediction.isEmpty())
         return without_numbers(QStringLiteral("missing"),
-                               QStringLiteral("CALIBRATOR · no prediction for this contract"));
+                               QStringLiteral("%1 · no prediction for this contract").arg(label));
 
     const QJsonObject features = prediction.value(QStringLiteral("features")).toObject();
-    // required_move_sigma is written as 0.0 both at-the-strike and when the
-    // ambient-vol estimate is absent; only a positive vol makes it meaningful.
-    const QString sigma_text =
-        features.value(QStringLiteral("per_min_vol_bps")).toDouble() > 0.0
-            ? QStringLiteral("STRIKE %1σ AWAY")
-                  .arg(features.value(QStringLiteral("required_move_sigma")).toDouble(), 0, 'f', 1)
-            : QStringLiteral("STRIKE σ UNAVAILABLE (no vol estimate)");
+    // Threshold books use required_move_sigma; KXBTC15M races carry open_price
+    // and signed distance from the window open (bps). Threshold also writes
+    // signed_distance_bps (vs strike) — only open_price marks directional.
+    QString distance_text;
+    if (features.contains(QStringLiteral("open_price"))) {
+        distance_text = QStringLiteral("OPEN %+1 bps")
+                            .arg(features.value(QStringLiteral("signed_distance_bps")).toDouble(), 0,
+                                 'f', 1);
+    } else if (features.value(QStringLiteral("per_min_vol_bps")).toDouble() > 0.0) {
+        distance_text = QStringLiteral("STRIKE %1σ AWAY")
+                            .arg(features.value(QStringLiteral("required_move_sigma")).toDouble(), 0,
+                                 'f', 1);
+    } else {
+        distance_text = QStringLiteral("STRIKE σ UNAVAILABLE (no vol estimate)");
+    }
     const auto percent = [](double p) { return QStringLiteral("%1%").arg(p * 100.0, 0, 'f', 1); };
     const QString headline = QStringLiteral("%1 · CALIBRATED P(YES) %2 · MARKET MID %3")
-        .arg(sigma_text,
+        .arg(distance_text,
              percent(prediction.value(QStringLiteral("p_yes_full")).toDouble()),
              percent(prediction.value(QStringLiteral("market_yes_mid")).toDouble()));
 

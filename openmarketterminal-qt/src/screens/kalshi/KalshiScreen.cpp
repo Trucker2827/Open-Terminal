@@ -75,6 +75,8 @@
 #include <QTableWidget>
 #include <QTextEdit>
 #include <QTimeZone>
+#include <QHideEvent>
+#include <QShowEvent>
 #include <QTimer>
 #include <QUuid>
 #include <QVBoxLayout>
@@ -114,6 +116,15 @@ QString cf_index_for_asset(const QString& asset) {
     if (key == QStringLiteral("SOL")) return QStringLiteral("SOLUSD_RTI");
     if (key == QStringLiteral("DOGE")) return QStringLiteral("DOGEUSD_RTI");
     return {};
+}
+
+/// GOLD / SILVER / WTI publish 15m+hourly series; BRENT / COPPER / NATGAS are
+/// daily+ only. Selecting a short cadence for the latter would fetch zero
+/// markets and look like a broken category.
+bool commodity_supports_short_cadence(const QString& asset) {
+    const QString key = asset.trimmed().toUpper();
+    return key == QStringLiteral("GOLD") || key == QStringLiteral("SILVER") ||
+           key == QStringLiteral("WTI");
 }
 
 QJsonObject fresh_btc_news_pulse(qint64 now_ms) {
@@ -590,8 +601,29 @@ void KalshiScreen::showEvent(QShowEvent* event) {
     start_spot_dom_stream();
     refresh_spot_dom();
     refresh_venue_consensus();
+    if (adapter() && !subscribed_ladder_assets_.isEmpty())
+        adapter()->subscribe_market(subscribed_ladder_assets_);
     QTimer::singleShot(0, this, &KalshiScreen::ensure_workspace_panes_visible);
     refresh();
+}
+
+void KalshiScreen::hideEvent(QHideEvent* event) {
+    QWidget::hideEvent(event);
+    // Mirror Polymarket: leave Predictions (or switch venue) must not keep
+    // AutoEngine / evidence / file polls / spot-DOM reconnect burning the GUI
+    // thread. showEvent restarts timers, the spot stream, and ladder WS.
+    if (dom_timer_) dom_timer_->stop();
+    if (market_list_timer_) market_list_timer_->stop();
+    if (spot_dom_timer_) spot_dom_timer_->stop();
+    if (evidence_timer_) evidence_timer_->stop();
+    if (clock_timer_) clock_timer_->stop();
+    if (reference_dom_reconnect_timer_) reference_dom_reconnect_timer_->stop();
+    if (reference_dom_socket_ &&
+        reference_dom_socket_->state() != QAbstractSocket::UnconnectedState) {
+        reference_dom_socket_->close();
+    }
+    if (adapter() && !subscribed_ladder_assets_.isEmpty())
+        adapter()->unsubscribe_market(subscribed_ladder_assets_);
 }
 
 void KalshiScreen::resizeEvent(QResizeEvent* event) {
@@ -718,10 +750,18 @@ void KalshiScreen::build_ui() {
     auto* title = new QLabel(QStringLiteral("KALSHI TRADING"), command);
     title->setStyleSheet(QStringLiteral("color:%1;font-size:13px;font-weight:900;").arg(colors::CYAN()));
     command_layout->addWidget(title);
+    auto* surface_caption =
+        new QLabel(QStringLiteral("bet / race · live Kalshi arm here"), command);
+    surface_caption->setStyleSheet(
+        QStringLiteral("color:%1;font-size:9px;font-weight:600;").arg(colors::TEXT_SECONDARY()));
+    surface_caption->setToolTip(
+        QStringLiteral("Prediction markets: settlement races and contracts. Spot crypto "
+                       "trading is the Crypto window; paper strategy proof is Strategies."));
+    command_layout->addWidget(surface_caption);
     family_combo_ = new QComboBox(command);
-    family_combo_->addItems({QStringLiteral("Crypto"), QStringLiteral("Sports"), QStringLiteral("Politics"),
-                             QStringLiteral("Economics"), QStringLiteral("Weather"), QStringLiteral("Entertainment"),
-                             QStringLiteral("Science & Tech")});
+    family_combo_->addItems({QStringLiteral("Crypto"), QStringLiteral("Commodities"), QStringLiteral("Sports"),
+                             QStringLiteral("Politics"), QStringLiteral("Economics"), QStringLiteral("Weather"),
+                             QStringLiteral("Entertainment"), QStringLiteral("Science & Tech")});
     family_combo_->setFixedWidth(150);
     command_layout->addWidget(family_combo_);
     search_ = new QLineEdit(command);
@@ -787,6 +827,19 @@ void KalshiScreen::build_ui() {
         asset_layout->addWidget(button);
     }
     filters_layout->addWidget(asset_bar_);
+    commodity_asset_bar_ = new QWidget(filters);
+    commodity_asset_bar_->setVisible(false);
+    auto* commodity_layout = new QHBoxLayout(commodity_asset_bar_);
+    commodity_layout->setContentsMargins(0, 0, 0, 0);
+    commodity_layout->setSpacing(4);
+    for (const QString& asset : {QStringLiteral("GOLD"), QStringLiteral("SILVER"), QStringLiteral("WTI"),
+                                 QStringLiteral("BRENT"), QStringLiteral("COPPER"), QStringLiteral("NATGAS")}) {
+        auto* button = segment(asset, commodity_asset_bar_);
+        button->setChecked(false);
+        connect(button, &QPushButton::clicked, this, [this, asset]() { set_asset(asset); });
+        commodity_layout->addWidget(button);
+    }
+    filters_layout->addWidget(commodity_asset_bar_);
     filters_layout->addSpacing(16);
     duration_label_ = new QLabel(QStringLiteral("DURATION"));
     filters_layout->addWidget(duration_label_);
@@ -853,9 +906,9 @@ void KalshiScreen::build_ui() {
     calibrator_readout_ = new QLabel(QStringLiteral("CALIBRATOR · select a contract"), center);
     calibrator_readout_->setWordWrap(true);
     calibrator_readout_->setToolTip(QStringLiteral(
-        "Advisory-only readout from the spot calibrator (calibrator.json): strike distance in "
-        "sigmas, its calibrated P(YES), and its measured Brier record vs the market baseline. "
-        "It never trades."));
+        "Advisory-only readout: threshold contracts from calibrator.json, KXBTC15M from "
+        "kxbtc15m-calibrator.json. On the BOT tab or while the cockpit is open, FOLLOW pins "
+        "the open 15m race without changing your market selection. Never trades."));
     calibrator_readout_->setStyleSheet(QStringLiteral(
         "color:%1;background:%2;border:1px solid %3;padding:4px 8px;font-size:10px;font-weight:800;")
                                            .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED(),
@@ -1300,6 +1353,30 @@ void KalshiScreen::build_ui() {
                  QString::fromLatin1(kKalshiBotLedgerFile)));
     connect(bot_cockpit_button_, &QPushButton::clicked, this, &KalshiScreen::open_bot_cockpit);
     bot_layout->addWidget(bot_cockpit_button_);
+    add_bot_card(QStringLiteral("BID POSTMORTEM"),
+                 QStringLiteral("Per-settlement win/loss autopsy from "
+                                "kalshi-bot-postmortem-summary.json — modes, worst losses, "
+                                "lessons. Same artifact as `kalshi bot postmortem`. Display "
+                                "only: never arms. Click VIEW or the cockpit PM KPI for detail."),
+                 bot_postmortem_);
+    bot_view_postmortem_button_ =
+        new QPushButton(QStringLiteral("VIEW POSTMORTEM DETAIL"), bot_page);
+    bot_view_postmortem_button_->setCursor(Qt::PointingHandCursor);
+    bot_view_postmortem_button_->setToolTip(
+        QStringLiteral("Opens the BOT COCKPIT with the bid-postmortem inspect overlay "
+                       "(Esc / click outside to close). Inspect only — never arms."));
+    connect(bot_view_postmortem_button_, &QPushButton::clicked, this,
+            &KalshiScreen::open_bot_postmortem);
+    bot_layout->addWidget(bot_view_postmortem_button_);
+    bot_rebuild_postmortem_button_ =
+        new QPushButton(QStringLiteral("REBUILD POSTMORTEM FROM LEDGER"), bot_page);
+    bot_rebuild_postmortem_button_->setCursor(Qt::PointingHandCursor);
+    bot_rebuild_postmortem_button_->setToolTip(
+        QStringLiteral("Runs `openterminalcli kalshi bot postmortem` and refreshes this card. "
+                       "Does not place or arm anything."));
+    connect(bot_rebuild_postmortem_button_, &QPushButton::clicked, this,
+            &KalshiScreen::rebuild_bot_postmortem);
+    bot_layout->addWidget(bot_rebuild_postmortem_button_);
     add_bot_card(QStringLiteral("ARMED STATE & CAPS IN FORCE"),
                  QStringLiteral("Read from the live session status. An unreadable status is "
                                 "reported as unknown and fails closed; it is never shown as armed."),
@@ -1348,6 +1425,10 @@ void KalshiScreen::build_ui() {
     bot_layout->addWidget(bot_decisions_, 1);
     bot_scroll->setWidget(bot_page);
     bot_tab_index_ = tabs->addTab(bot_scroll, QStringLiteral("BOT"));
+    // Follow-context for the calibrator readout keys off BOT tab / cockpit —
+    // refresh when the operator switches tabs so FOLLOW · open 15m appears
+    // without waiting for the next 5s report poll.
+    connect(tabs, &QTabWidget::currentChanged, this, [this](int) { update_calibrator_readout(); });
 
     // The ADVISOR & CANARY panel is built but NOT added to the tab row: the v5
     // duel is concluded and a permanently dead control does not belong beside
@@ -2016,8 +2097,11 @@ void KalshiScreen::wire_adapter() {
 }
 
 QString KalshiScreen::category_slug() const {
-    if (family_ != QStringLiteral("Crypto")) return family_;
-    return QStringLiteral("Crypto#%1@%2").arg(asset_, cadence_);
+    if (family_ == QStringLiteral("Crypto"))
+        return QStringLiteral("Crypto#%1@%2").arg(asset_, cadence_);
+    if (family_ == QStringLiteral("Commodities"))
+        return QStringLiteral("Commodities#%1@%2").arg(asset_, cadence_);
+    return family_;
 }
 
 void KalshiScreen::refresh(bool background) {
@@ -2079,35 +2163,62 @@ void KalshiScreen::refresh_market_list_if_due() {
 
 void KalshiScreen::set_family(const QString& family) {
     family_ = family;
-    asset_bar_->setVisible(family_ == QStringLiteral("Crypto"));
-    cadence_bar_->setVisible(family_ == QStringLiteral("Crypto"));
-    // Tier 2 (weather window de-noise, additive-only, crypto-safe): hide the
-    // crypto-only header chrome — the ASSET/DURATION label row, the maker
-    // lane hint, and the live-account/DAEMON/RESTART/DATA-ISSUE chips — for
-    // every non-Crypto category. These are pure visibility toggles layered
-    // on top of the asset_bar_/cadence_bar_ toggle above: nothing about how
-    // any of these widgets are created, styled, or kept up to date changes,
-    // and when family_ == "Crypto" every one of them is visible exactly as
-    // before this change (is_crypto is true, so every setVisible call below
-    // is a no-op relative to the pre-existing behavior).
     const bool is_crypto = family_ == QStringLiteral("Crypto");
-    if (asset_label_) asset_label_->setVisible(is_crypto);
-    if (duration_label_) duration_label_->setVisible(is_crypto);
+    const bool is_commodities = family_ == QStringLiteral("Commodities");
+    const bool uses_underlier = is_crypto || is_commodities;
+    // Keep the last underlier when bouncing between Crypto ↔ Commodities only
+    // if it belongs to the destination family; otherwise pick a sane default.
+    if (is_crypto &&
+        !QStringList{QStringLiteral("BTC"), QStringLiteral("ETH"), QStringLiteral("SOL"),
+                     QStringLiteral("DOGE"), QStringLiteral("XRP")}
+             .contains(asset_))
+        asset_ = QStringLiteral("BTC");
+    if (is_commodities &&
+        !QStringList{QStringLiteral("GOLD"), QStringLiteral("SILVER"), QStringLiteral("WTI"),
+                     QStringLiteral("BRENT"), QStringLiteral("COPPER"), QStringLiteral("NATGAS")}
+             .contains(asset_))
+        asset_ = QStringLiteral("GOLD");
+    if (is_commodities && !commodity_supports_short_cadence(asset_) &&
+        (cadence_ == QStringLiteral("fifteen_min") || cadence_ == QStringLiteral("hourly"))) {
+        cadence_ = QStringLiteral("daily");
+        if (cadence_bar_) {
+            for (auto* button : cadence_bar_->findChildren<QPushButton*>()) {
+                const QString label = button->text();
+                button->setChecked(label == QStringLiteral("DAILY"));
+            }
+        }
+    }
+    if (asset_bar_) asset_bar_->setVisible(is_crypto);
+    if (commodity_asset_bar_) {
+        commodity_asset_bar_->setVisible(is_commodities);
+        for (auto* button : commodity_asset_bar_->findChildren<QPushButton*>())
+            button->setChecked(button->text() == asset_);
+    }
+    if (asset_bar_) {
+        for (auto* button : asset_bar_->findChildren<QPushButton*>())
+            button->setChecked(button->text() == asset_);
+    }
+    cadence_bar_->setVisible(uses_underlier);
+    // Tier 2 (weather window de-noise, additive-only, crypto-safe): hide the
+    // underlier/duration chrome and live-account chips for categories that
+    // are not ladder workspaces. Crypto visibility stays byte-identical when
+    // family_ == "Crypto". Commodities share the ladder workspace but not
+    // the crypto spot DOM / CF-benchmark chrome (lane tip stays crypto-only).
+    if (asset_label_) asset_label_->setVisible(uses_underlier);
+    if (duration_label_) duration_label_->setVisible(uses_underlier);
     if (lane_label_) lane_label_->setVisible(is_crypto);
     if (account_badge_) account_badge_->setVisible(is_crypto);
     if (daemon_badge_) daemon_badge_->setVisible(is_crypto);
     if (daemon_restart_button_) daemon_restart_button_->setVisible(is_crypto);
-    if (connection_badge_) connection_badge_->setVisible(is_crypto);
+    if (connection_badge_) connection_badge_->setVisible(uses_underlier);
     // Weather is paper-only — surface that plainly instead of the (now
     // hidden) live account chip, which would otherwise misleadingly imply a
     // live Kalshi account backs this screen.
     if (paper_badge_) paper_badge_->setVisible(family_ == QStringLiteral("Weather"));
-    // Category page-stack (Task 6, additive-only): Crypto keeps the existing
-    // workspace on page 0; Weather switches to the embedded WeatherScreen;
-    // everything else shows the placeholder. This is purely a view swap —
-    // it does not replace anything set_family already did above or below.
+    // Category page-stack: Crypto + Commodities share the ladder workspace on
+    // page 0; Weather → WeatherScreen; everything else → placeholder.
     if (category_stack_) {
-        if (family_ == QStringLiteral("Crypto")) {
+        if (is_crypto || is_commodities) {
             category_stack_->setCurrentIndex(0);
         } else if (family_ == QStringLiteral("Weather")) {
             category_stack_->setCurrentIndex(1);
@@ -2115,6 +2226,13 @@ void KalshiScreen::set_family(const QString& family) {
             if (category_placeholder_) category_placeholder_->set_category(family_);
             category_stack_->setCurrentIndex(2);
         }
+    }
+    // Crypto keeps Kraken/Coinbase DOM + CF benchmarks. Commodities do not —
+    // inventing GOLD/USD on a crypto book would lie about the reference.
+    if (is_crypto) {
+        set_spot_symbol(asset_);
+        if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(adapter()))
+            kalshi->subscribe_cf_benchmarks({cf_index_for_asset(asset_)});
     }
     refresh();
 }
@@ -2124,10 +2242,28 @@ void KalshiScreen::set_asset(const QString& asset) {
     official_settlement_reference_ = 0.0;
     official_settlement_reference_ms_ = 0;
     official_settlement_index_.clear();
-    set_spot_symbol(asset_);
-    if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(adapter()))
-        kalshi->subscribe_cf_benchmarks({cf_index_for_asset(asset_)});
-    for (auto* button : asset_bar_->findChildren<QPushButton*>()) button->setChecked(button->text() == asset_);
+    if (family_ == QStringLiteral("Crypto")) {
+        set_spot_symbol(asset_);
+        if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(adapter()))
+            kalshi->subscribe_cf_benchmarks({cf_index_for_asset(asset_)});
+    } else if (family_ == QStringLiteral("Commodities") &&
+               !commodity_supports_short_cadence(asset_) &&
+               (cadence_ == QStringLiteral("fifteen_min") ||
+                cadence_ == QStringLiteral("hourly"))) {
+        cadence_ = QStringLiteral("daily");
+        if (cadence_bar_) {
+            for (auto* button : cadence_bar_->findChildren<QPushButton*>())
+                button->setChecked(button->text() == QStringLiteral("DAILY"));
+        }
+    }
+    if (asset_bar_) {
+        for (auto* button : asset_bar_->findChildren<QPushButton*>())
+            button->setChecked(button->text() == asset_);
+    }
+    if (commodity_asset_bar_) {
+        for (auto* button : commodity_asset_bar_->findChildren<QPushButton*>())
+            button->setChecked(button->text() == asset_);
+    }
     refresh();
 }
 
@@ -2191,7 +2327,9 @@ void KalshiScreen::populate_markets(const QVector<pred::PredictionMarket>& marke
     markets_.clear();
     markets_.reserve(markets.size());
     for (const auto& market : markets) {
-        if (family_ == QStringLiteral("Crypto") && !in_selected_time_horizon(market, cadence_)) continue;
+        if ((family_ == QStringLiteral("Crypto") || family_ == QStringLiteral("Commodities")) &&
+            !in_selected_time_horizon(market, cadence_))
+            continue;
         const double yes = outcome_price(market, 0);
         const double no = outcome_price(market, 1);
         // The 1%/99% tails are not actionable and dominate large ladders with
@@ -4237,7 +4375,7 @@ void KalshiScreen::refresh_live_automation_status() {
 
 void KalshiScreen::refresh_bot_panel() {
     if (!bot_status_ || !bot_armed_ || !bot_signal_ || !bot_scoreboard_ || !bot_funnel_ ||
-        !bot_gate_ || !bot_lessons_ || !bot_decisions_)
+        !bot_gate_ || !bot_lessons_ || !bot_postmortem_ || !bot_decisions_)
         return;
     // latest_legacy_live_status_ is the `kalshi auto live status` object the
     // screen already polls; empty until the first poll answers, which the
@@ -4304,6 +4442,53 @@ void KalshiScreen::refresh_bot_panel() {
                                                                : colors::TEXT_SECONDARY();
     bot_lessons_->setStyleSheet(card_style(lessons_color));
 
+    // Bid postmortem: prefer current-rules (new trading); historic is secondary.
+    {
+        const auto read_summary = [this](const QString& name) {
+            QJsonObject summary;
+            QFile file(evidence_path(name));
+            if (file.open(QIODevice::ReadOnly)) {
+                const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+                if (doc.isObject()) summary = doc.object();
+            }
+            return summary;
+        };
+        const QJsonObject current =
+            read_summary(QStringLiteral("kalshi-bot-postmortem-summary-current.json"));
+        const QJsonObject historic =
+            read_summary(QStringLiteral("kalshi-bot-postmortem-summary.json"));
+        const QJsonObject judge = postmortem_judge_summary(current, historic);
+        const QString line = postmortem_kpi_line(judge);
+        const QJsonObject meas = judge.value(QStringLiteral("measurement")).toObject();
+        QStringList body{line};
+        if (postmortem_summary_known(current) && postmortem_summary_known(historic)) {
+            body << QStringLiteral("historic %1W/%2L net %3 · sealed gate uses lifetime")
+                        .arg(historic.value(QStringLiteral("wins")).toInt())
+                        .arg(historic.value(QStringLiteral("losses")).toInt())
+                        .arg(bot_cockpit_detail::money(
+                            historic.value(QStringLiteral("net_realized_pnl_usd")).toDouble()));
+        }
+        if (!meas.isEmpty()) {
+            body << QStringLiteral(
+                        "fade_lifts %1 · early_exits %2 · cheap_no %3 · fav_lost %4")
+                        .arg(meas.value(QStringLiteral("fade_ban_lifts")).toInt())
+                        .arg(meas.value(QStringLiteral("early_exits")).toInt())
+                        .arg(meas.value(QStringLiteral("cheap_no_crushed_by_yes")).toInt())
+                        .arg(meas.value(QStringLiteral("favourite_lost_full_stake")).toInt());
+        } else if (postmortem_summary_known(judge)) {
+            body << QStringLiteral("Click VIEW for loss modes, worst trades, and lessons.");
+        } else {
+            body << QStringLiteral("Click REBUILD to classify settlements from the paper ledger.");
+        }
+        bot_postmortem_->setText(body.join(QLatin1Char('\n')));
+        const bool known = postmortem_summary_known(judge);
+        const double net = judge.value(QStringLiteral("net_realized_pnl_usd")).toDouble();
+        bot_postmortem_->setStyleSheet(card_style(!known      ? colors::TEXT_SECONDARY()
+                                                   : net > 0  ? colors::GREEN()
+                                                   : net < 0  ? colors::RED()
+                                                              : colors::TEXT_SECONDARY()));
+    }
+
     if (bot_stop_button_) {
         bot_stop_button_->setText(view.stopped ? QStringLiteral("RESUME THE BOT (CLEAR KILL SWITCH)")
                                                : QStringLiteral("STOP THE BOT (KILL SWITCH)"));
@@ -4359,7 +4544,41 @@ void KalshiScreen::open_bot_cockpit() {
     view->set_live_status_provider([this]() { return latest_legacy_live_status_; });
     layout->addWidget(view);
     bot_cockpit_dialog_ = dialog;
+    connect(dialog, &QObject::destroyed, this, [this]() { update_calibrator_readout(); });
     dialog->show();
+    update_calibrator_readout();
+}
+
+void KalshiScreen::open_bot_postmortem() {
+    open_bot_cockpit();
+    if (!bot_cockpit_dialog_) return;
+    if (auto* view = bot_cockpit_dialog_->findChild<KalshiBotCockpitView*>())
+        view->open_postmortem_inspect();
+}
+
+void KalshiScreen::rebuild_bot_postmortem() {
+    if (bot_rebuild_postmortem_button_) {
+        bot_rebuild_postmortem_button_->setEnabled(false);
+        bot_rebuild_postmortem_button_->setText(QStringLiteral("REBUILDING POSTMORTEM…"));
+    }
+    run_live_cli({QStringLiteral("kalshi"), QStringLiteral("bot"), QStringLiteral("postmortem")},
+                 [this](const QJsonObject& summary, const QString& error) {
+                     if (bot_rebuild_postmortem_button_) {
+                         bot_rebuild_postmortem_button_->setEnabled(true);
+                         bot_rebuild_postmortem_button_->setText(
+                             QStringLiteral("REBUILD POSTMORTEM FROM LEDGER"));
+                     }
+                     if (!error.isEmpty() && summary.isEmpty() && bot_postmortem_) {
+                         bot_postmortem_->setText(
+                             QStringLiteral("POSTMORTEM REBUILD FAILED · %1").arg(error));
+                         return;
+                     }
+                     refresh_bot_panel();
+                     if (bot_cockpit_dialog_) {
+                         if (auto* view = bot_cockpit_dialog_->findChild<KalshiBotCockpitView*>())
+                             view->reload();
+                     }
+                 });
 }
 
 void KalshiScreen::toggle_bot_kill_switch() {
@@ -5190,26 +5409,86 @@ void KalshiScreen::update_observation_strip() {
 
 void KalshiScreen::update_calibrator_readout() {
     if (!calibrator_readout_) return;
-    if (!has_selection_) {
-        calibrator_readout_->setText(QStringLiteral("CALIBRATOR · select a contract"));
-        return;
-    }
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (now - calibrator_report_read_ms_ >= 5'000) {
         calibrator_report_read_ms_ = now;
         calibrator_report_ = QJsonObject();
-        QFile file(cli::kalshi_evidence_path(QStringLiteral("calibrator.json")));
-        if (file.open(QIODevice::ReadOnly)) {
-            const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
-            if (document.isObject()) calibrator_report_ = document.object();
+        kxbtc15m_calibrator_report_ = QJsonObject();
+        commodities_15m_calibrator_report_ = QJsonObject();
+        const auto load = [](const QString& name) {
+            QJsonObject object;
+            QFile file(cli::kalshi_evidence_path(name));
+            if (file.open(QIODevice::ReadOnly)) {
+                const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+                if (document.isObject()) object = document.object();
+            }
+            return object;
+        };
+        calibrator_report_ = load(QStringLiteral("calibrator.json"));
+        kxbtc15m_calibrator_report_ = load(QStringLiteral("kxbtc15m-calibrator.json"));
+        commodities_15m_calibrator_report_ =
+            load(QStringLiteral("commodities-15m-calibrator.json"));
+    }
+
+    // On the BOT tab or while the cockpit is open, follow the open KXBTC15M
+    // race for this readout — no need to click a market to see the directional
+    // scoreboard the bot is scoring. Selection/charts stay put; only this line
+    // follows. Race/maker tabs keep showing the selected contract.
+    const bool follow_context =
+        (bot_cockpit_dialog_ && bot_cockpit_dialog_->isVisible()) ||
+        (center_tabs_ && bot_tab_index_ >= 0 && center_tabs_->currentIndex() == bot_tab_index_);
+    QString ticker = has_selection_ ? selected_.key.market_id : QString();
+    bool following_open_15m = false;
+    if (follow_context) {
+        const QString follow =
+            prefer_open_kxbtc15m_ticker(kxbtc15m_calibrator_report_, ticker);
+        if (!follow.isEmpty()) {
+            following_open_15m = follow != ticker;
+            ticker = follow;
         }
     }
-    const QJsonObject readout = kalshi_data::KalshiEvidenceEngine::calibrator_readout(
-        calibrator_report_, selected_.key.market_id, now);
-    const QString record = readout.value(QStringLiteral("record")).toString();
-    calibrator_readout_->setText(record.isEmpty()
-        ? readout.value(QStringLiteral("headline")).toString()
-        : readout.value(QStringLiteral("headline")).toString() + QLatin1Char('\n') + record);
+    if (ticker.isEmpty()) {
+        calibrator_readout_->setText(follow_context
+                                         ? QStringLiteral("KXBTC15M · no open race in "
+                                                          "kxbtc15m-calibrator.json yet")
+                                         : QStringLiteral("CALIBRATOR · select a contract"));
+        return;
+    }
+
+    // Same family split the bot uses: each directional race reads its own report.
+    using KalshiBotDecision = services::prediction::kalshi_ns::KalshiBotDecision;
+    const bool is_btc_15m = KalshiBotDecision::is_kxbtc15m_ticker(ticker);
+    const bool is_commod_15m = KalshiBotDecision::is_commodity_15m_ticker(ticker);
+    const QJsonObject& report = is_btc_15m     ? kxbtc15m_calibrator_report_
+                                : is_commod_15m ? commodities_15m_calibrator_report_
+                                                : calibrator_report_;
+    const QJsonObject readout =
+        kalshi_data::KalshiEvidenceEngine::calibrator_readout(report, ticker, now);
+    QString headline = readout.value(QStringLiteral("headline")).toString();
+    QString record = readout.value(QStringLiteral("record")).toString();
+    if (is_btc_15m) {
+        // Prefix so the operator sees which scoreboard owns this contract.
+        if (!headline.startsWith(QStringLiteral("KXBTC15M")))
+            headline = QStringLiteral("KXBTC15M · %1").arg(headline);
+        if (following_open_15m)
+            headline = QStringLiteral("FOLLOW · %1 · %2").arg(ticker, headline);
+        if (record.isEmpty())
+            record = kxbtc15m_scoreboard_line(kxbtc15m_calibrator_report_);
+        else
+            record = QStringLiteral("%1 · %2")
+                         .arg(record, kxbtc15m_scoreboard_line(kxbtc15m_calibrator_report_));
+    } else if (is_commod_15m) {
+        if (!headline.startsWith(QStringLiteral("COMMOD15M")))
+            headline = QStringLiteral("COMMOD15M · %1").arg(headline);
+        if (record.isEmpty())
+            record = commodities_15m_scoreboard_line(commodities_15m_calibrator_report_);
+        else
+            record = QStringLiteral("%1 · %2")
+                         .arg(record,
+                              commodities_15m_scoreboard_line(commodities_15m_calibrator_report_));
+    }
+    calibrator_readout_->setText(record.isEmpty() ? headline
+                                                  : headline + QLatin1Char('\n') + record);
     const QString state = readout.value(QStringLiteral("state")).toString();
     // Deliberately muted styling either way: a calibrated probability is
     // evidence with a stated record, never an implied edge.

@@ -59,6 +59,7 @@ class AlgoTradingScreen : public QWidget, public IStatefulScreen {
     QVector<QPushButton*> tab_buttons_;
     int active_tab_ = 0;
     QLabel* title_label_ = nullptr;
+    QLabel* caption_label_ = nullptr;
     QLabel* engine_caption_ = nullptr;
     QLabel* mode_label_ = nullptr;
     QLabel* status_label_ = nullptr;

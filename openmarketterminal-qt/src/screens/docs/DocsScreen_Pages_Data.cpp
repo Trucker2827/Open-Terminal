@@ -233,23 +233,23 @@ QWidget* DocsScreen::page_node_editor() {
 }
 
 QWidget* DocsScreen::page_code_editor() {
-    return make_page(tr("CODE EDITOR"), tr("Built-in code editor for trading strategies and scripts"),
+    return make_page(tr("RESEARCH LAB"), tr("Notebooks, experiments, reports, and a persistent Python kernel"),
                      {
-                         {tr("OVERVIEW"), tr("The Code Editor provides a built-in development environment for writing "
-                                             "and testing Python trading strategies and analytics scripts.")},
-                         {tr("KEY FEATURES"), tr("■  Syntax highlighting for Python\n"
-                                                 "■  Script execution with output panel\n"
-                                                 "■  Access to terminal data via APIs\n"
-                                                 "■  Template library for common patterns\n"
-                                                 "■  Integration with backtesting engine")},
-                         {tr("REAL-WORLD USAGE"), tr("■  Strategy development: Write and test Python strategies\n"
-                                                     "■  Custom analytics: Build bespoke analysis scripts\n"
-                                                     "■  Data processing: Transform and analyze raw data\n"
-                                                     "■  Automation: Create scheduled data processing jobs")},
-                         {tr("SKILL LEVELS"), tr("BEGINNER: Run example scripts, modify parameters\n"
-                                                 "INTERMEDIATE: Write simple strategies from templates\n"
-                                                 "ADVANCED: Custom analytics with pandas, numpy, scipy\n"
-                                                 "PRO: Full strategy development with custom backtesting integration")},
+                         {tr("OVERVIEW"), tr("Research Lab is the notebook and experiment surface for postmortems, "
+                                             "calibration, cohort analysis, and strategy research backed by local evidence.")},
+                         {tr("KEY FEATURES"), tr("■  Jupyter-style notebooks with a persistent Python kernel\n"
+                                                 "■  Project-connected research tabs and reports\n"
+                                                 "■  Access to terminal data via local APIs\n"
+                                                 "■  Template library for common research patterns\n"
+                                                 "■  Jump into Strategies for paper proof — never a live deploy button")},
+                         {tr("REAL-WORLD USAGE"), tr("■  Postmortems: Replay paper and Kalshi evidence in notebooks\n"
+                                                     "■  Calibration: Score cohorts before trusting a model\n"
+                                                     "■  Experiments: Prototype analytics without arming live\n"
+                                                     "■  Notes: Keep research beside the Strategies sandbox")},
+                         {tr("SKILL LEVELS"), tr("BEGINNER: Open a bundled notebook and run cells\n"
+                                                 "INTERMEDIATE: Write analysis against local evidence tables\n"
+                                                 "ADVANCED: Custom pandas/numpy calibration workflows\n"
+                                                 "PRO: Turn notebook findings into Strategies paper experiments")},
                      });
 }
 

@@ -644,15 +644,17 @@ QWidget* ProfileScreen::build_automation() {
     scl->addStretch();
     stl->addWidget(simple_controls);
 
-    auto* live_panel = make_panel(tr("ARM LIVE TRADING"));
+    auto* live_panel = make_panel(tr("ARM SPOT / SCALP CANARY"));
     auto* lbot = qobject_cast<QVBoxLayout*>(live_panel->layout());
     auto* live_note = new QLabel(
-        tr("Arm only the trade types you explicitly want this local profile to allow. Spot can submit guarded Coinbase orders today; prediction markets and leveraged long/short stay paper/journal-only until their live routers are separately wired."));
+        tr("Arm only the spot/scalp canary lanes this local profile may submit on Coinbase/Kraken. "
+           "This is not Kalshi live arming — that stays in Predictions → Kalshi. Leveraged "
+           "long/short stays watch/journal-only until its live router is separately wired."));
     live_note->setWordWrap(true);
     live_note->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 0 12px;%2")
                                  .arg(ui::colors::TEXT_SECONDARY(), MF));
     lbot->addWidget(live_note);
-    daemon_live_bot_status_ = new QLabel(tr("Checking live bot guard..."));
+    daemon_live_bot_status_ = new QLabel(tr("Checking spot/scalp canary guard..."));
     daemon_live_bot_status_->setWordWrap(true);
     daemon_live_bot_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:8px 12px 2px 12px;%2")
                                                .arg(ui::colors::TEXT_SECONDARY(), MF));
@@ -781,7 +783,7 @@ QWidget* ProfileScreen::build_automation() {
     auto* ar = new QHBoxLayout(action_row);
     ar->setContentsMargins(0, 0, 0, 0);
     ar->setSpacing(8);
-    auto* arm_selected = new QPushButton(tr("ARM SELECTED BOT"));
+    auto* arm_selected = new QPushButton(tr("ARM SELECTED CANARY"));
     arm_selected->setFixedHeight(28);
     arm_selected->setCursor(Qt::PointingHandCursor);
     arm_selected->setStyleSheet(button_style());
@@ -792,7 +794,7 @@ QWidget* ProfileScreen::build_automation() {
         if (long_short_box->isChecked()) strategies << QStringLiteral("long-short");
         if (strategies.isEmpty()) {
             if (daemon_live_bot_status_)
-                daemon_live_bot_status_->setText(tr("Choose at least one strategy lane before arming the bot."));
+                daemon_live_bot_status_->setText(tr("Choose at least one strategy lane before arming the canary."));
             return;
         }
         const QString amount = amount_field->text().trimmed().isEmpty() ? QStringLiteral("100") : amount_field->text().trimmed();
@@ -811,18 +813,19 @@ QWidget* ProfileScreen::build_automation() {
                   QStringLiteral("--entry-offset-bps"), QStringLiteral("5"),
                   QStringLiteral("--yes"),
                   QStringLiteral("--i-understand-live-risk")},
-                 tr("Arming selected bot lanes..."));
+                 tr("Arming selected spot/scalp canary lanes..."));
     });
     ar->addWidget(arm_selected);
     add_live_button(ar, tr("DISARM ALL"),
                     {QStringLiteral("disarm-live"), QStringLiteral("--yes")},
-                    tr("Disarming live bot..."));
+                    tr("Disarming spot/scalp canary..."));
     add_live_button(ar, tr("DRY RUN NEXT"),
                     {QStringLiteral("execute-next"),
                      QStringLiteral("--symbol"), QStringLiteral("BTC-USD"),
                      QStringLiteral("--dry-run")},
-                    tr("Testing next armed bot action without sending an order..."));
-    add_live_button(ar, tr("STATUS"), {QStringLiteral("live-status")}, tr("Checking live bot guard..."));
+                    tr("Testing next canary action without sending an order..."));
+    add_live_button(ar, tr("STATUS"), {QStringLiteral("live-status")},
+                    tr("Checking spot/scalp canary guard..."));
     ar->addStretch();
     live_grid->addWidget(action_row, 5, 0, 1, 3);
 
@@ -835,7 +838,7 @@ QWidget* ProfileScreen::build_automation() {
     auto* scenario_panel = make_panel(tr("COINBASE SCENARIO LAB"));
     auto* scvl = qobject_cast<QVBoxLayout*>(scenario_panel->layout());
     auto* scenario_note = new QLabel(
-        tr("Run local what-if tests before arming live trading. The lab compares Coinbase fee tier, maker/taker behavior, spread, slippage, confidence, and expected move for scalp, spot, and long/short scenarios."));
+        tr("Run local what-if tests before arming the spot/scalp canary. The lab compares Coinbase fee tier, maker/taker behavior, spread, slippage, confidence, and expected move for scalp, spot, and long/short scenarios."));
     scenario_note->setWordWrap(true);
     scenario_note->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 0 12px;%2")
                                      .arg(ui::colors::TEXT_SECONDARY(), MF));
@@ -1654,7 +1657,7 @@ void ProfileScreen::populate_live_bot_status(const QJsonObject& status) {
     QString text;
     QString color;
     if (blocked.isEmpty()) {
-        text = tr("READY: %1 bot is armed for %2. It may place at most one post-only live order up to $%3 when an armed executable lane produces a fresh approved BUY candidate. Target move: %4%. Minimum confidence: %5%. Expires: %6.")
+        text = tr("READY: %1 spot/scalp canary is armed for %2. It may place at most one post-only live order up to $%3 when an armed executable lane produces a fresh approved BUY candidate. Target move: %4%. Minimum confidence: %5%. Expires: %6. Kalshi live arm stays in Predictions.")
                    .arg(active_venue,
                         strategies.isEmpty() ? tr("scalp") : strategies.join(QStringLiteral(", ")),
                         QString::number(max_order, 'f', 0),
@@ -1665,13 +1668,13 @@ void ProfileScreen::populate_live_bot_status(const QJsonObject& status) {
             text += tr(" Long/short is armed for watch/journal only, not live leveraged submission.");
         color = ui::colors::POSITIVE();
     } else if (armed && !expired) {
-        text = tr("ARMED BUT BLOCKED: %1. Armed company: %2. Armed lanes: %3. To allow live execution, open Settings > Security, keep Kill Switch off, enable CLI Trading, CLI LIVE Trading, FAST Live Mode, and add the company to Allowed AI venues.")
+        text = tr("CANARY ARMED BUT BLOCKED: %1. Company: %2. Lanes: %3. To allow spot/scalp execution, open Settings > Security, keep Kill Switch off, enable CLI Trading, CLI LIVE Trading, FAST Live Mode, and add the company to Allowed AI venues. Kalshi session arm is separate (Predictions).")
                    .arg(blocked.join(QStringLiteral("; ")),
                         active_venue,
                         strategies.isEmpty() ? tr("none") : strategies.join(QStringLiteral(", ")));
         color = ui::colors::AMBER();
     } else {
-        text = tr("OFF: live bot is not currently ready. Choose a trading company, choose the strategy lanes, then use ARM SELECTED BOT. Master safety gates still live in Settings > Security. Allowed venues now: %1.")
+        text = tr("OFF: spot/scalp canary is not ready. Choose a trading company, choose the strategy lanes, then use ARM SELECTED CANARY. Master safety gates still live in Settings > Security. Kalshi live arm stays in Predictions. Allowed venues now: %1.")
                    .arg(allowed.isEmpty() ? tr("none") : allowed.join(QStringLiteral(", ")));
         color = ui::colors::TEXT_SECONDARY();
     }

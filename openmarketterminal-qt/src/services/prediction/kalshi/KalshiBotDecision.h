@@ -2,9 +2,14 @@
 
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
 
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QSet>
 #include <QString>
+
+#include <algorithm>
+#include <cmath>
 
 namespace openmarketterminal::services::prediction::kalshi_ns {
 
@@ -114,10 +119,91 @@ class KalshiBotDecision {
     static constexpr auto kEdgeClearsThreshold = "EDGE_CLEARS_THRESHOLD";
     static constexpr auto kSignalUntrusted = "SIGNAL_UNTRUSTED";
     static constexpr auto kBotStopped = "BOT_STOPPED";
+    /// Legacy journal code: lifetime gate FAIL used to pause paper. Paper now
+    /// pauses only on *current-generation* drawdown and auto-rotates; live
+    /// admission still requires a full-record PASS via KalshiBotLive::permit.
+    static constexpr auto kGateFail = "GATE_FAIL";
+    /// Paper-only: current generation max_drawdown_usd exceeds the sealed cap.
+    static constexpr auto kDrawdownCap = "DRAWDOWN_CAP";
+    /// Paper ledger live file archived to the next KeepAllGenerations slot so
+    /// a new generation can bid without deleting the sealed history.
+    static constexpr auto kPaperGenerationRotated = "PAPER_GENERATION_ROTATED";
     static constexpr auto kQuoteResting = "QUOTE_RESTING";
     static constexpr auto kExposureCapBlocksBid = "EXPOSURE_CAP_BLOCKS_BID";
     static constexpr auto kSessionBudgetBlocksBid = "SESSION_BUDGET_BLOCKS_BID";
     static constexpr auto kRequoted = "REQUOTED";
+    /// Paper cashout (sell-to-close before settlement). Fail-closed reasons.
+    static constexpr auto kCashoutNoBid = "CASHOUT_NO_BID";
+    static constexpr auto kCashoutStaleReport = "CASHOUT_STALE_REPORT";
+    static constexpr auto kLockWin = "LOCK_WIN";
+    static constexpr auto kCutEdgeReversed = "CUT_EDGE_REVERSED";
+    static constexpr auto kHoldEdgeIntact = "HOLD_EDGE_INTACT";
+    /// Postmortem lesson: refuse NO fades of already-high YES near close.
+    static constexpr auto kFadeYesNearClose = "FADE_YES_NEAR_CLOSE";
+
+    /// Risk scored over one paper generation's settlement rows (the live
+    /// jsonl only — not archived `.1`, `.2`, …). Same drawdown math as the
+    /// sealed gate, so a rotated generation cannot silently change the ruler.
+    struct PaperGenerationRisk {
+        int settled_bids = 0;
+        double net_pnl_usd = 0.0;
+        double max_drawdown_usd = 0.0;
+    };
+    static PaperGenerationRisk score_paper_generation(const QJsonArray& settlement_rows) {
+        PaperGenerationRisk out;
+        QSet<QString> seen;
+        double running = 0.0;
+        double peak = 0.0;
+        for (const auto& value : settlement_rows) {
+            const QJsonObject row = value.toObject();
+            if (row.value(QStringLiteral("event")).toString() !=
+                QLatin1String("kalshi_bot_paper_settlement"))
+                continue;
+            const QString id = row.value(QStringLiteral("position_id")).toString();
+            const QJsonValue pnl_v = row.value(QStringLiteral("realized_pnl"));
+            if (id.isEmpty() || !pnl_v.isDouble() || seen.contains(id)) continue;
+            seen.insert(id);
+            const double pnl = pnl_v.toDouble();
+            out.net_pnl_usd += pnl;
+            running += pnl;
+            peak = std::max(peak, running);
+            out.max_drawdown_usd = std::max(out.max_drawdown_usd, peak - running);
+            ++out.settled_bids;
+        }
+        out.net_pnl_usd = std::round(out.net_pnl_usd * 100.0) / 100.0;
+        out.max_drawdown_usd = std::round(out.max_drawdown_usd * 100.0) / 100.0;
+        return out;
+    }
+
+    /// Whether the paper loop must refuse new bids / rotate the live
+    /// generation. Uses **current-generation** drawdown vs the sealed cap —
+    /// never the lifetime gate FAIL — so a dead book can auto-rotate and keep
+    /// learning while live promotion stays fail-closed on the full record.
+    struct PaperBidPause {
+        bool paused = false;
+        bool should_rotate = false;
+        QString reason_code;  ///< kDrawdownCap
+        QString detail;
+    };
+    static PaperBidPause paper_bid_pause(const QJsonObject& gate,
+                                         const PaperGenerationRisk& current_gen) {
+        PaperBidPause out;
+        const QJsonObject params = gate.value(QStringLiteral("params")).toObject();
+        const QJsonValue cap = params.value(QStringLiteral("max_drawdown_usd"));
+        if (!cap.isDouble()) return out;
+        if (current_gen.max_drawdown_usd > cap.toDouble()) {
+            out.paused = true;
+            out.should_rotate = true;
+            out.reason_code = QString::fromLatin1(kDrawdownCap);
+            out.detail =
+                QStringLiteral("current paper generation drawdown $%1 exceeds sealed cap $%2 "
+                               "— rotating generation and continuing paper "
+                               "(live still requires full-record PASS)")
+                    .arg(current_gen.max_drawdown_usd, 0, 'f', 2)
+                    .arg(cap.toDouble(), 0, 'f', 2);
+        }
+        return out;
+    }
 
     /// Which tier priced a quote, journaled on every row that reached pricing.
     /// A separate field from `reason_code` on purpose: the reason a bid exists
@@ -203,7 +289,52 @@ class KalshiBotDecision {
         /// long before the 300-settled gate. The paper loop (run_tick) sets
         /// this false; live (run_live_tick) leaves it true.
         bool enforce_session_budget = true;
+        /// Paper sell/cashout: when true, filled positions may sell-to-close at
+        /// the observed held-side bid (LOCK_WIN / CUT_EDGE_REVERSED) instead of
+        /// always riding to settlement. Hold remains the path when the exit
+        /// evaluator says HOLD or when bid/fair is missing (fail closed).
+        /// Live ignores this flag. Default ON for paper so LaunchAgent uses it;
+        /// CLI `--no-paper-cashout` turns it off.
+        bool enable_paper_cashout = true;
+
+        /// Postmortem lesson — ban NO fades of high YES near close.
+        /// When bidding NO (model below YES mid) and YES mid ≥ this and runway
+        /// ≤ `ban_no_fade_max_runway_sec`, pass with FADE_YES_NEAR_CLOSE unless
+        /// outside-info confirms the NO thesis: venue lead down, or BRTI
+        /// avg60 below open (with p_brti_avg60 < 0.5 when present). Missing
+        /// confirm fields → ban stands (fail closed). Mid 0 disables.
+        double ban_no_fade_yes_mid = 0.85;
+        int ban_no_fade_max_runway_sec = 600;  // 10 minutes
+
+        /// Postmortem lesson — favourite asymmetry on crosses.
+        /// When the cross ask is ≥ `favourite_cross_price`, require
+        /// `cross_margin_usd + favourite_cross_extra_margin_usd` of net EV
+        /// before crossing (else rest). Cheapens the path that paid −$1.79
+        /// average losses at ~50% win rate. Extra 0 disables the surcharge.
+        double favourite_cross_price = 0.65;
+        double favourite_cross_extra_margin_usd = 0.03;
     };
+
+    /// Per-ticker streak for CUT_EDGE_REVERSED hysteresis across ticks.
+    using CashoutStreak = QHash<QString, int>;
+    /// Per-position YES-mid samples from open fill → close (gamma honesty).
+    using MidPathStore = QHash<QString, QJsonArray>;
+
+    /// True when kxbtc15m-style features confirm a NO fade (venue lead down,
+    /// or BRTI avg60 below open). Absent keys → false (no lift).
+    static bool outside_info_confirms_no_fade(const QJsonObject& prediction);
+    /// Journal reason for a lift, or empty when the ban stands.
+    static QString outside_info_no_fade_lift_reason(const QJsonObject& prediction);
+
+    /// Append one mid sample per open position (capped). Pure aside from store.
+    static void sample_mid_path(const QJsonArray& open_positions,
+                                const QJsonObject& predictions,
+                                qint64 now_ms,
+                                MidPathStore* store,
+                                int max_samples = 32);
+
+    /// Move stored path onto a settlement/cashout row and clear the slot.
+    static void attach_mid_path(QJsonObject& settlement_or_close, MidPathStore* store);
 
     /// What the bot already has at risk when `decide()` is called, and what
     /// this tick's lifecycle pass freed up. Supplied by the caller from
@@ -292,6 +423,65 @@ class KalshiBotDecision {
     /// trusted, the same way an unknown spread is not a free one.
     static bool signal_trusted(const QJsonObject& report);
 
+    /// KXBTC15M family — ticker prefix before the first '-'. The directional
+    /// 15-minute race uses its own calibrator report; threshold books do not.
+    /// Inline so the BOT cockpit presenter (header-only tests) shares the
+    /// exact same family split as `kalshi bot` without linking this .cpp.
+    static bool is_kxbtc15m_ticker(const QString& ticker) {
+        const int dash = ticker.indexOf(QLatin1Char('-'));
+        const QString family = dash < 0 ? ticker : ticker.left(dash);
+        return family == QLatin1String("KXBTC15M");
+    }
+
+    /// Commodities 15m directional races (own calibrator report).
+    static bool is_commodity_15m_ticker(const QString& ticker) {
+        const int dash = ticker.indexOf(QLatin1Char('-'));
+        const QString family = dash < 0 ? ticker : ticker.left(dash);
+        return family == QLatin1String("KXGOLD15M") || family == QLatin1String("KXSILVER15M") ||
+               family == QLatin1String("KXWTI15M");
+    }
+
+    /// Copy of `report` keeping only predictions that match (or exclude) the
+    /// KXBTC15M family. Commodity-15m tickers are never kept on either side of
+    /// this bool — they have their own `filter_commodity_15m_predictions`.
+    /// Track-record / trust fields are left intact so `signal_trusted()` still
+    /// answers for that source report.
+    static QJsonObject filter_predictions_for_family(const QJsonObject& report,
+                                                     bool keep_kxbtc15m) {
+        QJsonObject out = report;
+        const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
+        QJsonObject filtered;
+        for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it) {
+            if (is_commodity_15m_ticker(it.key())) continue;
+            if (is_kxbtc15m_ticker(it.key()) == keep_kxbtc15m)
+                filtered.insert(it.key(), it.value());
+        }
+        out.insert(QStringLiteral("predictions"), filtered);
+        return out;
+    }
+
+    /// Keep only KXGOLD15M / KXSILVER15M / KXWTI15M predictions.
+    static QJsonObject filter_commodity_15m_predictions(const QJsonObject& report) {
+        QJsonObject out = report;
+        const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
+        QJsonObject filtered;
+        for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it) {
+            if (is_commodity_15m_ticker(it.key())) filtered.insert(it.key(), it.value());
+        }
+        out.insert(QStringLiteral("predictions"), filtered);
+        return out;
+    }
+
+    /// Predictions from the threshold report (non-directional) plus the BTC
+    /// and commodities 15m reports. Each source contributes only when fresh
+    /// under `config.max_report_age_ms`. Trust never crosses family boundaries.
+    /// `generated_at_ms` is the newest contributing source; empty when none.
+    static QJsonObject merge_family_reports(const QJsonObject& threshold_report,
+                                            const QJsonObject& kxbtc15m_report,
+                                            qint64 now_ms,
+                                            const Config& config,
+                                            const QJsonObject& commodities_15m_report = {});
+
     /// Flattens the terminal's two real settlement ledgers into
     /// `{ticker, market_result, settled_time, source}` rows. Rows without a
     /// ticker, or whose result is neither YES nor NO, are dropped — an
@@ -314,9 +504,28 @@ class KalshiBotDecision {
     /// contracts/stake/fee are the FILLED quantities — an order that only ever
     /// rested is not among them and settles into nothing, which is the honest
     /// outcome of a quote the market never took.
+    ///
+    /// Each settlement copies the originating bid's decision fields (edge,
+    /// mid, runway, quote style, …) onto the row so postmortems do not depend
+    /// on a separate ledger join. When `market_mid_by_ticker` carries the
+    /// YES mid observed at settle time for that ticker, it is persisted as
+    /// `market_mid_at_settle` — absent when unknown (never invented).
     static QJsonArray settle_paper(const QJsonArray& open_positions,
                                    const QJsonArray& settlements,
-                                   qint64 now_ms);
+                                   qint64 now_ms,
+                                   const QHash<QString, double>& market_mid_by_ticker = {});
+
+    /// Paper sell/cashout pass: for each filled unsettled position, evaluate
+    /// LOCK_WIN / CUT_EDGE_REVERSED via KalshiAutoEngine::evaluate_position_exit
+    /// and, when selling, journal a `sell` decision row plus an early-exit
+    /// `kalshi_bot_paper_settlement` close. Cross-only at floor(held-side bid);
+    /// mid is never used as a sell proxy. Updates `cut_streak` for CUT hysteresis.
+    /// Returns journal-ready rows only (empty when feature off / nothing to do).
+    static QJsonArray paper_cashout(const QJsonArray& open_positions,
+                                    const QJsonObject& report,
+                                    qint64 now_ms,
+                                    const Config& config,
+                                    CashoutStreak* cut_streak);
 };
 
 } // namespace openmarketterminal::services::prediction::kalshi_ns

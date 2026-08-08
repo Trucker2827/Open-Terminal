@@ -574,6 +574,12 @@ void WeatherScreen::showEvent(QShowEvent* event) {
         bot_timer_->start();
 }
 
+void WeatherScreen::hideEvent(QHideEvent* event) {
+    QWidget::hideEvent(event);
+    if (bot_timer_)
+        bot_timer_->stop();
+}
+
 void WeatherScreen::refresh() {
     // Tier 1: real load state machine. fetch_pending_ stays true until
     // populate_markets (success), handle_fetch_error (adapter error), or

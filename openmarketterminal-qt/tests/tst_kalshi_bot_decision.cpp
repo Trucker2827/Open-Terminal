@@ -77,6 +77,20 @@ QJsonObject with_book(QJsonObject full, const QJsonObject& book) {
     return full;
 }
 
+/// Merge keys into the single prediction's `features` object.
+QJsonObject with_features(QJsonObject full, const QJsonObject& feature_patch) {
+    QJsonObject predictions = full.value(QStringLiteral("predictions")).toObject();
+    const QString ticker = predictions.keys().first();
+    QJsonObject entry = predictions.value(ticker).toObject();
+    QJsonObject features = entry.value(QStringLiteral("features")).toObject();
+    for (auto it = feature_patch.constBegin(); it != feature_patch.constEnd(); ++it)
+        features.insert(it.key(), it.value());
+    entry.insert(QStringLiteral("features"), features);
+    predictions.insert(ticker, entry);
+    full.insert(QStringLiteral("predictions"), predictions);
+    return full;
+}
+
 QJsonObject only_row(const QJsonArray& rows) {
     return rows.isEmpty() ? QJsonObject() : rows.first().toObject();
 }
@@ -311,6 +325,137 @@ class TestKalshiBotDecision : public QObject {
         // having moved to the quote") and every clause of that is false of a
         // crossing bid. A false disclosure is worse than none.
         QVERIFY(!row.contains(QStringLiteral("fill_rule")));
+    }
+
+    /// Postmortem lesson: refuse NO fades of already-high YES with short runway.
+    void no_fade_of_high_yes_near_close_is_refused() {
+        KalshiBotDecision::Config config;
+        // YES mid 0.90, model 0.70 → NO; 5 minutes left ≤ 10m ban window.
+        const QJsonArray banned = KalshiBotDecision::decide(
+            with_book(report(0.70, 0.90, 5.0), {{QStringLiteral("market_no_bid"), 0.08},
+                                                {QStringLiteral("market_no_ask"), 0.10}}),
+            {}, {}, kNow, config);
+        QCOMPARE(action(banned), QStringLiteral("pass"));
+        QCOMPARE(reason(banned), QString::fromLatin1(KalshiBotDecision::kFadeYesNearClose));
+        QCOMPARE(only_row(banned).value(QStringLiteral("side")).toString(), QStringLiteral("NO"));
+
+        // Same fade with 20m runway clears the ban window and may still bid.
+        const QJsonArray allowed = KalshiBotDecision::decide(
+            with_book(report(0.70, 0.90, 20.0), {{QStringLiteral("market_no_bid"), 0.08},
+                                                 {QStringLiteral("market_no_ask"), 0.10}}),
+            {}, {}, kNow, config);
+        QCOMPARE(action(allowed), QStringLiteral("bid"));
+        QCOMPARE(only_row(allowed).value(QStringLiteral("side")).toString(), QStringLiteral("NO"));
+    }
+
+    /// Fade ban lifts only when venue lead confirms down (fail closed otherwise).
+    void no_fade_ban_lifts_only_when_lead_confirms_down() {
+        KalshiBotDecision::Config config;
+        const auto no_book = QJsonObject{{QStringLiteral("market_no_bid"), 0.08},
+                                         {QStringLiteral("market_no_ask"), 0.10}};
+        const QJsonObject base = with_book(report(0.70, 0.90, 5.0), no_book);
+
+        // Conflict or missing lead → ban stands.
+        const QJsonArray conflicted = KalshiBotDecision::decide(
+            with_features(base,
+                          {{QStringLiteral("lead_confirms_direction"), true},
+                           {QStringLiteral("lead_conflicts"), true},
+                           {QStringLiteral("venue_lead_bps_30s"), -12.0}}),
+            {}, {}, kNow, config);
+        QCOMPARE(reason(conflicted), QString::fromLatin1(KalshiBotDecision::kFadeYesNearClose));
+
+        const QJsonArray upward = KalshiBotDecision::decide(
+            with_features(base,
+                          {{QStringLiteral("lead_confirms_direction"), true},
+                           {QStringLiteral("lead_conflicts"), false},
+                           {QStringLiteral("venue_lead_bps_30s"), 8.0}}),
+            {}, {}, kNow, config);
+        QCOMPARE(reason(upward), QString::fromLatin1(KalshiBotDecision::kFadeYesNearClose));
+
+        // Confirm down → ban lifts; journal marks the lift.
+        const QJsonArray lifted = KalshiBotDecision::decide(
+            with_features(base,
+                          {{QStringLiteral("lead_confirms_direction"), true},
+                           {QStringLiteral("lead_conflicts"), false},
+                           {QStringLiteral("venue_lead_bps_30s"), -15.0}}),
+            {}, {}, kNow, config);
+        QCOMPARE(action(lifted), QStringLiteral("bid"));
+        QCOMPARE(only_row(lifted).value(QStringLiteral("side")).toString(), QStringLiteral("NO"));
+        QVERIFY(only_row(lifted).value(QStringLiteral("fade_ban_lifted")).toBool());
+        QCOMPARE(only_row(lifted).value(QStringLiteral("fade_ban_lift_reason")).toString(),
+                 QStringLiteral("lead_confirms_down"));
+
+        // BRTI avg60 below open (and p_brti < 0.5) also lifts without lead.
+        const QJsonArray brti_lifted = KalshiBotDecision::decide(
+            with_features(base,
+                          {{QStringLiteral("open_price"), 100000.0},
+                           {QStringLiteral("brti_avg_60s"), 99900.0},
+                           {QStringLiteral("p_brti_avg60"), 0.35}}),
+            {}, {}, kNow, config);
+        QCOMPARE(action(brti_lifted), QStringLiteral("bid"));
+        QCOMPARE(only_row(brti_lifted).value(QStringLiteral("fade_ban_lift_reason")).toString(),
+                 QStringLiteral("brti_avg60_below_open"));
+
+        // BRTI below open but physics still ≥0.5 → ban stands.
+        const QJsonArray brti_high_p = KalshiBotDecision::decide(
+            with_features(base,
+                          {{QStringLiteral("open_price"), 100000.0},
+                           {QStringLiteral("brti_avg_60s"), 99900.0},
+                           {QStringLiteral("p_brti_avg60"), 0.55}}),
+            {}, {}, kNow, config);
+        QCOMPARE(reason(brti_high_p), QString::fromLatin1(KalshiBotDecision::kFadeYesNearClose));
+    }
+
+    void mid_path_samples_cap_and_attach_onto_settlement() {
+        KalshiBotDecision::MidPathStore store;
+        const QString ticker = QStringLiteral("KXBTC15M-26JUL241015-15");
+        const QJsonObject position = open_position(ticker, kNow - 60'000);
+        const QString pid = position.value(QStringLiteral("position_id")).toString();
+        QJsonObject predictions{
+            {ticker, QJsonObject{{QStringLiteral("market_yes_mid"), 0.70},
+                                 {QStringLiteral("market_yes_bid"), 0.69}}}};
+        KalshiBotDecision::sample_mid_path(QJsonArray{position}, predictions, kNow, &store);
+        predictions.insert(ticker,
+                           QJsonObject{{QStringLiteral("market_yes_mid"), 0.72},
+                                       {QStringLiteral("market_yes_bid"), 0.71}});
+        KalshiBotDecision::sample_mid_path(
+            QJsonArray{position}, predictions, kNow + 1'000, &store);
+        // Same tick twice → still one sample for that ts.
+        KalshiBotDecision::sample_mid_path(
+            QJsonArray{position}, predictions, kNow + 1'000, &store);
+        QCOMPARE(store.value(pid).size(), 2);
+
+        QJsonObject settlement{{QStringLiteral("position_id"), pid},
+                               {QStringLiteral("ticker"), ticker}};
+        KalshiBotDecision::attach_mid_path(settlement, &store);
+        QCOMPARE(settlement.value(QStringLiteral("mid_path")).toArray().size(), 2);
+        QVERIFY(!store.contains(pid));
+        QCOMPARE(settlement.value(QStringLiteral("mid_path"))
+                     .toArray()
+                     .last()
+                     .toObject()
+                     .value(QStringLiteral("market_yes_mid"))
+                     .toDouble(),
+                 0.72);
+    }
+
+    /// Postmortem lesson: crossing a favourite ask needs extra surviving EV.
+    void favourite_cross_requires_extra_margin_else_rests() {
+        KalshiBotDecision::Config config;
+        config.rest_premium_usd = 0.0;  // isolate the cross hurdle
+        // net_ev = 0.76 − 0.70 − 0.02fee = 0.04 clears base margin 0.02 but
+        // not favourite margin 0.05 → must REST, not cross.
+        const QJsonArray rows = KalshiBotDecision::decide(
+            with_book(report(0.76, 0.63, 10.0), {{QStringLiteral("market_yes_bid"), 0.62},
+                                                 {QStringLiteral("market_yes_ask"), 0.70}}),
+            {}, {}, kNow, config);
+        QCOMPARE(action(rows), QStringLiteral("bid"));
+        QCOMPARE(only_row(rows).value(QStringLiteral("quote_style")).toString(),
+                 QStringLiteral("rest"));
+        QCOMPARE(only_row(rows).value(QStringLiteral("quote_style_reason")).toString(),
+                 QStringLiteral("REST_EDGE_BELOW_COST"));
+        QCOMPARE(only_row(rows).value(QStringLiteral("effective_cross_margin_usd")).toDouble(),
+                 0.05);
     }
 
     /// A NO bid crosses at the NO book's OWN ask. Kalshi's NO book is a book,
@@ -849,6 +994,192 @@ class TestKalshiBotDecision : public QObject {
         QCOMPARE(lost.first().toObject().value(QStringLiteral("realized_pnl")).toDouble(), -stake - fee);
     }
 
+    void settle_paper_copies_bid_snapshot_and_optional_mid_at_settle() {
+        QJsonObject position = open_position(QStringLiteral("KXBTCD-26AUG0615-T64000"), kNow);
+        position.insert(QStringLiteral("calibrated_p"), 0.71);
+        position.insert(QStringLiteral("market_mid"), 0.62);
+        position.insert(QStringLiteral("edge"), 0.09);
+        position.insert(QStringLiteral("side_edge"), 0.09);
+        position.insert(QStringLiteral("runway_seconds"), 420.0);
+        position.insert(QStringLiteral("quote_style"), QStringLiteral("cross"));
+        position.insert(QStringLiteral("reason_code"), QStringLiteral("EDGE_CLEARS_THRESHOLD"));
+        QHash<QString, double> mids;
+        mids.insert(QStringLiteral("KXBTCD-26AUG0615-T64000"), 0.88);
+        const QJsonArray settled = KalshiBotDecision::settle_paper(
+            QJsonArray{position},
+            QJsonArray{QJsonObject{{QStringLiteral("ticker"), QStringLiteral("KXBTCD-26AUG0615-T64000")},
+                                   {QStringLiteral("market_result"), QStringLiteral("YES")},
+                                   {QStringLiteral("source"), QStringLiteral("test")}}},
+            kNow, mids);
+        QCOMPARE(settled.size(), 1);
+        const QJsonObject row = settled.first().toObject();
+        QCOMPARE(row.value(QStringLiteral("calibrated_p")).toDouble(), 0.71);
+        QCOMPARE(row.value(QStringLiteral("market_mid")).toDouble(), 0.62);
+        QCOMPARE(row.value(QStringLiteral("quote_style")).toString(), QStringLiteral("cross"));
+        QCOMPARE(row.value(QStringLiteral("market_mid_at_settle")).toDouble(), 0.88);
+        QVERIFY(!row.contains(QStringLiteral("spot_at_settle")));  // not invented
+    }
+
+    // --- paper cashout (sell-to-close) ------------------------------------
+
+    void paper_cashout_disabled_emits_nothing() {
+        const QString ticker = QStringLiteral("KXBTC15M-26JUL241015-15");
+        QJsonObject position = open_position(ticker, kNow);
+        position.insert(QStringLiteral("side"), QStringLiteral("YES"));
+        position.insert(QStringLiteral("price"), 0.70);
+        KalshiBotDecision::Config config;
+        config.enable_paper_cashout = false;
+        KalshiBotDecision::CashoutStreak streak;
+        const QJsonArray rows = KalshiBotDecision::paper_cashout(
+            QJsonArray{position},
+            with_book(report(0.90, 0.90, 1.0),
+                      QJsonObject{{QStringLiteral("market_yes_bid"), 0.90},
+                                  {QStringLiteral("market_yes_ask"), 0.92}}),
+            kNow, config, &streak);
+        QCOMPARE(rows.size(), 0);
+    }
+
+    void paper_cashout_refuses_when_held_side_bid_missing_even_if_mid_is_high() {
+        const QString ticker = QStringLiteral("KXBTC15M-26JUL241015-15");
+        QJsonObject position = open_position(ticker, kNow);
+        position.insert(QStringLiteral("side"), QStringLiteral("YES"));
+        position.insert(QStringLiteral("price"), 0.70);
+        KalshiBotDecision::Config config;
+        KalshiBotDecision::CashoutStreak streak;
+        // Mid is high (would look like a lock-win if mid were allowed as sell
+        // proxy) but YES bid is absent — fail closed.
+        const QJsonArray rows = KalshiBotDecision::paper_cashout(
+            QJsonArray{position}, report(0.90, 0.95, 1.0), kNow, config, &streak);
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(action(rows), QStringLiteral("pass"));
+        QCOMPARE(reason(rows), QString::fromLatin1(KalshiBotDecision::kCashoutNoBid));
+        QVERIFY(!only_row(rows).value(QStringLiteral("event")).toString().contains(
+            QStringLiteral("settlement")));
+    }
+
+    void paper_cashout_lock_win_closes_at_floor_bid_and_replay_clears_position() {
+        const QString ticker = QStringLiteral("KXBTC15M-26JUL241015-15");
+        QJsonObject position = open_position(ticker, kNow);
+        position.insert(QStringLiteral("side"), QStringLiteral("YES"));
+        position.insert(QStringLiteral("price"), 0.70);
+        position.insert(QStringLiteral("contracts"), 3);
+        position.insert(QStringLiteral("stake_usd"), 2.10);
+        position.insert(QStringLiteral("fee_usd"), 0.05);
+        KalshiBotDecision::Config config;
+        KalshiBotDecision::CashoutStreak streak;
+        const QJsonObject rep =
+            with_book(report(0.90, 0.90, 1.0),
+                      QJsonObject{{QStringLiteral("market_yes_bid"), 0.901},
+                                  {QStringLiteral("market_yes_ask"), 0.92}});
+        const QJsonArray rows =
+            KalshiBotDecision::paper_cashout(QJsonArray{position}, rep, kNow, config, &streak);
+        QCOMPARE(rows.size(), 2);
+        QCOMPARE(rows.at(0).toObject().value(QStringLiteral("action")).toString(),
+                 QStringLiteral("sell"));
+        QCOMPARE(rows.at(0).toObject().value(QStringLiteral("reason_code")).toString(),
+                 QString::fromLatin1(KalshiBotDecision::kLockWin));
+        QCOMPARE(rows.at(0).toObject().value(QStringLiteral("exit_price")).toDouble(), 0.90);
+        QCOMPARE(rows.at(0).toObject().value(QStringLiteral("fill_model")).toString(),
+                 QString::fromLatin1(KalshiBotOrders::kCashoutFillModel));
+
+        const QJsonObject close = rows.at(1).toObject();
+        QCOMPARE(close.value(QStringLiteral("event")).toString(),
+                 QStringLiteral("kalshi_bot_paper_settlement"));
+        QCOMPARE(close.value(QStringLiteral("resolution")).toString(),
+                 QStringLiteral("early_exit"));
+        QCOMPARE(close.value(QStringLiteral("close_reason")).toString(),
+                 QString::fromLatin1(KalshiBotDecision::kLockWin));
+        QVERIFY(close.value(QStringLiteral("won")).isNull());
+        QCOMPARE(close.value(QStringLiteral("exit_price")).toDouble(), 0.90);
+
+        // Replay: bid + fill + cashout settlement → position gone, ticker settled.
+        QJsonArray ledger;
+        QJsonObject bid = position;
+        bid.insert(QStringLiteral("event"), QStringLiteral("kalshi_bot_decision"));
+        bid.insert(QStringLiteral("order_state"), QStringLiteral("resting"));
+        bid.insert(QStringLiteral("ttl_ms"), 180000.0);
+        ledger.append(bid);
+        ledger.append(QJsonObject{
+            {QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
+            {QStringLiteral("action"), QStringLiteral("fill")},
+            {QStringLiteral("position_id"), position.value(QStringLiteral("position_id"))},
+            {QStringLiteral("ticker"), ticker},
+            {QStringLiteral("contracts"), 3},
+            {QStringLiteral("price"), 0.70},
+            {QStringLiteral("fee_usd"), 0.05},
+            {QStringLiteral("reason_code"), QStringLiteral("FILLED_AT_LIMIT")},
+            {QStringLiteral("ts_ms"), static_cast<double>(kNow)}});
+        ledger.append(rows.at(0));
+        ledger.append(close);
+        const KalshiBotOrders::Book book = KalshiBotOrders::replay(ledger);
+        QCOMPARE(book.positions.size(), 0);
+        QVERIFY(!book.settled.isEmpty());
+
+        // Same tick cannot re-bid: decide sees settled ticker.
+        const QJsonArray decide_rows =
+            KalshiBotDecision::decide(rep, {}, book.settled, kNow, config);
+        bool saw_settled = false;
+        for (const auto& value : decide_rows) {
+            const QJsonObject row = value.toObject();
+            if (row.value(QStringLiteral("ticker")).toString() != ticker) continue;
+            QCOMPARE(row.value(QStringLiteral("action")).toString(), QStringLiteral("pass"));
+            QCOMPARE(row.value(QStringLiteral("reason_code")).toString(),
+                     QString::fromLatin1(KalshiBotDecision::kContractSettled));
+            saw_settled = true;
+        }
+        QVERIFY(saw_settled);
+    }
+
+    void paper_cashout_cut_requires_streak_of_two() {
+        const QString ticker = QStringLiteral("KXBTC15M-26JUL241015-15");
+        QJsonObject position = open_position(ticker, kNow);
+        position.insert(QStringLiteral("side"), QStringLiteral("YES"));
+        position.insert(QStringLiteral("price"), 0.70);
+        // Fair low, bid high enough that cash_out beats fair + margin.
+        const QJsonObject rep =
+            with_book(report(0.50, 0.55, 10.0),
+                      QJsonObject{{QStringLiteral("market_yes_bid"), 0.60},
+                                  {QStringLiteral("market_yes_ask"), 0.62}});
+        KalshiBotDecision::Config config;
+        KalshiBotDecision::CashoutStreak streak;
+        const QJsonArray first =
+            KalshiBotDecision::paper_cashout(QJsonArray{position}, rep, kNow, config, &streak);
+        // First tick: condition true but streak=1 < 2 → quiet HOLD.
+        QCOMPARE(first.size(), 0);
+        QCOMPARE(streak.value(ticker), 1);
+
+        const QJsonArray second =
+            KalshiBotDecision::paper_cashout(QJsonArray{position}, rep, kNow + 1, config, &streak);
+        QCOMPARE(second.size(), 2);
+        QCOMPARE(second.at(0).toObject().value(QStringLiteral("reason_code")).toString(),
+                 QString::fromLatin1(KalshiBotDecision::kCutEdgeReversed));
+        QCOMPARE(second.at(1).toObject().value(QStringLiteral("resolution")).toString(),
+                 QStringLiteral("early_exit"));
+    }
+
+    void paper_cashout_does_not_run_after_exchange_settlement_empties_positions() {
+        const QString ticker = QStringLiteral("KXBTC15M-26JUL241015-15");
+        QJsonObject position = open_position(ticker, kNow);
+        position.insert(QStringLiteral("side"), QStringLiteral("YES"));
+        const QJsonArray exchange = KalshiBotDecision::settle_paper(
+            QJsonArray{position},
+            QJsonArray{QJsonObject{{QStringLiteral("ticker"), ticker},
+                                   {QStringLiteral("market_result"), QStringLiteral("YES")},
+                                   {QStringLiteral("source"), QStringLiteral("test")}}},
+            kNow);
+        QCOMPARE(exchange.size(), 1);
+        QVERIFY(exchange.first().toObject().value(QStringLiteral("won")).isBool());
+        // After exchange settle the caller re-replays; cashout sees empty book.
+        KalshiBotDecision::Config config;
+        KalshiBotDecision::CashoutStreak streak;
+        const QJsonArray cashout = KalshiBotDecision::paper_cashout(
+            {},
+            with_book(report(0.90, 0.90, 1.0),
+                      QJsonObject{{QStringLiteral("market_yes_bid"), 0.90}}),
+            kNow, config, &streak);
+        QCOMPARE(cashout.size(), 0);
+    }
+
     // --- Fix 2: an aged orphan with no settlement record is voided, not held ---
 
     void an_aged_orphan_with_no_settlement_is_voided_and_retired() {
@@ -1001,6 +1332,192 @@ class TestKalshiBotDecision : public QObject {
         // re-void even if that guard were ever removed.
         const QJsonArray revoided = KalshiBotDecision::settle_paper(book.positions, {}, kNow + 1000);
         QCOMPARE(revoided.size(), 0);
+    }
+
+    // --- KXBTC15M directional family routing --------------------------------
+
+    void is_kxbtc15m_ticker_matches_family_prefix() {
+        QVERIFY(KalshiBotDecision::is_kxbtc15m_ticker(QStringLiteral("KXBTC15M-26AUG071230-30")));
+        QVERIFY(!KalshiBotDecision::is_kxbtc15m_ticker(QStringLiteral("KXBTCD-26AUG0712-T64000")));
+        QVERIFY(!KalshiBotDecision::is_kxbtc15m_ticker(QStringLiteral("KXBTC-26AUG07-B65050")));
+    }
+
+    void is_commodity_15m_ticker_matches_gold_silver_wti() {
+        QVERIFY(KalshiBotDecision::is_commodity_15m_ticker(QStringLiteral("KXGOLD15M-26AUG072030-30")));
+        QVERIFY(KalshiBotDecision::is_commodity_15m_ticker(QStringLiteral("KXSILVER15M-26AUG072030-30")));
+        QVERIFY(KalshiBotDecision::is_commodity_15m_ticker(QStringLiteral("KXWTI15M-26AUG072030-30")));
+        QVERIFY(!KalshiBotDecision::is_commodity_15m_ticker(QStringLiteral("KXBTC15M-26AUG072030-30")));
+        QVERIFY(!KalshiBotDecision::is_commodity_15m_ticker(QStringLiteral("KXGOLDD-26AUG07")));
+    }
+
+    void filter_commodity_15m_keeps_only_commodity_races() {
+        const QJsonObject report_obj{
+            {QStringLiteral("generated_at_ms"), static_cast<double>(kNow)},
+            {QStringLiteral("predictions"),
+             QJsonObject{{QStringLiteral("KXGOLD15M-A"), QJsonObject{{QStringLiteral("p_yes_full"), 0.6}}},
+                         {QStringLiteral("KXBTC15M-A"), QJsonObject{{QStringLiteral("p_yes_full"), 0.7}}},
+                         {QStringLiteral("KXBTCD-A"), QJsonObject{{QStringLiteral("p_yes_full"), 0.55}}}}}};
+        const QJsonObject filtered = KalshiBotDecision::filter_commodity_15m_predictions(report_obj);
+        QCOMPARE(filtered.value(QStringLiteral("predictions")).toObject().size(), 1);
+        QVERIFY(filtered.value(QStringLiteral("predictions"))
+                    .toObject()
+                    .contains(QStringLiteral("KXGOLD15M-A")));
+        const QJsonObject thr =
+            KalshiBotDecision::filter_predictions_for_family(report_obj, /*keep_kxbtc15m=*/false);
+        QCOMPARE(thr.value(QStringLiteral("predictions")).toObject().size(), 1);
+        QVERIFY(thr.value(QStringLiteral("predictions"))
+                    .toObject()
+                    .contains(QStringLiteral("KXBTCD-A")));
+    }
+
+    void filter_predictions_keeps_only_the_requested_family() {
+        QJsonObject mixed = report(0.95, 0.83, 10.0, true);
+        QJsonObject predictions = mixed.value(QStringLiteral("predictions")).toObject();
+        predictions.insert(QStringLiteral("KXBTCD-26AUG0712-T64000"), prediction(0.90, 0.70, 20.0));
+        mixed.insert(QStringLiteral("predictions"), predictions);
+
+        const QJsonObject only_15 =
+            KalshiBotDecision::filter_predictions_for_family(mixed, /*keep_kxbtc15m=*/true);
+        QCOMPARE(only_15.value(QStringLiteral("predictions")).toObject().size(), 1);
+        QVERIFY(only_15.value(QStringLiteral("predictions"))
+                    .toObject()
+                    .contains(QStringLiteral("KXBTC15M-26JUL241015-15")));
+        // Trust fields survive the filter so signal_trusted still answers.
+        QVERIFY(KalshiBotDecision::signal_trusted(only_15));
+
+        const QJsonObject only_threshold =
+            KalshiBotDecision::filter_predictions_for_family(mixed, /*keep_kxbtc15m=*/false);
+        QCOMPARE(only_threshold.value(QStringLiteral("predictions")).toObject().size(), 1);
+        QVERIFY(only_threshold.value(QStringLiteral("predictions"))
+                    .toObject()
+                    .contains(QStringLiteral("KXBTCD-26AUG0712-T64000")));
+    }
+
+    void merge_family_reports_takes_each_family_from_its_source() {
+        QJsonObject threshold = report(0.90, 0.70, 20.0, true);
+        QJsonObject preds;
+        preds.insert(QStringLiteral("KXBTCD-26AUG0712-T64000"), prediction(0.90, 0.70, 20.0));
+        // A 15m ticker in the threshold report must NOT survive the merge —
+        // the directional calibrator owns that family.
+        preds.insert(QStringLiteral("KXBTC15M-SHOULD-DROP"), prediction(0.99, 0.50, 10.0));
+        threshold.insert(QStringLiteral("predictions"), preds);
+
+        QJsonObject dir15 = report(0.95, 0.83, 10.0, false);
+        dir15.insert(QStringLiteral("event"), QStringLiteral("kxbtc15m_calibrator"));
+
+        QJsonObject commod{
+            {QStringLiteral("generated_at_ms"), static_cast<double>(kNow)},
+            {QStringLiteral("event"), QStringLiteral("commodities_15m_calibrator")},
+            {QStringLiteral("predictions"),
+             QJsonObject{{QStringLiteral("KXGOLD15M-26AUG072030-30"),
+                          prediction(0.61, 0.40, 10.0)}}}};
+
+        KalshiBotDecision::Config config;
+        const QJsonObject merged =
+            KalshiBotDecision::merge_family_reports(threshold, dir15, kNow, config, commod);
+        const QJsonObject out = merged.value(QStringLiteral("predictions")).toObject();
+        QCOMPARE(out.size(), 3);
+        QVERIFY(out.contains(QStringLiteral("KXBTCD-26AUG0712-T64000")));
+        QVERIFY(out.contains(QStringLiteral("KXBTC15M-26JUL241015-15")));
+        QVERIFY(out.contains(QStringLiteral("KXGOLD15M-26AUG072030-30")));
+        QVERIFY(!out.contains(QStringLiteral("KXBTC15M-SHOULD-DROP")));
+    }
+
+    void an_untrusted_kxbtc15m_report_does_not_bid() {
+        QJsonObject dir15 = report(0.98, 0.83, 10.0, /*trusted=*/false);
+        dir15.insert(QStringLiteral("event"), QStringLiteral("kxbtc15m_calibrator"));
+        const QJsonObject filtered =
+            KalshiBotDecision::filter_predictions_for_family(dir15, /*keep_kxbtc15m=*/true);
+        const QJsonArray rows = KalshiBotDecision::decide(filtered, {}, {}, kNow, {});
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(reason(rows), QStringLiteral("SIGNAL_UNTRUSTED"));
+        QCOMPARE(action(rows), QStringLiteral("pass"));
+    }
+
+    void a_trusted_kxbtc15m_report_with_edge_reaches_the_bid_path() {
+        QJsonObject dir15 = report(0.98, 0.83, 10.0, /*trusted=*/true);
+        dir15.insert(QStringLiteral("event"), QStringLiteral("kxbtc15m_calibrator"));
+        const QJsonObject filtered =
+            KalshiBotDecision::filter_predictions_for_family(dir15, /*keep_kxbtc15m=*/true);
+        QVERIFY(KalshiBotDecision::signal_trusted(filtered));
+        const QJsonArray rows = KalshiBotDecision::decide(filtered, {}, {}, kNow, {});
+        QCOMPARE(action(rows), QStringLiteral("bid"));
+        QCOMPARE(reason(rows), QStringLiteral("EDGE_CLEARS_THRESHOLD"));
+        QCOMPARE(only_row(rows).value(QStringLiteral("ticker")).toString(),
+                 QStringLiteral("KXBTC15M-26JUL241015-15"));
+    }
+
+    void paper_bid_pause_is_quiet_when_gate_missing_or_cap_absent() {
+        KalshiBotDecision::PaperGenerationRisk deep;
+        deep.max_drawdown_usd = 48.33;
+        QVERIFY(!KalshiBotDecision::paper_bid_pause({}, deep).paused);
+        QVERIFY(!KalshiBotDecision::paper_bid_pause(
+                     QJsonObject{{"evaluated", false}, {"verdict", "FAIL"}}, deep)
+                     .paused);
+    }
+
+    void score_paper_generation_tracks_running_drawdown() {
+        const QJsonArray rows{
+            QJsonObject{{"event", "kalshi_bot_paper_settlement"},
+                        {"position_id", "a"},
+                        {"realized_pnl", 10.0}},
+            QJsonObject{{"event", "kalshi_bot_paper_settlement"},
+                        {"position_id", "b"},
+                        {"realized_pnl", -25.0}},
+            QJsonObject{{"event", "kalshi_bot_decision"},
+                        {"position_id", "ignore"},
+                        {"realized_pnl", -99.0}},
+            QJsonObject{{"event", "kalshi_bot_paper_settlement"},
+                        {"position_id", "a"},
+                        {"realized_pnl", -25.0}},  // duplicate id ignored
+        };
+        const auto risk = KalshiBotDecision::score_paper_generation(rows);
+        QCOMPARE(risk.settled_bids, 2);
+        QCOMPARE(risk.net_pnl_usd, -15.0);
+        QCOMPARE(risk.max_drawdown_usd, 25.0);
+    }
+
+    void paper_bid_pause_trips_on_current_gen_drawdown_and_requests_rotate() {
+        const QJsonObject gate{
+            {"evaluated", true},
+            {"verdict", "FAIL"},
+            {"params", QJsonObject{{"max_drawdown_usd", 20.0}}},
+            {"ledger", QJsonObject{{"max_drawdown_usd", 5.0}}}};
+        KalshiBotDecision::PaperGenerationRisk current;
+        current.settled_bids = 12;
+        current.max_drawdown_usd = 48.33;
+        current.net_pnl_usd = -30.0;
+        const auto pause = KalshiBotDecision::paper_bid_pause(gate, current);
+        QVERIFY(pause.paused);
+        QVERIFY(pause.should_rotate);
+        QCOMPARE(pause.reason_code, QStringLiteral("DRAWDOWN_CAP"));
+        QVERIFY(pause.detail.contains(QStringLiteral("48.33")));
+        QVERIFY(pause.detail.contains(QStringLiteral("current paper generation")));
+    }
+
+    void paper_bid_pause_ignores_lifetime_gate_fail_when_current_gen_ok() {
+        const QJsonObject gate{
+            {"evaluated", true},
+            {"verdict", "FAIL"},
+            {"params", QJsonObject{{"max_drawdown_usd", 20.0}}},
+            {"ledger", QJsonObject{{"max_drawdown_usd", 48.33}, {"net_pnl_usd", -37.8}}}};
+        KalshiBotDecision::PaperGenerationRisk current;
+        current.settled_bids = 3;
+        current.max_drawdown_usd = 5.0;
+        const auto pause = KalshiBotDecision::paper_bid_pause(gate, current);
+        QVERIFY(!pause.paused);
+        QVERIFY(!pause.should_rotate);
+    }
+
+    void paper_bid_pause_clear_when_current_gen_within_cap() {
+        const QJsonObject gate{
+            {"evaluated", true},
+            {"verdict", "PASS"},
+            {"params", QJsonObject{{"max_drawdown_usd", 20.0}}},
+            {"ledger", QJsonObject{{"max_drawdown_usd", 5.0}}}};
+        KalshiBotDecision::PaperGenerationRisk current;
+        current.max_drawdown_usd = 5.0;
+        QVERIFY(!KalshiBotDecision::paper_bid_pause(gate, current).paused);
     }
 
 };

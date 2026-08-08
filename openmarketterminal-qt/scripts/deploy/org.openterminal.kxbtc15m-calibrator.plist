@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  KXBTC15M directional calibrator — paper scoreboard vs market mid.
+  DOCUMENTED, NOT AUTO-LOADED — live infrastructure is bounced deliberately,
+  so the operator installs and loads this by hand:
+
+      cp org.openterminal.kxbtc15m-calibrator.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.kxbtc15m-calibrator.plist
+
+  UNINSTALL:
+
+      launchctl bootout gui/$UID/org.openterminal.kxbtc15m-calibrator
+      rm ~/Library/LaunchAgents/org.openterminal.kxbtc15m-calibrator.plist
+
+  RESTART after editing the script:
+
+      launchctl kickstart -k gui/$UID/org.openterminal.kxbtc15m-calibrator
+
+  WHAT IT DOES: every 60s runs
+      python3 scripts/kalshi_advise/kxbtc15m_calibrator.py once
+  which reads kalshi-ws-books.json, scores P(close>open) for open KXBTC15M
+  contracts, settles resolved ones against Kalshi/BRTI, and rewrites
+
+      ~/Library/Application Support/Open Terminal/Open Terminal/kxbtc15m-calibrator.json
+
+  Trust (`adds_value_over_market`) flips true only after ≥100 scored contracts
+  with Brier strictly better than the raw mid. Until then `kalshi bot` journals
+  SIGNAL_UNTRUSTED for that family and places no KXBTC15M bid.
+
+  ADVISORY / PAPER PATH ONLY. This job never arms live trading and never
+  calls prepare_order / submit_order.
+
+  VERIFY: after a few minutes,
+      python3 scripts/kalshi_advise/kxbtc15m_calibrator.py report
+  should show rising scored_contracts; the BOT cockpit KXBTC15M node should
+  show "N/100 scored · ΔBrier …".
+-->
+<plist version="1.0"><dict>
+  <key>Label</key><string>org.openterminal.kxbtc15m-calibrator</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/scripts/kalshi_advise/kxbtc15m_calibrator.py</string>
+    <string>once</string>
+  </array>
+  <key>StartInterval</key><integer>60</integer>
+  <key>RunAtLoad</key><true/>
+  <key>WorkingDirectory</key><string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt</string>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/kxbtc15m-calibrator.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/kxbtc15m-calibrator.err.log</string>
+</dict></plist>

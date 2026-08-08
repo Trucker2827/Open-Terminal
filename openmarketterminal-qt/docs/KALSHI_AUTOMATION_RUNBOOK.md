@@ -4,6 +4,239 @@ OpenTerminal's Kalshi lane is paper-first and fail-closed. The automated micro-m
 
 The persistent daemon also builds the same Coinbase/Kraken/Gemini microstructure snapshot shown by `edge flow`: source freshness, cross-exchange divergence, top-book imbalance, microprice, multi-window tape pressure, and buyer-versus-seller initiated executed volume. Coinbase maker side is inverted to obtain taker/aggressor side; Gemini `makerSide` is inverted; Kraken's trade side is already the taker side. The CLI reports classified-volume coverage so a thin or partially classified sample is visibly marked as warming. A Kalshi leg can execute only when at least two fresh spot books agree and their direction confirms the selected YES/NO side. Credible opposing aggressor flow is an additional veto. This layer is confirmation-or-veto only; it cannot create model edge or bypass the normal Kalshi risk gates.
 
+## Predictions UI families
+
+Kalshi Predictions family combo includes **Crypto**, **Commodities**, Weather,
+and the other browse categories. Commodities uses Kalshi’s real API category
+`Commodities` with underlier chips **GOLD / SILVER / WTI / BRENT / COPPER /
+NATGAS** and the same duration filter as Crypto (`Commodities#GOLD@hourly`).
+BRENT / COPPER / NATGAS have no 15m/hourly series — the UI falls back to
+**daily** for those. Crypto spot DOM / CF benchmarks stay crypto-only.
+
+## CLI scoreboard / calibrate (no GUI)
+
+Everything the paper bot reads is reachable from `openterminalcli`:
+
+```bash
+./build/openterminalcli kalshi bot scoreboard
+./build/openterminalcli --json kalshi bot scoreboard
+./build/openterminalcli kalshi bot calibrate once --family commodities15m
+./build/openterminalcli kalshi bot calibrate once --family all
+./build/openterminalcli kalshi bot calibrate report --family kxbtc15m
+./build/openterminalcli kalshi bot status
+./build/openterminalcli kalshi bot gate --json
+./build/openterminalcli kalshi bot once
+./build/openterminalcli kalshi bot postmortem
+./build/openterminalcli --json kalshi bot postmortem
+```
+
+`calibrate` shells out to the same Python publishers as launchd
+(`spot_calibrator.py`, `kxbtc15m_calibrator.py`, `commodities_15m_calibrator.py`).
+
+**Auto-refresh (default ON):** each `kalshi bot once|run` tick kickstarts the
+three calibrator LaunchAgents (or runs `python … once`) when a report ages
+past ~2/3 of `--max-report-age-sec` (default 120s → kick at ~80s). That is the
+unattended safety net against `REPORT_STALE` when launchd lags or App Nap
+pauses a job — no human `calibrate` required. Opt out with
+`--no-auto-refresh-calibrators`. Steady-state refresh remains the LaunchAgents
+(`spot-calibrator` KeepAlive 60s; `kxbtc15m` / `commodities-15m` StartInterval 60s).
+
+`scoreboard` (human + `--json`) surfaces outside-info detail the bot already
+scores: `trusted_variant`, per-variant `ablations` (brier / n / beats_mid),
+and commodities `settlement_parity` (Pyth↔Kalshi). The BOT cockpit rain draws
+threshold + KXBTC15M + commodities15m columns (`THR` / `15m` / `COM`); KPI /
+orbit lines show the same trust + ablation summary (and commodities parity).
+Click the KXBTC15M or COMMODITIES 15M orbit node for a read-only ablation /
+parity inspector (Esc or click outside to close) — never arms.
+
+### Bid postmortem (wins/losses with circumstances)
+
+W/L counts alone do not teach the next bid. Rebuild the per-settlement autopsy:
+
+```bash
+./build/openterminalcli kalshi bot postmortem
+./build/openterminalcli --json kalshi bot postmortem
+```
+
+Always writes two cohorts when the ledger has new-rule markers (`mid_path` /
+`fade_ban_lifted`):
+
+- **Historic** — `kalshi-bot-postmortems.jsonl` +
+  `kalshi-bot-postmortem-summary.json` (learning + sealed-gate lifetime ledger)
+- **Current rules** — `kalshi-bot-postmortems-current.jsonl` +
+  `kalshi-bot-postmortem-summary-current.json` (new-trading scorecard)
+
+Cockpit PM KPI / BOT card judge **current rules**, not lifetime losses.
+Sealed gate still scores the full historic paper record for live promotion.
+
+### Postmortem → decide gates (what losses taught)
+
+Paper `decide()` now encodes the autopsy defaults (fail closed; journaled):
+
+1. **`FADE_YES_NEAR_CLOSE`** — refuse NO when YES mid ≥ 0.85 and runway ≤ 10m
+   (`ban_no_fade_yes_mid` / `ban_no_fade_max_runway_sec`). Lift when either:
+   - venue lead confirms down (`lead_confirms_direction` && !`lead_conflicts`
+     && `venue_lead_bps_30s` < 0), or
+   - BRTI avg60 is below open (`brti_avg_60s` < `open_price`, and
+     `p_brti_avg60` < 0.5 when that field is present).
+   Missing confirm fields → ban stands (fail closed). Lifted bids journal
+   `fade_ban_lifted` / `fade_ban_lift_reason`
+   (`lead_confirms_down` | `brti_avg60_below_open`).
+2. **Favourite cross surcharge** — when cross ask ≥ 0.65, require
+   `cross_margin + 0.03` net EV before crossing (`favourite_cross_*`); else rest.
+
+Disable locally by setting the ban mid / extra margin to 0 in config (no CLI
+flags yet). Cashout still manages exits after fill; these gates stop the bad
+entries that cashout could not salvage.
+
+Paper ticks sample YES mid (and held-side bid when present) onto open
+positions and attach `mid_path` on settlement / early_exit closes. Postmortem
+gamma prefers that path (`path_late_move` / stable-wrong) over runway proxies.
+
+### Measuring post-gate paper
+
+Default `kalshi bot postmortem` already writes the current-rules cohort when
+markers exist. Force the window (fail if missing) with:
+
+```
+./build/openterminalcli kalshi bot postmortem --post-gate
+./build/openterminalcli --json kalshi bot postmortem --since-ms <deploy_ms>
+```
+
+`--post-gate` uses the first ledger marker of `fade_ban_lifted` or `mid_path`.
+Judge **CURRENT RULES** for new decide/cashout/cashout features; keep
+**HISTORIC** for learning and the sealed live-promotion gate. Do **not** retune
+Gaussians or enable Phase 4 tilts until outside-info ablations beat mid for weeks.
+
+### GUI: bid postmortem inspect (Predictions → BOT)
+
+Read-only access to the same summary:
+
+- BOT tab card **BID POSTMORTEM** + **VIEW POSTMORTEM DETAIL** / **REBUILD POSTMORTEM FROM LEDGER**
+- BOT COCKPIT: click the **PM …** KPI strip entry for the inspect overlay
+  (modes, worst losses, lessons). Esc / click outside closes. Never arms.
+- Still **8 orbit nodes / 6 KPI** — detail rides on the existing PM line.
+
+### Paper cashout (sell-to-close)
+
+Hold-to-settle remains the default *path* when exit conditions are unmet.
+Paper cashout is **ON by default** (`--no-paper-cashout` to disable):
+
+- Tick order: exchange `settle_paper` → `paper_cashout` → resting reconcile → decide
+- Sells only at **floor(held-side bid)** (YES bid / NO bid); mid is never a sell proxy
+- Triggers via `KalshiAutoEngine::evaluate_position_exit`: `LOCK_WIN`, `CUT_EDGE_REVERSED`
+- Close journals `kalshi_bot_paper_settlement` with `resolution:early_exit`, `won:null`
+- Missing/stale bid → HOLD (`CASHOUT_NO_BID` / `CASHOUT_STALE_REPORT`)
+
+New settlements also embed the bid snapshot (`calibrated_p`, `market_mid`, …)
+plus optional `market_mid_at_settle`. `kalshi bot status` prints a POSTMORTEM
+line; the cockpit KPI strip ends with `PM …` (pin: 8 nodes / 6 KPI).
+
+## Outside-info edge backlog
+
+Microscopic outside-info ideas (Pyth parity, venue-lead lag windows, BRTI 60s,
+futures tape, vol priors) live in
+[`docs/design/OUTSIDE_INFO_EDGE_BACKLOG.md`](design/OUTSIDE_INFO_EDGE_BACKLOG.md).
+Promotion ladder: observe → ablation vs mid → veto/confirm → tiny tilt →
+trust at ≥100 contracts. Do not retune the Gaussian alone for profit.
+
+## Commodities 15m directional scoreboard (paper)
+
+`KXGOLD15M` / `KXSILVER15M` / `KXWTI15M` share the same race math as
+`KXBTC15M` (`P(close > open)` Gaussian) but keep a **separate** trust file
+`commodities-15m-calibrator.json`. Live spot/vol prefer Pyth Hermes
+(`Metal.XAU/USD`, `Metal.XAG/USD`, `Metal.XTI/USD`); Yahoo futures
+(`GC=F` / `SI=F` / `CL=F`) are cold fallback **and** the futures-tape
+confirm source near close. Scoreboard also ablates
+`physics_tape_confirm_near_close` and `physics_vol_regime_confirm`.
+Kalshi recorded YES/NO is preferred at settle. Report `settlement_parity`
+measures Pyth-derived direction vs recorded results (advisory only — never
+grants trust).
+
+```bash
+python3 scripts/kalshi_advise/commodities_15m_calibrator.py once
+python3 scripts/kalshi_advise/commodities_15m_calibrator.py report
+# launchd (optional):
+cp scripts/deploy/org.openterminal.commodities-15m-calibrator.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.commodities-15m-calibrator.plist
+```
+
+`kalshi bot` also kickstarts `once` when that report is missing/stale. Until
+`adds_value_over_market` is true at ≥100 scored contracts, commodity-15m bids
+journal `SIGNAL_UNTRUSTED` and do not place.
+
+## KXBTC15M directional scoreboard (paper)
+
+`KXBTC15M` (BTC up/down in 15 minutes) is **not** scored by the hourly
+threshold `spot_calibrator`. A dedicated loop writes `kxbtc15m-calibrator.json`:
+
+```bash
+# From openmarketterminal-qt/ — uses OPENTERMINAL_EVIDENCE_DIR or the default
+# ~/Library/Application Support/Open Terminal/Open Terminal/
+python3 scripts/kalshi_advise/kxbtc15m_calibrator.py once
+python3 scripts/kalshi_advise/kxbtc15m_calibrator.py report
+python3 scripts/kalshi_advise/kxbtc15m_calibrator.py run --interval 60
+```
+
+### Continuous loop (launchd)
+
+Install so the 15m scoreboard keeps accumulating while the paper bot runs.
+`kalshi bot` also kickstarts `once` when the report is missing/stale (safety
+net if launchd is not loaded):
+
+```bash
+mkdir -p "$HOME/Library/Application Support/org.openterminal.OpenTerminal/logs"
+cp scripts/deploy/org.openterminal.kxbtc15m-calibrator.plist \
+   ~/Library/LaunchAgents/
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.kxbtc15m-calibrator.plist
+# restart after editing the script:
+launchctl kickstart -k gui/$UID/org.openterminal.kxbtc15m-calibrator
+# uninstall:
+launchctl bootout gui/$UID/org.openterminal.kxbtc15m-calibrator
+```
+
+The plist runs `kxbtc15m_calibrator.py once` every 60s (paper scoreboard only;
+never arms live). Foreground alternative: `… run --interval 60`.
+
+### Trust, paper pause, and UI
+
+The model is deterministic physics: \(P(\text{close} > \text{open})\) from the
+daemon's window open (`reference_strike` / `floor_strike`), live spot, and
+realized per-minute vol. Daemon horizon also exposes venue-lead lag features
+(`venue_lead_bps_30s`, `mid_lag_cents_30s`, `lead_confirms_direction`,
+`lead_conflicts`) and settlement-aligned `brti_avg_60s` from CF Benchmarks.
+The scoreboard ablates `physics`, `physics_veto_on_conflict`,
+`physics_confirm_only`, `physics_brti_avg60`, and
+`physics_vol_regime_confirm`. Trust is fail-closed:
+
+- `adds_value_over_market` is true only when the best ablation's **per-contract**
+  Brier beats the raw market mid over at least `min_scored_contracts` (100)
+  settled `KXBTC15M` contracts (`trusted_variant` names the winner).
+- `kalshi bot once|run` reads `calibrator.json` for threshold families and
+  `kxbtc15m-calibrator.json` for `KXBTC15M` only. An untrusted 15m report
+  journals `SIGNAL_UNTRUSTED` and does not bid that family.
+- **Paper pause / auto-rotate:** drawdown is scored on the **current paper
+  generation** (live `kalshi-bot-decisions.jsonl` only). When that drawdown
+  exceeds sealed `params.max_drawdown_usd`, the tick journals `DRAWDOWN_CAP`,
+  archives the live file into the next KeepAllGenerations slot
+  (`PAPER_GENERATION_ROTATED`), and continues bidding on a fresh generation.
+  Lifetime gate `FAIL` alone does **not** deadlock paper — no manual ledger
+  reset. Settlements/lifecycle always keep running. Live admission still
+  requires a fresh full-record `PASS` — this does not weaken the carve-out.
+- **CLI rebuild → bot restart:** building `openterminalcli` on macOS runs
+  `scripts/deploy/restart-kalshi-bot.sh` (POST_BUILD) to `launchctl kickstart`
+  `org.openterminal.kalshi-bot` so the LaunchAgent loads the new binary.
+- BOT cockpit rain splits sources; orbit shows **BRIER — MODEL vs BOT-SETTLED**
+  so a calibrator that beats mid cannot be confused with settled-bid Brier.
+- Until the 15m scoreboard clears the floor **and** paper gate criteria clear,
+  do not arm live.
+
+Quick read of the live scoreboard:
+
+```bash
+python3 -c 'import json,os; p=os.path.expanduser("~/Library/Application Support/Open Terminal/Open Terminal/kxbtc15m-calibrator.json"); d=json.load(open(p)); print({k:d.get(k) for k in ("scored_contracts","brier_full","brier_market_mid_raw","adds_value_over_market","min_scored_contracts")})'
+```
+
 ## Promotion sequence
 
 1. Configure Kalshi **demo** credentials and confirm `kalshi auto positions --json` returns without an account error.

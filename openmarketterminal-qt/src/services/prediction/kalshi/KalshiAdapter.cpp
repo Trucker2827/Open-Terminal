@@ -178,9 +178,29 @@ QStringList crypto_asset_keywords(const QString& asset) {
     return {};
 }
 
+/// Narrow Kalshi's real `Commodities` category (~134 series) to one underlier.
+/// Keywords stay on KX* ticker prefixes so Entertainment "Golden Globe" noise
+/// never matches even if a future API mix-up widened the category page.
+QStringList commodity_asset_keywords(const QString& asset) {
+    const QString a = asset.trimmed().toUpper();
+    if (a == QLatin1String("GOLD"))
+        return {QStringLiteral("kxgold")};
+    if (a == QLatin1String("SILVER"))
+        return {QStringLiteral("kxsilver")};
+    if (a == QLatin1String("WTI") || a == QLatin1String("OIL"))
+        return {QStringLiteral("kxwti"), QStringLiteral("whenwti")};
+    if (a == QLatin1String("BRENT"))
+        return {QStringLiteral("kxbrent")};
+    if (a == QLatin1String("COPPER"))
+        return {QStringLiteral("kxcopper")};
+    if (a == QLatin1String("NATGAS"))
+        return {QStringLiteral("kxnatgas"), QStringLiteral("kxngas"), QStringLiteral("natgas")};
+    return {};
+}
+
 // Category slugs may carry structured Kalshi filters:
-//   Crypto#BTC@hourly, Crypto@live, Sports
-// Split into base category, optional crypto asset keywords, and frequency list.
+//   Crypto#BTC@hourly, Commodities#GOLD@daily, Crypto@live, Sports
+// Split into base category, optional asset keywords, and frequency list.
 // "live" = all short-term cadences.
 CategoryFilter parse_category_filter(QString slug) {
     CategoryFilter out;
@@ -206,6 +226,8 @@ CategoryFilter parse_category_filter(QString slug) {
 
     if (out.base.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) == 0)
         out.series_keywords = crypto_asset_keywords(asset);
+    else if (out.base.compare(QStringLiteral("Commodities"), Qt::CaseInsensitive) == 0)
+        out.series_keywords = commodity_asset_keywords(asset);
     // "Climate and Weather" resolves to ~291 series; the weather bot only trades
     // six daily city-high series. Narrow the per-series fan-out to just those so
     // the browser fetches 6 series (fast, reliable) instead of 291 (heavy, lossy

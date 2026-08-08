@@ -89,7 +89,7 @@ inline StrategyCockpitHit strategy_cockpit_hit(const QPointF& point, const QSize
     if (in_node(QPointF(w * 0.15, h * 0.52), 42.0))
         return {StrategyCockpitView::EvidenceKalshi, "Inspect Kalshi and odds evidence", -1};
     if (in_node(QPointF(w * 0.20, h * 0.70), 42.0))
-        return {StrategyCockpitView::ResearchInputs, "Open research notebooks for news and notes", -1};
+        return {StrategyCockpitView::ResearchInputs, "Open Research Lab for notebooks and notes", -1};
     if (in_node(QPointF(center.x(), center.y() - 116.0), 48.0))
         return {StrategyCockpitView::EvidenceChronos, "Inspect Chronos forecast cohorts", -1};
     if (in_node(center, 64.0))

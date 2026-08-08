@@ -188,6 +188,20 @@ void CryptoTradingScreen::setup_ui() {
     sep->setObjectName("cryptoCommandBarSep");
     cmd_layout->addWidget(sep);
 
+    auto* surface_caption = new QLabel(tr("trade spot · not Kalshi bets"));
+    surface_caption->setObjectName("cryptoCommandBarTitle");
+    surface_caption->setStyleSheet(
+        QStringLiteral("color:%1;font-size:9px;font-weight:600;background:transparent;")
+            .arg(ui::colors::TEXT_TERTIARY()));
+    surface_caption->setToolTip(
+        tr("Coinbase/Kraken spot and scalp execution. Kalshi contracts and live arm "
+           "are in Predictions; paper strategy proof is Strategies."));
+    cmd_layout->addWidget(surface_caption);
+
+    auto* sep2 = new QLabel("|");
+    sep2->setObjectName("cryptoCommandBarSep");
+    cmd_layout->addWidget(sep2);
+
     // Symbol input with autocomplete
     symbol_input_ = new QLineEdit(selected_symbol_);
     symbol_input_->setObjectName("cryptoSymbolInput");
@@ -221,9 +235,9 @@ void CryptoTradingScreen::setup_ui() {
     cmd_layout->addWidget(symbol_input_);
 
     // Separator
-    auto* sep2 = new QLabel("|");
-    sep2->setObjectName("cryptoCommandBarSep");
-    cmd_layout->addWidget(sep2);
+    auto* sep3 = new QLabel("|");
+    sep3->setObjectName("cryptoCommandBarSep");
+    cmd_layout->addWidget(sep3);
 
     // Price ribbon (embedded ticker bar)
     ticker_bar_ = new CryptoTickerBar;

@@ -252,7 +252,7 @@ void StrategyOpsMapPanel::refresh() {
 
     last_refresh_ms_ = QDateTime::currentMSecsSinceEpoch();
     status_text_ = books_.isEmpty()
-        ? tr("No proof books yet. Seed books from Proof Books to start the machine.")
+        ? tr("No evidence books yet. Seed books from Evidence to start the machine.")
         : tr("Unified decisions are journaled locally. Latest: %1%2")
               .arg(latest_decision_verdict_, latest_decision_blocker_.isEmpty()
                     ? QString() : QStringLiteral(" — ") + latest_decision_blocker_);

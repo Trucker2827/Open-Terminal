@@ -31,7 +31,7 @@ TabBar::TabBar(QWidget* parent) : QWidget(parent) {
         {"news", "NEWS", ":/openmarket/icons/news.png"},
         {"ai_chat", "AI CHAT", ":/openmarket/icons/ai-safe.png"},
         {"algo_trading", "STRATEGIES"},
-        {"code_editor", "NOTEBOOKS"},
+        {"code_editor", "RESEARCH LAB"},
         {"settings", "SETTINGS", ":/openmarket/icons/settings.png"},
         {"profile", "PROFILE"},
     };

@@ -776,7 +776,8 @@ void register_builtins() {
     register_screen("report_builder", "Report Builder", {"report", "research report"});
     register_screen("excel", "Excel", {"xl", "excel", "spreadsheet"});
     register_screen("node_editor", "Workflows", {"node", "workflow", "workflows", "builder"});
-    register_screen("code_editor", "Notebooks", {"code", "notebook", "notebooks", "python"});
+    register_screen("code_editor", "Research Lab",
+                    {"code", "notebook", "notebooks", "python", "research lab", "researchlab"});
     register_screen("profile", "Profile", {"profile", "account", "user"});
     register_screen("settings", "Settings", {"settings", "prefs", "preferences"});
     register_screen("agent_config", "Agents", {"agents", "agent config", "teams"});

@@ -150,6 +150,12 @@ QJsonObject kalshi_flow_windows_to_json(const QVector<KalshiFlowLevel>& yes_bid_
 QJsonObject kalshi_flow_divergence_to_json(double spot_change_bps,
                                            double contract_change_cents,
                                            const KalshiFlowMetrics& short_window);
+// Venue-lead / sticky-mid lag window (30s). Confirm/veto research only.
+QJsonObject kalshi_venue_lead_lag_to_json(double spot_change_bps,
+                                         double contract_change_cents);
+// CF Benchmarks BRTI payload → 60s average used for Kalshi settlement.
+// Returns 0 when missing/invalid (caller must treat as unavailable).
+double kalshi_brti_avg_60s_from_payload(const QJsonObject& payload);
 QJsonObject kalshi_flow_execution_to_json(const KalshiFlowQuote& yes,
                                           const KalshiFlowQuote& no,
                                           double yes_fee_per_contract,

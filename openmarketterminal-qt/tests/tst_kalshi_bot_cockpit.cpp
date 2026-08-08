@@ -62,7 +62,7 @@ QJsonObject settlement_row(qint64 ts_ms, const QString& ticker, bool won, double
                        {"position_id", ticker + "@" + QString::number(ts_ms)}};
 }
 
-/// A prediction shaped exactly as calibrator.json writes one.
+/// A prediction shaped exactly as calibrator.json writes one (threshold).
 QJsonObject prediction(double p_yes, double mid, double sigma = 3.5) {
     return QJsonObject{
         {"p_yes_full", p_yes},
@@ -71,6 +71,20 @@ QJsonObject prediction(double p_yes, double mid, double sigma = 3.5) {
         {"features", QJsonObject{{"required_move_sigma", sigma},
                                  {"sqrt_minutes_left", 1.4},
                                  {"signed_distance_bps", 12.0},
+                                 {"yes_mid", mid}}}};
+}
+
+/// KXBTC15M directional prediction — carries open_price so rain falls `open`
+/// bps rather than strike-σ.
+QJsonObject directional_prediction(double p_yes, double mid, double open_bps = 12.0) {
+    return QJsonObject{
+        {"p_yes_full", p_yes},
+        {"p_yes_market_baseline", mid},
+        {"market_yes_mid", mid},
+        {"features", QJsonObject{{"open_price", 64000.0},
+                                 {"signed_distance_bps", open_bps},
+                                 {"per_min_vol_bps", 4.0},
+                                 {"seconds_left", 400.0},
                                  {"yes_mid", mid}}}};
 }
 
@@ -88,6 +102,30 @@ QJsonObject calibrator_report(qint64 generated_at_ms, const QJsonObject& predict
                        {"brier_market_trained_logit", 0.0741},
                        {"adds_value_over_market", adds_value},
                        {"predictions", predictions}};
+}
+
+/// Shaped like kxbtc15m-calibrator.json — own Brier, own floor, own trust.
+QJsonObject kxbtc15m_calibrator_report(qint64 generated_at_ms, const QJsonObject& predictions,
+                                       bool adds_value = false, int scored = 7,
+                                       double brier_full = 0.2100,
+                                       double brier_mid = 0.2400,
+                                       const QString& trusted_variant = {},
+                                       const QJsonObject& ablations = {}) {
+    QJsonObject out{{"schema", 4},
+                    {"event", "kxbtc15m_calibrator"},
+                    {"advisory_only", true},
+                    {"generated_at_ms", double(generated_at_ms)},
+                    {"resolved_contracts", scored},
+                    {"scored_contracts", scored},
+                    {"min_scored_contracts", 100},
+                    {"brier_full", brier_full},
+                    {"brier_market_mid_raw", brier_mid},
+                    {"adds_value_over_market", adds_value},
+                    {"predictions", predictions}};
+    if (!trusted_variant.isEmpty())
+        out.insert(QStringLiteral("trusted_variant"), trusted_variant);
+    if (!ablations.isEmpty()) out.insert(QStringLiteral("ablations"), ablations);
+    return out;
 }
 
 QJsonObject criterion(const QString& id, double observed, double required,
@@ -229,6 +267,12 @@ QString stage_role(const BotCockpitScene& s, const QString& id) {
     return QStringLiteral("missing");
 }
 
+QString stage_value(const BotCockpitScene& s, const QString& id) {
+    for (const auto& st : s.health_stages)
+        if (st.id == id) return st.value;
+    return QStringLiteral("missing");
+}
+
 } // namespace
 
 class KalshiBotCockpitTest : public QObject {
@@ -249,8 +293,9 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(scene.mood, QString::fromLatin1(kBotCockpitMoodDormant));
         // The absence is stated, not left as an empty scene the viewer must
         // interpret.
-        QVERIFY(scene.census.contains(QStringLiteral("NO RAIN")));
+        QVERIFY(scene.census.contains(QStringLiteral("NO FLOW")));
         QVERIFY(scene.census.contains(QStringLiteral("calibrator.json")));
+        QVERIFY(scene.census.contains(QStringLiteral("kxbtc15m-calibrator.json")));
         QVERIFY(!scene.report_present);
         QVERIFY(scene.envelope.contains(QStringLiteral("NO DECISION JOURNALED")));
     }
@@ -530,12 +575,12 @@ class KalshiBotCockpitTest : public QObject {
             present_bot_cockpit(panel_for(ledger, gate), {}, gate, ledger, {}, kNow);
         QVERIFY(scene.kpi_available);
         const QString strip = scene.kpi.join(QStringLiteral(" | "));
-        QVERIFY(strip.contains(QStringLiteral("SETTLED 4")));
+        // No current-rules postmortem → HIST tag on gate ledger numbers.
+        QVERIFY(strip.contains(QStringLiteral("SETTLED HIST 4")));
         QVERIFY(strip.contains(QStringLiteral("W/L 3-1")));
-        QVERIFY(strip.contains(QStringLiteral("NET $1.35")));
-        // Drawdown is shown against the SEALED cap, not against a number the
-        // scene picked.
-        QVERIFY(strip.contains(QStringLiteral("DRAWDOWN $1.55 / $20.00")));
+        QVERIFY(strip.contains(QStringLiteral("NET HIST $1.35")));
+        // Lifetime drawdown vs sealed cap (promotion fact, not new-rules P&L).
+        QVERIFY(strip.contains(QStringLiteral("HIST DD $1.55 / $20.00")));
         // Every entry carries its own colour role, decided here rather than
         // re-derived by the widget from the rendered text.
         QCOMPARE(scene.kpi_roles.size(), scene.kpi.size());
@@ -554,20 +599,20 @@ class KalshiBotCockpitTest : public QObject {
             return QStringLiteral("(no such entry)");
         };
         QCOMPARE(role_for(evaluated_gate(QStringLiteral("FAIL"), 4, 3, 1, 1.35, 1.55),
-                          QStringLiteral("NET")),
+                          QStringLiteral("NET HIST")),
                  QStringLiteral("green"));
         QCOMPARE(role_for(evaluated_gate(QStringLiteral("FAIL"), 4, 1, 3, -2.10, 3.00),
-                          QStringLiteral("NET")),
+                          QStringLiteral("NET HIST")),
                  QStringLiteral("red"));
         // A flat book is neither a win nor a loss and is not painted as one.
         QCOMPARE(role_for(evaluated_gate(QStringLiteral("FAIL"), 4, 2, 2, 0.0, 1.00),
-                          QStringLiteral("NET")),
+                          QStringLiteral("NET HIST")),
                  QStringLiteral("grey"));
         QCOMPARE(role_for(evaluated_gate(QStringLiteral("FAIL"), 4, 3, 1, 1.35, 1.55),
-                          QStringLiteral("DRAWDOWN")),
+                          QStringLiteral("HIST DD")),
                  QStringLiteral("grey"));
         QCOMPARE(role_for(evaluated_gate(QStringLiteral("FAIL"), 4, 1, 3, -2.10, 25.00),
-                          QStringLiteral("DRAWDOWN")),
+                          QStringLiteral("HIST DD")),
                  QStringLiteral("red"));
     }
 
@@ -709,7 +754,7 @@ class KalshiBotCockpitTest : public QObject {
         // Whose track record it is, said on the label: the gate's
         // brier_beats_market criterion is a different measure over different
         // contracts and sits three boxes away on the same scene.
-        QCOMPARE(node->label, QStringLiteral("CALIBRATOR — ITS OWN TRACK RECORD"));
+        QCOMPARE(node->label, QStringLiteral("CALIBRATOR — THRESHOLD TRACK RECORD"));
         // Issue #171: the opponent is named (the RAW MID, not the gate's own
         // settled bids), and the count beside the score is the Brier's actual
         // denominator. `resolved_contracts` is a lifetime total; printing it
@@ -769,8 +814,332 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(scene.columns_total, 40);
         QVERIFY(scene.census.contains(QStringLiteral("5 of 40 watched contracts")));
         QVERIFY(scene.census.contains(QStringLiteral("35 not drawn")));
+        QVERIFY(scene.census.contains(QStringLiteral("40 threshold")));
+        QVERIFY(scene.census.contains(QStringLiteral("0 kxbtc15m")));
+        QVERIFY(scene.census.contains(QStringLiteral("0 commodities15m")));
         // Ranked by |edge|: the widest-edge contract is drawn first.
         QVERIFY(scene.columns.first().abs_edge >= scene.columns.last().abs_edge);
+    }
+
+    // ── dual-source rain + 15m scoreboard ──────────────────────────────────
+
+    void dual_source_rain_tags_columns_by_family() {
+        const QJsonObject threshold =
+            calibrator_report(kNow - 10'000,
+                              QJsonObject{{"KXBTCD-26AUG0712-T64000", prediction(0.55, 0.42)}});
+        const QJsonObject dir15 = kxbtc15m_calibrator_report(
+            kNow - 8'000,
+            QJsonObject{{"KXBTC15M-26AUG071230-30", directional_prediction(0.62, 0.48)}});
+        const QJsonArray ledger{decision_row(kNow - 5'000, QStringLiteral("KXBTCD-26AUG0712-T64000"),
+                                             QStringLiteral("EDGE_BELOW_THRESHOLD"))};
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
+                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, dir15);
+        QCOMPARE(scene.columns.size(), 2);
+        QHash<QString, QString> source_by_ticker;
+        for (const auto& column : scene.columns)
+            source_by_ticker.insert(column.ticker, column.signal_source);
+        QCOMPARE(source_by_ticker.value(QStringLiteral("KXBTCD-26AUG0712-T64000")),
+                 QStringLiteral("threshold"));
+        QCOMPARE(source_by_ticker.value(QStringLiteral("KXBTC15M-26AUG071230-30")),
+                 QStringLiteral("kxbtc15m"));
+        QVERIFY(scene.census.contains(QStringLiteral("1 threshold")));
+        QVERIFY(scene.census.contains(QStringLiteral("1 kxbtc15m")));
+        QVERIFY(scene.census.contains(QStringLiteral("0 commodities15m")));
+        QVERIFY(scene.census.contains(QStringLiteral("15m first")));
+    }
+
+    void commodities_rain_tags_columns_and_falls_open_bps() {
+        QJsonObject commod = kxbtc15m_calibrator_report(
+            kNow - 6'000,
+            QJsonObject{{"KXGOLD15M-26AUG072115-15", directional_prediction(0.58, 0.45)},
+                        {"KXWTI15M-26AUG072115-15", directional_prediction(0.70, 0.48)}});
+        commod.insert(QStringLiteral("event"), QStringLiteral("commodities_15m_calibrator"));
+        commod.insert(QStringLiteral("settlement_parity"),
+                      QJsonObject{{QStringLiteral("checked"), 4},
+                                  {QStringLiteral("matched"), 3},
+                                  {QStringLiteral("match_rate"), 0.75}});
+        const QJsonObject threshold =
+            calibrator_report(kNow - 10'000,
+                              QJsonObject{{"KXBTCD-26AUG0712-T64000", prediction(0.80, 0.40)}});
+        const QJsonObject dir15 = kxbtc15m_calibrator_report(
+            kNow - 8'000,
+            QJsonObject{{"KXBTC15M-26AUG071230-30", directional_prediction(0.55, 0.50)}});
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
+                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, dir15, commod);
+        QCOMPARE(scene.columns.size(), 4);
+        QCOMPARE(scene.columns.at(0).signal_source, QStringLiteral("kxbtc15m"));
+        QCOMPARE(scene.columns.at(1).signal_source, QStringLiteral("commodities15m"));
+        QCOMPARE(scene.columns.at(2).signal_source, QStringLiteral("commodities15m"));
+        QCOMPARE(scene.columns.at(3).signal_source, QStringLiteral("threshold"));
+        QCOMPARE(bot_cockpit_source_tag(QStringLiteral("commodities15m")), QStringLiteral("COM"));
+        QVERIFY(scene.census.contains(QStringLiteral("2 commodities15m")));
+        // Commodities races use the open glyph (same directional features as BTC 15m).
+        QStringList labels;
+        for (const auto& glyph : scene.columns.at(1).glyphs) labels << glyph.label;
+        QVERIFY(labels.contains(QStringLiteral("open")));
+        QVERIFY(!labels.contains(QStringLiteral("sigma")));
+        // Inspect detail rides on the commodities orbit node (click target).
+        const BotCockpitNode* node = scene.node(QStringLiteral("commodities15m"));
+        QVERIFY(node != nullptr);
+        QVERIFY(!node->detail.isEmpty());
+        QVERIFY(node->detail.contains(QStringLiteral("ablations")));
+        QVERIFY(node->detail.contains(QStringLiteral("parity Pyth↔Kalshi 3/4 (75%)")));
+        QVERIFY(node->label.contains(QStringLiteral("click")));
+    }
+
+    void outside_info_inspect_detail_lists_sorted_ablations() {
+        const QJsonObject ablations{
+            {QStringLiteral("physics_confirm_only"),
+             QJsonObject{{QStringLiteral("brier"), 0.11},
+                         {QStringLiteral("beats_mid"), true},
+                         {QStringLiteral("scored_contracts"), 12}}},
+            {QStringLiteral("physics"),
+             QJsonObject{{QStringLiteral("brier"), 0.20},
+                         {QStringLiteral("beats_mid"), false},
+                         {QStringLiteral("scored_contracts"), 20}}},
+        };
+        const QJsonObject report = kxbtc15m_calibrator_report(
+            kNow, {}, /*adds_value=*/false, /*scored=*/20, 0.20, 0.22, {}, ablations);
+        const QString detail = outside_info_inspect_detail(report);
+        QVERIFY(detail.contains(QStringLiteral("trusted_variant —")));
+        QVERIFY(detail.contains(QStringLiteral("ablations (observe")));
+        // Sorted keys: physics before physics_confirm_only.
+        QVERIFY(detail.indexOf(QStringLiteral("physics  ")) <
+                detail.indexOf(QStringLiteral("physics_confirm_only")));
+        QVERIFY(detail.contains(QStringLiteral("beats_mid")));
+        QCOMPARE(outside_info_inspect_detail({}),
+                 QStringLiteral("NO REPORT — this family has not published here yet"));
+    }
+
+    void rain_sorts_15m_before_threshold_then_by_edge() {
+        // Threshold edges are deliberately wider than the 15m edge — if sort
+        // were |edge|-only, the threshold book would lead. 15m must still win.
+        const QJsonObject threshold = calibrator_report(
+            kNow - 10'000,
+            QJsonObject{{"KXBTCD-WIDE", prediction(0.80, 0.40)},   // |edge| 0.40
+                        {"KXBTCD-NARROW", prediction(0.50, 0.42)}});  // |edge| 0.08
+        const QJsonObject dir15 = kxbtc15m_calibrator_report(
+            kNow - 8'000,
+            QJsonObject{{"KXBTC15M-26AUG071245-00", directional_prediction(0.55, 0.48)},  // 0.07
+                        {"KXBTC15M-26AUG071230-30", directional_prediction(0.70, 0.48)}}); // 0.22
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
+                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, dir15);
+        QCOMPARE(scene.columns.size(), 4);
+        QCOMPARE(scene.columns.at(0).signal_source, QStringLiteral("kxbtc15m"));
+        QCOMPARE(scene.columns.at(1).signal_source, QStringLiteral("kxbtc15m"));
+        QCOMPARE(scene.columns.at(2).signal_source, QStringLiteral("threshold"));
+        QCOMPARE(scene.columns.at(3).signal_source, QStringLiteral("threshold"));
+        QCOMPARE(scene.columns.at(0).ticker, QStringLiteral("KXBTC15M-26AUG071230-30"));
+        QCOMPARE(scene.columns.at(1).ticker, QStringLiteral("KXBTC15M-26AUG071245-00"));
+        QCOMPARE(scene.columns.at(2).ticker, QStringLiteral("KXBTCD-WIDE"));
+        QCOMPARE(scene.columns.at(3).ticker, QStringLiteral("KXBTCD-NARROW"));
+    }
+
+    void prefer_open_kxbtc15m_keeps_current_when_still_open() {
+        const QJsonObject dir15 = kxbtc15m_calibrator_report(
+            kNow,
+            QJsonObject{{"KXBTC15M-26AUG071230-30", directional_prediction(0.70, 0.48)},
+                        {"KXBTC15M-26AUG071245-00", directional_prediction(0.55, 0.48)}});
+        QCOMPARE(prefer_open_kxbtc15m_ticker(dir15, QStringLiteral("KXBTC15M-26AUG071245-00")),
+                 QStringLiteral("KXBTC15M-26AUG071245-00"));
+    }
+
+    void prefer_open_kxbtc15m_picks_widest_edge_when_current_gone() {
+        const QJsonObject dir15 = kxbtc15m_calibrator_report(
+            kNow,
+            QJsonObject{{"KXBTC15M-26AUG071230-30", directional_prediction(0.70, 0.48)},
+                        {"KXBTC15M-26AUG071245-00", directional_prediction(0.55, 0.48)}});
+        // Current race closed out of the report — follow the widest remaining edge.
+        QCOMPARE(prefer_open_kxbtc15m_ticker(dir15, QStringLiteral("KXBTC15M-26AUG071215-15")),
+                 QStringLiteral("KXBTC15M-26AUG071230-30"));
+        QCOMPARE(prefer_open_kxbtc15m_ticker(dir15, QString()),
+                 QStringLiteral("KXBTC15M-26AUG071230-30"));
+        QCOMPARE(prefer_open_kxbtc15m_ticker({}, QStringLiteral("KXBTC15M-26AUG071230-30")),
+                 QString());
+    }
+
+    void threshold_report_kxbtc15m_predictions_are_stripped_from_rain() {
+        // Mimic a polluted calibrator.json that still carries a 15m ticker —
+        // the cockpit must ignore it the same way kalshi bot does.
+        const QJsonObject polluted = calibrator_report(
+            kNow - 10'000,
+            QJsonObject{{"KXBTCD-26AUG0712-T64000", prediction(0.55, 0.42)},
+                        {"KXBTC15M-26AUG071230-30", prediction(0.90, 0.40)}});
+        const QJsonArray ledger{decision_row(kNow - 5'000, QStringLiteral("KXBTCD-26AUG0712-T64000"),
+                                             QStringLiteral("EDGE_BELOW_THRESHOLD"))};
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), polluted, {}, ledger, {}, kNow);
+        QCOMPARE(scene.columns.size(), 1);
+        QCOMPARE(scene.columns.first().ticker, QStringLiteral("KXBTCD-26AUG0712-T64000"));
+        QCOMPARE(scene.columns.first().signal_source, QStringLiteral("threshold"));
+    }
+
+    void kxbtc15m_scoreboard_line_shows_scored_delta_and_trust() {
+        const QJsonObject ablations{
+            {QStringLiteral("physics"),
+             QJsonObject{{QStringLiteral("brier"), 0.21},
+                         {QStringLiteral("beats_mid"), false},
+                         {QStringLiteral("scored_contracts"), 7}}},
+            {QStringLiteral("physics_brti_avg60"),
+             QJsonObject{{QStringLiteral("brier"), 0.19},
+                         {QStringLiteral("beats_mid"), false},
+                         {QStringLiteral("scored_contracts"), 4}}},
+        };
+        const QJsonObject report = kxbtc15m_calibrator_report(
+            kNow, {}, /*adds_value=*/false, /*scored=*/7, 0.2100, 0.2400, {}, ablations);
+        const QString line = kxbtc15m_scoreboard_line(report);
+        QVERIFY(line.contains(QStringLiteral("7/100 scored")));
+        QVERIFY(line.contains(QStringLiteral("ΔBrier")));
+        QVERIFY(line.contains(QStringLiteral("NO EDGE YET")));
+        // Negative Δ (model better than mid) uses a minus sign, not a hyphen
+        // that would hide the direction.
+        QVERIFY(line.contains(QStringLiteral("−0.0300")));
+        QVERIFY(line.contains(QStringLiteral("ablate")));
+        QVERIFY(line.contains(QStringLiteral("brti_avg60 n=4")));
+
+        const QJsonObject trusted = kxbtc15m_calibrator_report(
+            kNow, {}, /*adds_value=*/true, /*scored=*/120, 0.2000, 0.2400,
+            QStringLiteral("physics_confirm_only"));
+        const QString trusted_line = kxbtc15m_scoreboard_line(trusted);
+        QVERIFY(trusted_line.contains(QStringLiteral("ADDS VALUE")));
+        QVERIFY(trusted_line.contains(QStringLiteral("physics_confirm_only")));
+    }
+
+    void commodities_scoreboard_line_appends_settlement_parity() {
+        QJsonObject report = kxbtc15m_calibrator_report(
+            kNow, {}, /*adds_value=*/false, /*scored=*/3, 0.30, 0.10);
+        report.insert(QStringLiteral("event"), QStringLiteral("commodities_15m_calibrator"));
+        report.insert(QStringLiteral("settlement_parity"),
+                      QJsonObject{{QStringLiteral("checked"), 10},
+                                  {QStringLiteral("matched"), 9},
+                                  {QStringLiteral("match_rate"), 0.9}});
+        const QString line = commodities_15m_scoreboard_line(report);
+        QVERIFY(line.contains(QStringLiteral("parity Pyth↔Kalshi 9/10 (90%)")));
+    }
+
+    void cockpit_orbit_and_kpi_surface_the_15m_scoreboard() {
+        const QJsonObject threshold =
+            calibrator_report(kNow - 10'000, QJsonObject{{"KX-A", prediction(0.55, 0.42)}});
+        const QJsonObject dir15 = kxbtc15m_calibrator_report(kNow - 8'000, {}, false, 7);
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
+                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed_live(), dir15);
+        const BotCockpitNode* node = scene.node(QStringLiteral("kxbtc15m"));
+        QVERIFY(node != nullptr);
+        QVERIFY(node->value.contains(QStringLiteral("7/100 scored")));
+        QCOMPARE(node->role, QStringLiteral("amber"));
+        const QString strip = scene.kpi.join(QStringLiteral(" | "));
+        QVERIFY(strip.contains(QStringLiteral("KXBTC15M")));
+        QVERIFY(strip.contains(QStringLiteral("7/100 scored")));
+    }
+
+    void stale_threshold_freezes_only_threshold_columns() {
+        const QJsonObject stale_threshold =
+            calibrator_report(kNow - 200'000,
+                              QJsonObject{{"KXBTCD-26AUG0712-T64000", prediction(0.55, 0.42)}});
+        const QJsonObject fresh_15m = kxbtc15m_calibrator_report(
+            kNow - 5'000,
+            QJsonObject{{"KXBTC15M-26AUG071230-30", directional_prediction(0.62, 0.48)}});
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), stale_threshold, {}, ledger, {}, kNow,
+                                QByteArray(), kBotCockpitMaxColumns, kBotCockpitMaxPulses,
+                                feed_live(), fresh_15m);
+        QHash<QString, bool> frozen_by_ticker;
+        for (const auto& column : scene.columns)
+            frozen_by_ticker.insert(column.ticker, column.frozen);
+        QVERIFY(frozen_by_ticker.value(QStringLiteral("KXBTCD-26AUG0712-T64000")));
+        QVERIFY(!frozen_by_ticker.value(QStringLiteral("KXBTC15M-26AUG071230-30")));
+        // Rain still moves because the 15m column is live.
+        QVERIFY(scene.motion);
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_threshold")), QStringLiteral("red"));
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_15m")), QStringLiteral("amber"));
+        QVERIFY(scene.kxbtc15m_hero_line.contains(QStringLiteral("7/100 scored")));
+    }
+
+    void directional_columns_fall_open_bps_not_sigma() {
+        const QJsonObject dir15 = kxbtc15m_calibrator_report(
+            kNow - 5'000,
+            QJsonObject{{"KXBTC15M-26AUG071230-30", directional_prediction(0.62, 0.48, -8.5)}});
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), {}, {}, ledger, {}, kNow, QByteArray(),
+                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, dir15);
+        QCOMPARE(scene.columns.size(), 1);
+        QCOMPARE(scene.columns.first().signal_source, QStringLiteral("kxbtc15m"));
+        QCOMPARE(bot_cockpit_source_tag(scene.columns.first().signal_source),
+                 QStringLiteral("15m"));
+        QStringList labels;
+        for (const auto& glyph : scene.columns.first().glyphs) labels << glyph.label;
+        QVERIFY(labels.contains(QStringLiteral("open")));
+        QVERIFY(!labels.contains(QStringLiteral("sigma")));
+        for (const auto& glyph : scene.columns.first().glyphs) {
+            if (glyph.label != QStringLiteral("open")) continue;
+            QVERIFY(glyph.known);
+            QCOMPARE(glyph.value, -8.5);
+            QCOMPARE(glyph.text, QStringLiteral("-8.5"));
+        }
+    }
+
+    void threshold_columns_still_fall_sigma() {
+        const QJsonObject report =
+            calibrator_report(kNow - 5'000, QJsonObject{{"KX-A", prediction(0.55, 0.42, 3.5)}});
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow);
+        QStringList labels;
+        for (const auto& glyph : scene.columns.first().glyphs) labels << glyph.label;
+        QVERIFY(labels.contains(QStringLiteral("sigma")));
+        QVERIFY(!labels.contains(QStringLiteral("open")));
+        QCOMPARE(bot_cockpit_source_tag(scene.columns.first().signal_source),
+                 QStringLiteral("THR"));
+    }
+
+    void split_calibrate_chips_expose_each_family() {
+        const QJsonObject threshold =
+            calibrator_report(kNow - 10'000, QJsonObject{{"KX-A", prediction(0.55, 0.42)}},
+                              /*adds_value=*/true);
+        const QJsonObject dir15 = kxbtc15m_calibrator_report(
+            kNow - 8'000,
+            QJsonObject{{"KXBTC15M-26AUG071230-30", directional_prediction(0.62, 0.48)}},
+            /*adds_value=*/false, /*scored=*/40);
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
+                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed_live(), dir15);
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_threshold")), QStringLiteral("green"));
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_15m")), QStringLiteral("amber"));
+        for (const auto& st : scene.health_stages) {
+            if (st.id == QStringLiteral("calibrate_15m"))
+                QCOMPARE(st.value, QStringLiteral("40/100"));
+        }
+        // Idle family when only threshold rain is present.
+        const BotCockpitScene thr_only =
+            present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
+                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed_live());
+        QCOMPARE(stage_role(thr_only, QStringLiteral("calibrate_15m")), QStringLiteral("grey"));
+        QCOMPARE(stage_value(thr_only, QStringLiteral("calibrate_15m")), QStringLiteral("idle"));
+    }
+
+    void kxbtc15m_hero_pins_scoreboard_above_rain() {
+        const QJsonObject dir15 =
+            kxbtc15m_calibrator_report(kNow - 5'000, {}, /*adds_value=*/false, 7);
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(passing_ledger()), {}, {}, passing_ledger(), {}, kNow,
+                                QByteArray(), kBotCockpitMaxColumns, kBotCockpitMaxPulses,
+                                feed_live(), dir15);
+        QVERIFY(scene.kxbtc15m_hero_line.startsWith(QStringLiteral("KXBTC15M ·")));
+        QVERIFY(scene.kxbtc15m_hero_line.contains(QStringLiteral("7/100 scored")));
+        QCOMPARE(scene.kxbtc15m_hero_scored, 7);
+        QCOMPARE(scene.kxbtc15m_hero_floor, 100);
+        QCOMPARE(scene.kxbtc15m_hero_role, QStringLiteral("amber"));
+        QVERIFY(scene.kxbtc15m_hero_known);
     }
 
     // ── the centre envelope is the newest real decision ────────────────────
@@ -886,10 +1255,12 @@ class KalshiBotCockpitTest : public QObject {
                                                       kBotCockpitMaxPulses, feed_live());
         QCOMPARE(s.health_role, QStringLiteral("amber"));
         QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("green"));
-        QCOMPARE(stage_role(s, QStringLiteral("calibrate")), QStringLiteral("amber"));
+        QCOMPARE(stage_role(s, QStringLiteral("calibrate_threshold")), QStringLiteral("amber"));
+        QCOMPARE(stage_role(s, QStringLiteral("calibrate_15m")), QStringLiteral("grey"));
+        QCOMPARE(stage_value(s, QStringLiteral("calibrate_15m")), QStringLiteral("idle"));
     }
 
-    // 3. Report older than 120s => CALIBRATE red, and a REPORT_STALE loop does
+    // 3. Report older than 120s => THR red, and a REPORT_STALE loop does
     // NOT redden DECIDE.
     void stale_report_reddens_calibrate_not_decide() {
         const QJsonObject report = calibrator_report(kNow - 200'000, one_trusted_prediction(), true);
@@ -897,7 +1268,7 @@ class KalshiBotCockpitTest : public QObject {
         const BotCockpitScene s = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow,
                                                       QByteArray(), kBotCockpitMaxColumns,
                                                       kBotCockpitMaxPulses, feed_live());
-        QCOMPARE(stage_role(s, QStringLiteral("calibrate")), QStringLiteral("red"));
+        QCOMPARE(stage_role(s, QStringLiteral("calibrate_threshold")), QStringLiteral("red"));
         QVERIFY(stage_role(s, QStringLiteral("decide")) != QStringLiteral("red"));
     }
 
@@ -909,8 +1280,10 @@ class KalshiBotCockpitTest : public QObject {
                                                       QByteArray(), kBotCockpitMaxColumns,
                                                       kBotCockpitMaxPulses, feed_live());
         QCOMPARE(s.health_role, QStringLiteral("green"));
-        for (const auto& id : {"harvest", "calibrate", "decide"})
+        for (const auto& id : {"harvest", "calibrate_threshold", "decide"})
             QCOMPARE(stage_role(s, QString::fromLatin1(id)), QStringLiteral("green"));
+        QCOMPARE(stage_role(s, QStringLiteral("calibrate_15m")), QStringLiteral("grey"));
+        QCOMPARE(stage_value(s, QStringLiteral("calibrate_15m")), QStringLiteral("idle"));
     }
 
     // 4b. A bid sitting in the byte-window ledger tail but OLDER than
@@ -964,6 +1337,47 @@ class KalshiBotCockpitTest : public QObject {
     void column_head_shows_the_15m_contracts_close_time() {
         QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXBTC15M-26JUL311730-30")),
                  QStringLiteral("17:30"));
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXGOLD15M-26AUG072115-15")),
+                 QStringLiteral("21:15"));
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXWTI15M-26AUG072030-30")),
+                 QStringLiteral("20:30"));
+    }
+
+    void fifteen_m_close_ms_parses_eastern_close() {
+        // kNow is 2026-07-25 13:20 ET — 12:00 ET that day is closed; Aug 7 stays open.
+        const qint64 closed =
+            bot_cockpit_15m_close_ms(QStringLiteral("KXBTC15M-26JUL251200-00"));
+        const qint64 open =
+            bot_cockpit_15m_close_ms(QStringLiteral("KXBTC15M-26AUG071230-30"));
+        QVERIFY(closed > 0);
+        QVERIFY(open > 0);
+        QVERIFY(!bot_cockpit_15m_still_open(QStringLiteral("KXBTC15M-26JUL251200-00"), kNow));
+        QVERIFY(bot_cockpit_15m_still_open(QStringLiteral("KXBTC15M-26AUG071230-30"), kNow));
+        // Threshold / unparseable tickers are not filtered as closed 15m.
+        QVERIFY(bot_cockpit_15m_still_open(QStringLiteral("KXBTCD-26AUG0712-T64000"), kNow));
+    }
+
+    void rain_omits_closed_15m_contracts_from_flow() {
+        // Stale calibrator may still list expired races; FLOW must not paint them.
+        const QJsonObject dir15 = kxbtc15m_calibrator_report(
+            kNow - 8'000,
+            QJsonObject{{"KXBTC15M-26JUL251200-00", directional_prediction(0.70, 0.48)},
+                        {"KXBTC15M-26AUG071230-30", directional_prediction(0.62, 0.48)}});
+        const QJsonObject threshold =
+            calibrator_report(kNow - 10'000,
+                              QJsonObject{{"KXBTCD-26AUG0712-T64000", prediction(0.55, 0.42)}});
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
+                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, dir15);
+        QCOMPARE(scene.columns.size(), 2);
+        QStringList tickers;
+        for (const auto& column : scene.columns) tickers << column.ticker;
+        QVERIFY(!tickers.contains(QStringLiteral("KXBTC15M-26JUL251200-00")));
+        QVERIFY(tickers.contains(QStringLiteral("KXBTC15M-26AUG071230-30")));
+        QVERIFY(tickers.contains(QStringLiteral("KXBTCD-26AUG0712-T64000")));
+        QVERIFY(scene.census.contains(QStringLiteral("1 closed 15m omitted")));
+        QVERIFY(scene.census.contains(QStringLiteral("1 kxbtc15m")));
     }
 
     // KXBTCD threshold contracts show their strike compactly.
@@ -1023,7 +1437,7 @@ class KalshiBotCockpitTest : public QObject {
         const BotCockpitScene s = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {},
                                                       kNow);  // default feed {} => harvest grey
         QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("grey"));
-        QCOMPARE(stage_role(s, QStringLiteral("calibrate")), QStringLiteral("green"));
+        QCOMPARE(stage_role(s, QStringLiteral("calibrate_threshold")), QStringLiteral("green"));
         QCOMPARE(stage_role(s, QStringLiteral("decide")), QStringLiteral("green"));
         QVERIFY(s.health_role != QStringLiteral("green"));
         // Neuter: the same inputs with a live feed DO read overall green.
@@ -1112,9 +1526,16 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(baseline.columns.size(), 1);
         QVERIFY(!baseline.columns.first().frozen);
         QCOMPARE(baseline.columns_total, 1);
-        QCOMPARE(baseline.census, QStringLiteral("1 watched contracts · all drawn"));
-        QCOMPARE(baseline.nodes.size(), 5);
+        QCOMPARE(baseline.census,
+                 QStringLiteral("1 watched contracts · all drawn · L→R · 15m first · 1 threshold · 0 "
+                                "kxbtc15m · 0 commodities15m"));
+        QCOMPARE(baseline.nodes.size(), 8);
+        QVERIFY(!baseline.node(QStringLiteral("kxbtc15m"))->detail.isEmpty());
+        QVERIFY(!baseline.node(QStringLiteral("commodities15m"))->detail.isEmpty());
         QVERIFY(baseline.node(QStringLiteral("calibrator")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("kxbtc15m")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("commodities15m")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("brier_split")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("settlements")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("gate")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("kill_switch")) != nullptr);
@@ -1125,7 +1546,150 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(baseline.lessons.size(), 1);
         QVERIFY(baseline.lessons.first().contains(QStringLiteral("UNAVAILABLE")));
         QVERIFY(!baseline.kpi_available);
-        QCOMPARE(baseline.kpi.size(), 2);
+        // Decision-rate + KXBTC15M + COMMOD15M + model|bot Brier + postmortem.
+        QCOMPARE(baseline.kpi.size(), 6);
+        QVERIFY(baseline.kpi.at(baseline.kpi.size() - 4).startsWith(QStringLiteral("KXBTC15M")));
+        QVERIFY(baseline.kpi.at(baseline.kpi.size() - 3).startsWith(QStringLiteral("COMMOD15M")));
+        QVERIFY(baseline.kpi.at(baseline.kpi.size() - 2).startsWith(QStringLiteral("BRIER model")));
+        QVERIFY(baseline.kpi.last().startsWith(QStringLiteral("PM ")));
+        // PM KPI inspect body is always present (even UNAVAILABLE) — no 9th node.
+        QVERIFY(!baseline.postmortem_detail.isEmpty());
+        QVERIFY(baseline.postmortem_detail.contains(QStringLiteral("Inspect only")) ||
+                baseline.postmortem_detail.contains(QStringLiteral("inspect only")));
+    }
+
+    void postmortem_inspect_detail_lists_modes_worst_losses_and_lessons() {
+        const QJsonObject summary{
+            {QStringLiteral("settled"), 10},
+            {QStringLiteral("wins"), 4},
+            {QStringLiteral("losses"), 5},
+            {QStringLiteral("early_exits"), 1},
+            {QStringLiteral("net_realized_pnl_usd"), -12.5},
+            {QStringLiteral("fees_usd"), 1.2},
+            {QStringLiteral("mean_win_usd"), 0.9},
+            {QStringLiteral("mean_loss_usd"), -1.8},
+            {QStringLiteral("loss_primary_modes"),
+             QJsonArray{QJsonArray{QStringLiteral("cheap_no_crushed_by_yes"), 3},
+                        QJsonArray{QStringLiteral("favourite_lost_full_stake"), 2}}},
+            {QStringLiteral("worst_losses"),
+             QJsonArray{QJsonObject{{QStringLiteral("pnl"), -2.1},
+                                    {QStringLiteral("ticker"), QStringLiteral("KXBTC15M-X")},
+                                    {QStringLiteral("side"), QStringLiteral("NO")},
+                                    {QStringLiteral("price"), 0.1},
+                                    {QStringLiteral("result"), QStringLiteral("YES")},
+                                    {QStringLiteral("mode"), QStringLiteral("cheap_no_crushed_by_yes")},
+                                    {QStringLiteral("gamma"), QStringLiteral("mid_stable_wrong_thesis")},
+                                    {QStringLiteral("quote"), QStringLiteral("cross")},
+                                    {QStringLiteral("lessons"),
+                                     QJsonArray{QStringLiteral(
+                                         "YES mid stayed near entry — thesis was wrong")}}}}},
+            {QStringLiteral("recommendations"),
+             QJsonArray{QJsonObject{{QStringLiteral("priority"), 3},
+                                    {QStringLiteral("id"), QStringLiteral("fade_yes_near_close")},
+                                    {QStringLiteral("claim"), QStringLiteral("NO fades of high YES")},
+                                    {QStringLiteral("action"),
+                                     QStringLiteral("Ban unless lead/BRTI confirms")}}}},
+            {QStringLiteral("measurement"),
+             QJsonObject{{QStringLiteral("fade_ban_lifts"), 2},
+                         {QStringLiteral("early_exits"), 1},
+                         {QStringLiteral("cheap_no_crushed_by_yes"), 3},
+                         {QStringLiteral("favourite_lost_full_stake"), 2},
+                         {QStringLiteral("wrong_side_after_crossing_spread"), 1},
+                         {QStringLiteral("settlements_with_mid_path"), 4}}},
+        };
+        const QString detail = postmortem_inspect_detail(summary);
+        QVERIFY(detail.contains(QStringLiteral("BID POSTMORTEM")));
+        QVERIFY(detail.contains(QStringLiteral("cheap_no_crushed_by_yes")));
+        QVERIFY(detail.contains(QStringLiteral("KXBTC15M-X")));
+        QVERIFY(detail.contains(QStringLiteral("thesis was wrong")));
+        QVERIFY(detail.contains(QStringLiteral("fade_yes_near_close")));
+        QVERIFY(detail.contains(QStringLiteral("fade_lifts=2")));
+        QVERIFY(detail.contains(QStringLiteral("never arms")));
+
+        QJsonObject current = summary;
+        current.insert(QStringLiteral("cohort"), QStringLiteral("current_rules"));
+        current.insert(QStringLiteral("settled"), 2);
+        current.insert(QStringLiteral("wins"), 0);
+        current.insert(QStringLiteral("losses"), 0);
+        current.insert(QStringLiteral("early_exits"), 2);
+        current.insert(QStringLiteral("net_realized_pnl_usd"), 0.5);
+        QJsonObject historic = summary;
+        historic.insert(QStringLiteral("cohort"), QStringLiteral("historic"));
+        const QString dual = postmortem_inspect_detail(current, historic);
+        QVERIFY(dual.contains(QStringLiteral("CURRENT RULES")));
+        QVERIFY(dual.contains(QStringLiteral("HISTORIC")));
+        QCOMPARE(postmortem_kpi_line(current),
+                 QStringLiteral("PM CUR 2 cashouts · net $0.50"));
+        QVERIFY(postmortem_kpi_line(historic).startsWith(QStringLiteral("PM HIST ")));
+    }
+
+    void settlements_node_prefers_current_rules_over_lifetime_gate() {
+        const QJsonArray ledger = passing_ledger();
+        QJsonObject gate = evaluated_gate(QStringLiteral("FAIL"), 90, 46, 44, -35.4, 48.33);
+        QJsonObject current{
+            {QStringLiteral("cohort"), QStringLiteral("current_rules")},
+            {QStringLiteral("settled"), 3},
+            {QStringLiteral("wins"), 0},
+            {QStringLiteral("losses"), 0},
+            {QStringLiteral("early_exits"), 3},
+            {QStringLiteral("net_realized_pnl_usd"), 0.51},
+            {QStringLiteral("fees_usd"), 0.15},
+        };
+        QJsonObject historic{
+            {QStringLiteral("cohort"), QStringLiteral("historic")},
+            {QStringLiteral("settled"), 98},
+            {QStringLiteral("wins"), 46},
+            {QStringLiteral("losses"), 44},
+            {QStringLiteral("net_realized_pnl_usd"), -36.4},
+            {QStringLiteral("fees_usd"), 5.38},
+        };
+        const BotCockpitScene scene = present_bot_cockpit(
+            panel_for(ledger, gate), {}, gate, ledger, {}, kNow, QByteArray(),
+            kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, {}, {}, current, historic);
+        const BotCockpitNode* settlements = scene.node(QStringLiteral("settlements"));
+        QVERIFY(settlements != nullptr);
+        QVERIFY(settlements->label.contains(QStringLiteral("CURRENT RULES")));
+        QVERIFY(settlements->value.contains(QStringLiteral("CURRENT RULES")));
+        QVERIFY(settlements->value.contains(QStringLiteral("0.51")) ||
+                settlements->value.contains(QStringLiteral("$0.51")));
+        QVERIFY(!settlements->value.startsWith(QStringLiteral("90 settled")));
+        const BotCockpitNode* gate_node = scene.node(QStringLiteral("gate"));
+        QVERIFY(gate_node != nullptr);
+        QVERIFY(gate_node->label.contains(QStringLiteral("LIFETIME")));
+        bool saw_cur_net = false;
+        for (const QString& line : scene.kpi) {
+            if (line.startsWith(QStringLiteral("NET CUR"))) saw_cur_net = true;
+        }
+        QVERIFY(saw_cur_net);
+    }
+
+    void brier_split_node_contrasts_model_and_bot_settled() {
+        const QJsonArray ledger = passing_ledger();
+        const QJsonObject report =
+            calibrator_report(kNow, QJsonObject{{"KX-A", prediction(0.55, 0.42)}}, true);
+        QJsonObject gate = evaluated_gate(QStringLiteral("FAIL"), 90, 46, 44, -37.8, 48.33);
+        // Force the bot-settled Brier worse than mid (matches live FAIL).
+        QJsonArray criteria = gate.value(QStringLiteral("criteria")).toArray();
+        for (int i = 0; i < criteria.size(); ++i) {
+            QJsonObject c = criteria.at(i).toObject();
+            if (c.value(QStringLiteral("id")).toString() != QLatin1String("brier_beats_market"))
+                continue;
+            c.insert(QStringLiteral("brier_bot"), 0.2617);
+            c.insert(QStringLiteral("brier_market_baseline"), 0.2150);
+            c.insert(QStringLiteral("observed"), 0.2617);
+            c.insert(QStringLiteral("required"), 0.2150);
+            c.insert(QStringLiteral("met"), false);
+            criteria.replace(i, c);
+        }
+        gate.insert(QStringLiteral("criteria"), criteria);
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger, gate), report, gate, ledger, {}, kNow);
+        const BotCockpitNode* node = scene.node(QStringLiteral("brier_split"));
+        QVERIFY(node != nullptr);
+        QVERIFY(node->value.contains(QStringLiteral("model 0.0698")));
+        QVERIFY(node->value.contains(QStringLiteral("bot-settled 0.2617")));
+        QVERIFY(node->value.contains(QStringLiteral("BOT LOSES TO MID")));
+        QCOMPARE(node->role, QStringLiteral("red"));
     }
 };
 
