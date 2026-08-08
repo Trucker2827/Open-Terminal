@@ -826,6 +826,11 @@ target_include_directories(tst_bitcoin_evidence_engine PRIVATE ${CMAKE_SOURCE_DI
 target_link_libraries(tst_bitcoin_evidence_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_bitcoin_evidence_engine COMMAND tst_bitcoin_evidence_engine)
 
+add_executable(tst_edge_tick_retention tst_edge_tick_retention.cpp)
+target_include_directories(tst_edge_tick_retention PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_edge_tick_retention PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_edge_tick_retention COMMAND tst_edge_tick_retention)
+
 # Strategy Sandbox Task 1 — migration v056 schema (sandbox_strategy,
 # sandbox_position, sandbox_fill, sandbox_score). Opens a real profile DB
 # through the normal migration path under a temp $HOME (pattern of

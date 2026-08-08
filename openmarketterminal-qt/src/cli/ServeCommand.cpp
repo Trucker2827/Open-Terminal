@@ -6866,6 +6866,18 @@ QVector<SandboxJobSpec> sandbox_job_specs() {
              {QStringLiteral("news"), QStringLiteral("bitcoin-intelligence-score"),
               QStringLiteral("--limit"), QStringLiteral("500")},
              3600, 60},
+            // edge_prediction_raw_ticks grows ~1.1-1.4M rows/day and was never
+            // pruned; it reached 43.3M rows / 10GB, which is what made an
+            // unindexed scan expensive enough to starve the Kalshi planner.
+            // Retention is narrow by construction -- the allow-list in
+            // edge_tick_prunable_sources() covers only the settled high-volume
+            // tape; BRTI (the Kalshi settlement feed), coinbase-1m-close,
+            // coinbase and kraken are never touched.
+            {QStringLiteral("edge-tick-retention"), QStringLiteral("Raw tick retention"),
+             QStringLiteral("Bound the high-volume exchange tape in edge_prediction_raw_ticks; never prunes the BRTI settlement feed or the long-history series."),
+             {QStringLiteral("edge"), QStringLiteral("prune-ticks"),
+              QStringLiteral("--keep-days"), QStringLiteral("7")},
+             86400, 300},
             {QStringLiteral("kalshi-decision-settlements"), QStringLiteral("Strategy sandbox Kalshi settlement scorer"),
              QStringLiteral("Resolve matured Kalshi paper decisions from the official final YES/NO market result."),
              {QStringLiteral("edge"), QStringLiteral("resolve-kalshi-decisions"),

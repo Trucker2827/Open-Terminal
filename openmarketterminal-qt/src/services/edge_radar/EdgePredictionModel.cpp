@@ -546,4 +546,25 @@ QJsonObject EdgePredictionModel::train_result_to_json(const EdgePredictionTrainR
                        {"model", edge_prediction_model_to_json(r.model)}};
 }
 
+
+QStringList edge_tick_prunable_sources() {
+    // Allow-list, never a deny-list: a new collector must be added here
+    // deliberately before its history can ever be deleted.
+    return {QStringLiteral("binanceperp"), QStringLiteral("gemini")};
+}
+
+bool edge_tick_source_is_prunable(const QString& source) {
+    const QString normalized = source.trimmed().toLower();
+    if (normalized.isEmpty()) return false;
+    return edge_tick_prunable_sources().contains(normalized);
+}
+
+qint64 edge_tick_retention_cutoff_ms(qint64 now_ms, int keep_days) {
+    // A misconfigured or missing window must delete NOTHING. Returning 0 makes
+    // "received_ts < cutoff" match no row, instead of now_ms - 0 == now, which
+    // would sweep the entire table.
+    if (keep_days <= 0) return 0;
+    return now_ms - static_cast<qint64>(keep_days) * 86'400'000LL;
+}
+
 } // namespace openmarketterminal::services::edge_radar
