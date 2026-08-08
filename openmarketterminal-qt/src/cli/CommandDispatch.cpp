@@ -4166,6 +4166,15 @@ static int news_command(const GlobalOpts& opts, QStringList args) {
         QSet<QString> resolved;
         for (const auto& value : bitcoin_evidence_read_jsonl(output_path)) {
             const QJsonObject row = value.toObject();
+            // Settlements are keyed by contract (see evidence_settlement_key);
+            // directional rows stay per-snapshot because each snapshot starts
+            // its own forward return.
+            if (row.value(QStringLiteral("kind")).toString() == QStringLiteral("settlement")) {
+                resolved.insert(services::edge_radar::evidence_settlement_key(
+                    row.value(QStringLiteral("contract_ticker")).toString(),
+                    row.value(QStringLiteral("observed_at_ms")).toString().toLongLong()));
+                continue;
+            }
             resolved.insert(row.value(QStringLiteral("observed_at_ms")).toString() + QLatin1Char(':') +
                             row.value(QStringLiteral("horizon")).toString());
         }
@@ -4237,7 +4246,8 @@ static int news_command(const GlobalOpts& opts, QStringList args) {
 
             const QJsonObject contract = snapshot.value(QStringLiteral("selected_contract")).toObject();
             const int seconds_left = snapshot.value(QStringLiteral("seconds_left")).toInt(-1);
-            const QString settlement_key = QString::number(observed) + QStringLiteral(":SETTLEMENT");
+            const QString settlement_key = services::edge_radar::evidence_settlement_key(
+                contract.value(QStringLiteral("ticker")).toString(), observed);
             if (!resolved.contains(settlement_key) && seconds_left >= 0 && !contract.isEmpty()) {
                 double end = 0.0;
                 qint64 end_ts = 0;

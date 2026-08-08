@@ -199,6 +199,30 @@ class TstBitcoinEvidenceEngine : public QObject {
                  QString::number(kNow));
     }
 
+    // Regression: a settlement outcome belongs to the contract, not to the
+    // snapshot observing it. The scorer used to key by snapshot timestamp, so a
+    // contract that stayed selected across cycles was re-settled once per cycle
+    // -- 425 of 557 live rows (76%) were duplicates of only 132 real contracts,
+    // which inflated the abstention counterfactual from -$6.60 to -$77.47.
+    void settlement_key_is_per_contract_not_per_snapshot() {
+        const QString ticker = QStringLiteral("KXBTC15M-26AUG011730-30");
+        // Same contract seen by two different snapshots an hour apart.
+        QCOMPARE(evidence_settlement_key(ticker, kNow),
+                 evidence_settlement_key(ticker, kNow + 3'600'000));
+        // Different contracts must stay distinct even from one snapshot.
+        QVERIFY(evidence_settlement_key(ticker, kNow)
+                != evidence_settlement_key(QStringLiteral("KXBTC15M-26AUG011745-45"), kNow));
+    }
+
+    // Legacy rows written before contract_ticker existed keep the old key, so
+    // rebuilding the resolved-set from an existing file cannot lose them.
+    void settlement_key_falls_back_to_snapshot_without_a_ticker() {
+        QCOMPARE(evidence_settlement_key(QString(), kNow),
+                 QString::number(kNow) + QStringLiteral(":SETTLEMENT"));
+        QVERIFY(evidence_settlement_key(QString(), kNow)
+                != evidence_settlement_key(QString(), kNow + 1));
+    }
+
     void output_remains_advisory_only() {
         const auto json = BitcoinEvidenceEngine::to_json(BitcoinEvidenceEngine::analyze(base_input()));
         QCOMPARE(json.value("model_role").toString(), QStringLiteral("advisory_only"));
