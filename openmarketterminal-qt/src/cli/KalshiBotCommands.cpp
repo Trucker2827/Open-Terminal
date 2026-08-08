@@ -347,6 +347,25 @@ QString calibrator_script_abs_path(const QString& script_name) {
     return QFileInfo::exists(fallback) ? fallback : QString();
 }
 
+/// Spawn a detached refresher WITHOUT inheriting our stdio.
+///
+/// QProcess::startDetached's static overload leaves the child attached to our
+/// stdout. A calibrator that prints its report then lands in the middle of
+/// `--json` output and corrupts it for any consumer -- observed as
+/// "JSONDecodeError: Extra data" when a caller piped `--json kalshi bot once`
+/// into json.load while a stale calibrator was being refreshed. The child is a
+/// background refresher; its output belongs to its own log, never to ours.
+bool start_detached_quiet(const QString& program, const QStringList& args,
+                          const QString& working_dir = QString()) {
+    QProcess process;
+    process.setProgram(program);
+    process.setArguments(args);
+    if (!working_dir.isEmpty()) process.setWorkingDirectory(working_dir);
+    process.setStandardOutputFile(QProcess::nullDevice());
+    process.setStandardErrorFile(QProcess::nullDevice());
+    return process.startDetached();
+}
+
 /// Kick one calibrator when its report is missing or aging toward stale.
 /// Non-blocking: prefers `launchctl kickstart` of the steady-state LaunchAgent,
 /// falls back to a detached `python once`. Throttled so a stuck publisher
@@ -369,8 +388,8 @@ void maybe_kick_calibrator(const QJsonObject& report, qint64 now_ms, qint64 max_
     if (!launch_label.isEmpty()) {
         const QString target =
             QStringLiteral("gui/%1/%2").arg(static_cast<unsigned long>(::getuid())).arg(launch_label);
-        kicked = QProcess::startDetached(QStringLiteral("/bin/launchctl"),
-                                         {QStringLiteral("kickstart"), QStringLiteral("-k"), target});
+        kicked = start_detached_quiet(QStringLiteral("/bin/launchctl"),
+                                      {QStringLiteral("kickstart"), QStringLiteral("-k"), target});
         if (kicked) {
             std::fprintf(stderr,
                          "kalshi bot: auto-refresh kickstart %s (report_age_ms=%lld)\n",
@@ -381,9 +400,9 @@ void maybe_kick_calibrator(const QJsonObject& report, qint64 now_ms, qint64 max_
 
     const QString path = calibrator_script_abs_path(script_name);
     if (path.isEmpty()) return;
-    kicked = QProcess::startDetached(calibrator_python_for(script_name),
-                                     {path, QStringLiteral("once")},
-                                     QFileInfo(path).absolutePath());
+    kicked = start_detached_quiet(calibrator_python_for(script_name),
+                                  {path, QStringLiteral("once")},
+                                  QFileInfo(path).absolutePath());
     if (kicked) {
         std::fprintf(stderr,
                      "kalshi bot: auto-refresh once %s (report_age_ms=%lld)\n",
