@@ -120,6 +120,20 @@ bool kalshi_non_execution_process_timed_out(bool active, qint64 process_age_ms,
     return active && process_age_ms >= 0 && process_age_ms > timeout_ms;
 }
 
+qint64 kalshi_planner_process_timeout_ms(qint64 fetch_timeout_ms) {
+    // Allowance for everything the planner does OUTSIDE its network budget:
+    // process spawn, Qt/DB init, model load, surface build, optimize, journal
+    // write. Sized from measurement -- planner runs take 10.9-13.0s wall clock
+    // at rest with this 9s network budget, so 9s+30s = 39s is ~3x the slowest
+    // observed run, leaving headroom for daemon contention.
+    constexpr qint64 kNonNetworkAllowanceMs = 30'000;
+    // The engine serializes every kind of work behind one QProcess, so a wedged
+    // planner blocks paper, execution and account reconciliation too. Bound it.
+    constexpr qint64 kCeilingMs = 120'000;
+    return std::min<qint64>(kCeilingMs,
+                            std::max<qint64>(0, fetch_timeout_ms) + kNonNetworkAllowanceMs);
+}
+
 qint64 kalshi_event_cycle_delay_ms(bool live_session_active, bool paper_active,
                                    qint64 elapsed_ms) {
     // An armed live session gets the next fresh decision immediately. Paper
@@ -180,7 +194,7 @@ QStringList kalshi_event_planner_args() {
             // Twelve contracts keeps planning inside the executable-quote window;
             // an exhaustive surface scan belongs to the explicit CLI planner.
             QStringLiteral("--limit"), QStringLiteral("12"),
-        QStringLiteral("--timeout-ms"), QStringLiteral("9000"),
+        QStringLiteral("--timeout-ms"), QString::number(kKalshiPlannerFetchTimeoutMs),
             QStringLiteral("--max-positions"), QStringLiteral("5"),
             QStringLiteral("--unit-notional"), QStringLiteral("2"),
             QStringLiteral("--max-cost"), QStringLiteral("10"),
@@ -923,13 +937,16 @@ class KalshiLiveEventEngine final : public QObject {
         static constexpr qint64 kTransportDeadMs = 65000;
         static constexpr qint64 kReconnectCooldownMs = 15000;
         static constexpr qint64 kRecoveryDecisionMs = 15000;
-        static constexpr qint64 kPlannerTimeoutMs = 15000;
+        // Derived from the planner's own network budget, never an independent
+        // constant -- see kalshi_planner_process_timeout_ms.
+        const qint64 planner_timeout_ms =
+            kalshi_planner_process_timeout_ms(kKalshiPlannerFetchTimeoutMs);
         static constexpr qint64 kPaperTimeoutMs = 25000;
         static constexpr qint64 kAccountReadTimeoutMs = 18000;
         static constexpr qint64 kAccountReconcileIntervalMs = 30000;
 
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-        check_process_timeout(now_ms, kPlannerTimeoutMs, kPaperTimeoutMs,
+        check_process_timeout(now_ms, planner_timeout_ms, kPaperTimeoutMs,
                               kAccountReadTimeoutMs);
         const bool live_active = session_active();
         const bool workload_active = live_active || parallel_paper_active();

@@ -35,6 +35,20 @@ bool kalshi_non_execution_process_timed_out(bool active, qint64 process_age_ms,
                                             qint64 timeout_ms);
 qint64 kalshi_event_cycle_delay_ms(bool live_session_active, bool paper_active,
                                    qint64 elapsed_ms);
+// The network budget the daemon hands the planner via `--timeout-ms`. Used both
+// to build the planner argv and to derive the deadline below, so the two can
+// never drift apart again.
+constexpr qint64 kKalshiPlannerFetchTimeoutMs = 9'000;
+// Wall-clock deadline after which the daemon kills a planner subprocess.
+//
+// It MUST exceed the planner's own network budget by enough to cover process
+// startup, DB/model init, surface build, optimize and journaling -- the planner
+// writes its journal row and kalshi-auto-plans.jsonl only at the END of a run,
+// so a process killed early writes nothing at all. A hardcoded 15s deadline
+// against a 9s network budget left under 6s for everything else; measured runs
+// take 10.9-13.0s at rest, so cycles that actually used their network budget
+// were killed before they could write and the evidence file froze.
+qint64 kalshi_planner_process_timeout_ms(qint64 fetch_timeout_ms);
 struct KalshiBookReceipt {
     QString signature;
     QJsonObject snapshot;

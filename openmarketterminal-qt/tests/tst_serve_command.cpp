@@ -244,6 +244,34 @@ private slots:
         QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 15000), 0LL);
     }
 
+    // Regression: the daemon killed the planner at a hardcoded 15s while
+    // handing it a 9s network budget, leaving under 6s for startup, DB/model
+    // init, surface build and journaling. The planner writes its journal row
+    // and kalshi-auto-plans.jsonl only at the END of a run, so 90 of 99 live
+    // cycles were killed before writing anything and the evidence file froze
+    // for a week. The deadline must be DERIVED from the network budget.
+    void kalshi_planner_deadline_clears_its_own_fetch_budget() {
+        const qint64 deadline = kalshi_planner_process_timeout_ms(kKalshiPlannerFetchTimeoutMs);
+        // Must leave a real allowance beyond the network budget for all the
+        // non-network work. Measured planner runs take 10.9-13.0s at rest.
+        QVERIFY(deadline >= kKalshiPlannerFetchTimeoutMs + 30'000);
+        // ...and comfortably clear the slowest measured at-rest run.
+        QVERIFY(deadline > 13'000 * 2);
+    }
+
+    // Pins the structural property that actually prevents a recurrence: the
+    // deadline tracks the fetch budget instead of being an independent
+    // constant that can silently drift below it.
+    void kalshi_planner_deadline_tracks_the_fetch_budget() {
+        QVERIFY(kalshi_planner_process_timeout_ms(20'000) >
+                kalshi_planner_process_timeout_ms(9'000));
+        QVERIFY(kalshi_planner_process_timeout_ms(0) > 0);
+        // A wedged planner must still be bounded: the engine serializes all
+        // work behind one QProcess, so an unbounded deadline would stall
+        // paper, execution and account reconciliation too.
+        QCOMPARE(kalshi_planner_process_timeout_ms(10'000'000), 120'000LL);
+    }
+
     // GUI daemon indicator: the badge derives from this pure classifier so
     // indicator truth never depends on the CLI binary being present.
     void daemon_indicator_classifies_evidence_freshness() {
