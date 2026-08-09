@@ -8,6 +8,7 @@
 #include "mcp/McpTypes.h"
 #include "mcp/tools/SettingsGate.h"
 #include "services/crypto/CryptoFees.h"
+#include "services/daemon/JobHealth.h"
 #include "services/crypto_latency/CryptoLatencyService.h"
 #include "services/crypto_scalp/CryptoAutoScalp.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
@@ -4237,6 +4238,52 @@ int emit_jobs_history(const QString& profile, bool json, QStringList args, bool 
     return 0;
 }
 
+// Per-job aggregate over daemon_job_runs, keyed by job_id.
+//
+// One grouped pass. The CTE resolves each job's most recent successful run,
+// and the outer aggregate counts everything recorded after it -- a NULL last
+// success (never worked) makes every run count, which is exactly the
+// runs_since_success == total_runs case classify_job_health() keys on.
+//
+// On failure this returns an EMPTY map, and every job then classifies as
+// NoHistory rather than as broken. A diagnosis that cannot read the history
+// must not invent an outage.
+using services::daemon::classify_job_health;
+using services::daemon::job_health_class_label;
+using services::daemon::job_health_summary;
+using services::daemon::JobHealthClass;
+using services::daemon::JobRunHistory;
+
+QHash<QString, JobRunHistory> load_job_run_history(const QString& profile) {
+    QHash<QString, JobRunHistory> out;
+    DaemonHistoryDb h(profile);
+    if (!h.ok())
+        return out;
+    QSqlQuery q(h.db);
+    if (!q.exec(QStringLiteral(
+            "WITH last_ok AS ("
+            "  SELECT job_id, MAX(started_at) AS ts FROM daemon_job_runs "
+            "  WHERE status='ok' GROUP BY job_id"
+            ") "
+            "SELECT r.job_id, COUNT(*), "
+            "       SUM(CASE WHEN r.status='ok' THEN 1 ELSE 0 END), "
+            "       MAX(l.ts), "
+            "       SUM(CASE WHEN l.ts IS NULL OR r.started_at > l.ts THEN 1 ELSE 0 END) "
+            "FROM daemon_job_runs r LEFT JOIN last_ok l ON l.job_id = r.job_id "
+            "GROUP BY r.job_id"))) {
+        return out;
+    }
+    while (q.next()) {
+        JobRunHistory row;
+        row.total_runs = q.value(1).toInt();
+        row.ok_runs = q.value(2).toInt();
+        row.last_success_at = q.value(3).toString();
+        row.runs_since_success = q.value(4).toInt();
+        out.insert(q.value(0).toString(), row);
+    }
+    return out;
+}
+
 int emit_jobs_stats(const QString& profile, bool json, QStringList args) {
     int limit = 0;
     QString selector;
@@ -5151,45 +5198,93 @@ int daemon_jobs_command(const QString& profile, bool json, QStringList args) {
             return 2;
         }
         const QJsonObject summary = jobs_summary(profile);
+        // Run history keyed by job id. `last_status`/`fail_count` on the jobs
+        // doc are point-in-time and cannot tell a job that failed once after
+        // 19k successes from one that has never succeeded in its life -- both
+        // land in current_failures, and the healthy job usually has the larger
+        // fail_count. daemon_job_runs has carried the deciding fact all along.
+        const QHash<QString, JobRunHistory> history = load_job_run_history(profile);
         QJsonArray current_failures;
         QJsonArray stale_jobs;
         QJsonArray historical;
+        QJsonArray never_succeeded;
+        QJsonArray chronic_failures;
         const QDateTime now = QDateTime::currentDateTimeUtc();
         for (const QJsonValue& value : load_jobs_doc(profile).value("jobs").toArray()) {
             const QJsonObject job = value.toObject();
+            const QString job_id = job.value("id").toString();
             const bool enabled = job.value("enabled").toBool();
             const bool current_failure = job_has_current_failure(job);
             const QDateTime started = parse_utc(job.value("last_started_at").toString());
             const bool stale = job.value("running").toBool() && started.isValid() &&
                                started.addSecs(job_timeout_sec(job) + 15) < now;
-            const QJsonObject row{{"id", job.value("id").toString()}, {"name", job.value("name").toString()},
+            const JobRunHistory runs = history.value(job_id);
+            const JobHealthClass klass = classify_job_health(runs);
+            const QJsonObject row{{"id", job_id}, {"name", job.value("name").toString()},
                                   {"kind", job.value("kind").toString()}, {"enabled", enabled},
                                   {"last_status", job.value("last_status").toString()},
-                                  {"fail_count", job.value("fail_count").toInt()}};
-            if (enabled && current_failure)
+                                  {"fail_count", job.value("fail_count").toInt()},
+                                  {"health", job_health_class_label(klass)},
+                                  {"total_runs", runs.total_runs},
+                                  {"ok_runs", runs.ok_runs},
+                                  {"runs_since_success", runs.runs_since_success},
+                                  {"last_success_at", runs.last_success_at},
+                                  {"health_summary", job_health_summary(runs)}};
+            // A job nobody can fix by clearing a failure flag belongs in its
+            // own bucket, whether or not it is currently enabled -- the 1761-run
+            // job that never worked was filed under historical_failures, the
+            // bucket documented as not affecting a healthy execution path.
+            if (klass == JobHealthClass::NeverSucceeded)
+                never_succeeded.append(row);
+            else if (klass == JobHealthClass::ChronicFailure)
+                chronic_failures.append(row);
+            else if (enabled && current_failure)
                 current_failures.append(row);
             else if (enabled && stale)
                 stale_jobs.append(row);
             else if (job.value("fail_count").toInt() > 0)
                 historical.append(row);
         }
-        const QString state = !current_failures.isEmpty() || !stale_jobs.isEmpty()
-                                  ? QStringLiteral("attention")
-                                  : QStringLiteral("healthy");
+        const bool needs_attention = !current_failures.isEmpty() || !stale_jobs.isEmpty() ||
+                                     !never_succeeded.isEmpty() || !chronic_failures.isEmpty();
+        const QString state = needs_attention ? QStringLiteral("attention")
+                                              : QStringLiteral("healthy");
         const QJsonObject out{{"state", state}, {"summary", summary},
+                              {"never_succeeded", never_succeeded},
+                              {"chronic_failures", chronic_failures},
                               {"current_failures", current_failures}, {"stale_jobs", stale_jobs},
                               {"historical_failures", historical},
-                              {"rule", "Only enabled current failures and stale jobs affect daemon readiness. Historical and disabled failures remain visible for cleanup but do not block a healthy execution path."},
-                              {"next_command", current_failures.isEmpty() && stale_jobs.isEmpty()
-                                   ? QStringLiteral("daemon jobs clear-failures --all")
-                                   : QStringLiteral("daemon jobs list")}};
-        if (json)
+                              {"rule", "A job that has NEVER succeeded, or has not succeeded in a long unbroken streak, is reported separately from a job that merely failed its last run -- fail_count alone has no denominator and healthy jobs routinely carry the largest ones. Enabled current failures and stale jobs still affect readiness; historical and disabled failures remain visible for cleanup."},
+                              {"next_command", !never_succeeded.isEmpty()
+                                   ? QStringLiteral("daemon jobs history <name> --limit 5")
+                                   : (current_failures.isEmpty() && stale_jobs.isEmpty()
+                                          ? QStringLiteral("daemon jobs clear-failures --all")
+                                          : QStringLiteral("daemon jobs list"))}};
+        if (json) {
             std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
-        else
-            std::printf("DAEMON JOB DIAGNOSIS: %s\ncurrent enabled failures=%d stale=%d historical/disabled=%d\n%s\n",
-                        qUtf8Printable(state.toUpper()), static_cast<int>(current_failures.size()),
-                        static_cast<int>(stale_jobs.size()), static_cast<int>(historical.size()),
-                        qUtf8Printable(out.value("rule").toString()));
+        } else {
+            std::printf("DAEMON JOB DIAGNOSIS: %s\n", qUtf8Printable(state.toUpper()));
+            std::printf("never succeeded=%d chronic=%d current enabled failures=%d stale=%d historical/disabled=%d\n",
+                        static_cast<int>(never_succeeded.size()),
+                        static_cast<int>(chronic_failures.size()),
+                        static_cast<int>(current_failures.size()),
+                        static_cast<int>(stale_jobs.size()), static_cast<int>(historical.size()));
+            auto print_bucket = [](const char* heading, const QJsonArray& rows) {
+                if (rows.isEmpty())
+                    return;
+                std::printf("\n%s\n", heading);
+                for (const QJsonValue& v : rows) {
+                    const QJsonObject r = v.toObject();
+                    std::printf("  %-42s %s%s\n",
+                                qUtf8Printable(r.value("name").toString()),
+                                qUtf8Printable(r.value("health_summary").toString()),
+                                r.value("enabled").toBool() ? "" : "  [disabled]");
+                }
+            };
+            print_bucket("NEVER SUCCEEDED — these have never once worked:", never_succeeded);
+            print_bucket("NOT SUCCEEDED IN A LONG TIME:", chronic_failures);
+            std::printf("\n%s\n", qUtf8Printable(out.value("rule").toString()));
+        }
         return 0;
     }
     if (sub == "history" || sub == "hist" || sub == "runs")
