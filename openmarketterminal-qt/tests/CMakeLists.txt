@@ -735,6 +735,11 @@ add_test(NAME tst_kalshi_settlement_scoreboard COMMAND tst_kalshi_settlement_sco
 # stake/all-in sizing caps, stale (>=120s) and missing calibrator.json refusal,
 # signal-trust reason codes, and settlement of paper positions against real
 # exchange results only. Pure — it cannot reach an exchange.
+add_executable(tst_job_run_finish tst_job_run_finish.cpp)
+target_include_directories(tst_job_run_finish PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_job_run_finish PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_job_run_finish COMMAND tst_job_run_finish)
+
 add_executable(tst_job_health tst_job_health.cpp)
 target_include_directories(tst_job_health PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_job_health PRIVATE openterminal_core Qt6::Core Qt6::Test)

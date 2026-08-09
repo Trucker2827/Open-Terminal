@@ -1373,6 +1373,7 @@ set(SERVICE_SOURCES
     src/screens/weather/WeatherEvidenceReader.cpp
     src/services/prediction/kalshi/KalshiSettlementScoreboard.cpp
     src/services/daemon/JobHealth.cpp
+    src/services/daemon/JobRunFinish.cpp
     src/services/prediction/kalshi/KalshiBotDecision.cpp
     src/services/prediction/kalshi/KalshiBotFunnel.cpp
     src/services/prediction/kalshi/KalshiBotGate.cpp

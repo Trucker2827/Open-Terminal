@@ -8,6 +8,7 @@
 #include "mcp/McpTypes.h"
 #include "mcp/tools/SettingsGate.h"
 #include "services/crypto/CryptoFees.h"
+#include "services/daemon/JobRunFinish.h"
 #include "services/daemon/JobHealth.h"
 #include "services/crypto_latency/CryptoLatencyService.h"
 #include "services/crypto_scalp/CryptoAutoScalp.h"
@@ -2230,11 +2231,13 @@ void record_job_run_finish(const QString& profile,
             duration_ms = started.msecsTo(finished_dt);
     }
     QSqlQuery q(h.db);
-    q.prepare(QStringLiteral(
-        "UPDATE daemon_job_runs SET "
-        "status=:status, exit_code=:exit_code, finished_at=:finished_at, duration_ms=:duration_ms, "
-        "stdout_tail=:stdout_tail, stderr_tail=:stderr_tail, error=:error "
-        "WHERE run_id=:run_id"));
+    // Guarded: first finalisation wins. reconcile_stale_running_jobs() and the
+    // QProcess finished handler both finalise a run and do not coordinate, so
+    // an unguarded UPDATE let a late `ok` erase a recorded `stale-timeout` --
+    // and because duration_ms is recomputed from the row's original
+    // started_at, the row then read `ok` with a duration many times its own
+    // timeout. See services/daemon/JobRunFinish.h.
+    q.prepare(services::daemon::job_run_finish_sql());
     q.bindValue(QStringLiteral(":status"), status);
     q.bindValue(QStringLiteral(":exit_code"), exit_code);
     q.bindValue(QStringLiteral(":finished_at"), finished);
@@ -2246,6 +2249,15 @@ void record_job_run_finish(const QString& profile,
     if (!q.exec()) {
         append_job_log(profile, QStringLiteral("history-error phase=finish run=%1 error=\"%2\"")
                                     .arg(run_id, q.lastError().text()));
+    } else if (q.numRowsAffected() == 0) {
+        // The run was already finalised. Keep the first verdict and say so --
+        // this line is how often a job outlives its own deadline, which the
+        // overwritten history could never show.
+        append_job_log(profile,
+                       QStringLiteral("history-late-finish run=%1 status=%2 exit=%3 "
+                                      "(already finalised; first verdict kept)")
+                           .arg(run_id, status)
+                           .arg(exit_code));
     }
 }
 
