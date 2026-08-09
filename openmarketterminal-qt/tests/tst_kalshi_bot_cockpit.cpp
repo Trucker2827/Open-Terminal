@@ -1207,12 +1207,42 @@ class KalshiBotCockpitTest : public QObject {
             if (st.id == QStringLiteral("calibrate_15m"))
                 QCOMPARE(st.value, QStringLiteral("40/100"));
         }
+        QCOMPARE(scene.health_stages.size(), 9); // HARVEST THR 15M COM COM-H COM-D BTC-D DECIDE SETTLE
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_commodities_daily")),
+                 QStringLiteral("grey"));
+        QCOMPARE(stage_value(scene, QStringLiteral("calibrate_commodities_daily")),
+                 QStringLiteral("idle"));
         // Idle family when only threshold rain is present.
         const BotCockpitScene thr_only =
             present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
                                 kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed_live());
         QCOMPARE(stage_role(thr_only, QStringLiteral("calibrate_15m")), QStringLiteral("grey"));
         QCOMPARE(stage_value(thr_only, QStringLiteral("calibrate_15m")), QStringLiteral("idle"));
+    }
+
+    void commodities_daily_calibrate_chip_lights_when_rain_has_com_d() {
+        const QJsonObject threshold =
+            calibrator_report(kNow - 10'000, QJsonObject{{"KX-A", prediction(0.55, 0.42)}});
+        QJsonObject com_d =
+            calibrator_report(kNow - 8'000,
+                              QJsonObject{{"KXGOLDD-26AUG1017-T4497", prediction(0.55, 0.42)}},
+                              /*adds_value=*/false);
+        com_d.insert(QStringLiteral("event"), QStringLiteral("commodities_daily_calibrator"));
+        com_d.insert(QStringLiteral("scored_contracts"), 12);
+        com_d.insert(QStringLiteral("min_scored_contracts"), 100);
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene = present_bot_cockpit(
+            panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(), kBotCockpitMaxColumns,
+            kBotCockpitMaxPulses, feed_live(), {}, {}, {}, {}, {}, com_d);
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_commodities_daily")),
+                 QStringLiteral("amber"));
+        QCOMPARE(stage_value(scene, QStringLiteral("calibrate_commodities_daily")),
+                 QStringLiteral("12/100"));
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_commodities15m")),
+                 QStringLiteral("grey"));
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_commodities_hourly")),
+                 QStringLiteral("grey"));
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_kxbtc_daily")), QStringLiteral("grey"));
     }
 
     void threshold_hero_pins_ambition_scoreboard_above_rain() {

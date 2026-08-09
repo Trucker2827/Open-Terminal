@@ -372,8 +372,11 @@ struct BotCockpitFeedHealth {
 /// One stage of the health strip. `role` is a colour vocabulary already used by
 /// the scene: "green" | "amber" | "red" | "grey".
 struct BotCockpitHealthStage {
-    QString id;      ///< "harvest" | "calibrate_threshold" | "calibrate_15m" | "decide" | "settle"
-    QString label;   ///< "HARVEST" / "THR" / "15M" ...
+    QString id;  ///< "harvest" | "calibrate_threshold" | "calibrate_15m" |
+                 ///< "calibrate_commodities15m" | "calibrate_commodities_hourly" |
+                 ///< "calibrate_commodities_daily" | "calibrate_kxbtc_daily" |
+                 ///< "decide" | "settle"
+    QString label;   ///< "HARVEST" / "THR" / "15M" / "COM" / "COM-H" / "COM-D" / "BTC-D" ...
     QString value;   ///< the one datum ("2s", "7/100", "trusted", "bidding", "32")
     QString role = QStringLiteral("grey");
 };
@@ -531,7 +534,7 @@ struct BotCockpitScene {
     /// The BOT tab suggests the cockpit exactly while the loop is running.
     bool suggest_cockpit = false;
 
-    // ── health-first strip (HARVEST -> THR -> 15M -> DECIDE -> SETTLE) ─────
+    // ── health-first strip (HARVEST -> THR -> 15M -> COM* -> BTC-D -> DECIDE -> SETTLE) ─
     // Additive: the mood/banner above answer "is the loop ticking"; these
     // answer "is the pipeline that feeds it healthy" — a dead feed or a stale
     // report must not hide behind a ticking paper loop. CALIBRATE is split so
@@ -1879,19 +1882,38 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
             harvest_reason = QStringLiteral("FEED LIVE");
         }
 
-        // Per-family CALIBRATE chips: THR and 15M. Idle (no columns from that
-        // source) is grey so a quiet family cannot redden the strip; the
-        // banner still alarms when *no* family is active.
+        // Per-family CALIBRATE chips: THR, BTC 15m, COM 15m/H/D, BTC-D.
+        // Idle (no columns from that source) is grey so a quiet family cannot
+        // redden the strip; the banner still alarms when *no* family is active.
         const bool threshold_active = threshold_count > 0;
         const bool kxbtc15m_active = kxbtc15m_count > 0;
-        const bool any_active = threshold_active || kxbtc15m_active;
+        const bool commodities_active = commodities_count > 0;
+        const bool commodities_hourly_active = commodities_hourly_count > 0;
+        const bool commodities_daily_active = commodities_daily_count > 0;
+        const bool kxbtc_daily_active = kxbtc_daily_count > 0;
+        const bool any_active = threshold_active || kxbtc15m_active || commodities_active ||
+                                commodities_hourly_active || commodities_daily_active ||
+                                kxbtc_daily_active;
         const bool threshold_trusted = KalshiBotDecision::signal_trusted(report);
         const bool kxbtc15m_trusted = KalshiBotDecision::signal_trusted(kxbtc15m_report);
-        const int scored_15m = kxbtc15m_report.value(QStringLiteral("scored_contracts")).toInt();
-        const int floor_15m =
-            kxbtc15m_report.value(QStringLiteral("min_scored_contracts")).toInt(100);
-        const QString progress_15m =
-            QStringLiteral("%1/%2").arg(scored_15m).arg(floor_15m);
+        const bool commodities_trusted =
+            KalshiBotDecision::signal_trusted(commodities_15m_report);
+        const bool commodities_hourly_trusted =
+            KalshiBotDecision::signal_trusted(commodities_hourly_report);
+        const bool commodities_daily_trusted =
+            KalshiBotDecision::signal_trusted(commodities_daily_report);
+        const bool kxbtc_daily_trusted = KalshiBotDecision::signal_trusted(kxbtc_daily_report);
+        const auto progress_of = [](const QJsonObject& family_report) {
+            const int scored = family_report.value(QStringLiteral("scored_contracts")).toInt();
+            const int floor =
+                family_report.value(QStringLiteral("min_scored_contracts")).toInt(100);
+            return QStringLiteral("%1/%2").arg(scored).arg(floor);
+        };
+        const QString progress_15m = progress_of(kxbtc15m_report);
+        const QString progress_com = progress_of(commodities_15m_report);
+        const QString progress_com_h = progress_of(commodities_hourly_report);
+        const QString progress_com_d = progress_of(commodities_daily_report);
+        const QString progress_btc_d = progress_of(kxbtc_daily_report);
 
         const auto family_calibrate = [](const QString& id, const QString& label, bool active,
                                          const ReportStamp& stamp, bool trusted,
@@ -1926,12 +1948,35 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         const BotCockpitHealthStage m15_stage = family_calibrate(
             QStringLiteral("calibrate_15m"), QStringLiteral("15M"), kxbtc15m_active,
             kxbtc15m_stamp, kxbtc15m_trusted, progress_15m, progress_15m);
+        const BotCockpitHealthStage com_stage = family_calibrate(
+            QStringLiteral("calibrate_commodities15m"), QStringLiteral("COM"), commodities_active,
+            commodities_stamp, commodities_trusted, progress_com, progress_com);
+        const BotCockpitHealthStage com_h_stage = family_calibrate(
+            QStringLiteral("calibrate_commodities_hourly"), QStringLiteral("COM-H"),
+            commodities_hourly_active, commodities_hourly_stamp, commodities_hourly_trusted,
+            progress_com_h, progress_com_h);
+        const BotCockpitHealthStage com_d_stage = family_calibrate(
+            QStringLiteral("calibrate_commodities_daily"), QStringLiteral("COM-D"),
+            commodities_daily_active, commodities_daily_stamp, commodities_daily_trusted,
+            progress_com_d, progress_com_d);
+        const BotCockpitHealthStage btc_d_stage = family_calibrate(
+            QStringLiteral("calibrate_kxbtc_daily"), QStringLiteral("BTC-D"), kxbtc_daily_active,
+            kxbtc_daily_stamp, kxbtc_daily_trusted, progress_btc_d, progress_btc_d);
 
         QString calibrate_reason;
         const bool any_stale =
-            (threshold_active && threshold_stamp.frozen) || (kxbtc15m_active && kxbtc15m_stamp.frozen);
+            (threshold_active && threshold_stamp.frozen) ||
+            (kxbtc15m_active && kxbtc15m_stamp.frozen) ||
+            (commodities_active && commodities_stamp.frozen) ||
+            (commodities_hourly_active && commodities_hourly_stamp.frozen) ||
+            (commodities_daily_active && commodities_daily_stamp.frozen) ||
+            (kxbtc_daily_active && kxbtc_daily_stamp.frozen);
         const bool all_active_trusted =
-            (!threshold_active || threshold_trusted) && (!kxbtc15m_active || kxbtc15m_trusted);
+            (!threshold_active || threshold_trusted) && (!kxbtc15m_active || kxbtc15m_trusted) &&
+            (!commodities_active || commodities_trusted) &&
+            (!commodities_hourly_active || commodities_hourly_trusted) &&
+            (!commodities_daily_active || commodities_daily_trusted) &&
+            (!kxbtc_daily_active || kxbtc_daily_trusted);
         if (!any_active || generated_at_ms <= 0 || scene.report_age_ms < 0 || any_stale) {
             calibrate_reason = QStringLiteral("CALIBRATOR STALE");
         } else if (all_active_trusted) {
@@ -1942,9 +1987,14 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         }
         const bool calibrate_red =
             !any_active || thr_stage.role == QLatin1String("red") ||
-            m15_stage.role == QLatin1String("red");
+            m15_stage.role == QLatin1String("red") || com_stage.role == QLatin1String("red") ||
+            com_h_stage.role == QLatin1String("red") || com_d_stage.role == QLatin1String("red") ||
+            btc_d_stage.role == QLatin1String("red");
         const bool calibrate_amber =
-            thr_stage.role == QLatin1String("amber") || m15_stage.role == QLatin1String("amber");
+            thr_stage.role == QLatin1String("amber") || m15_stage.role == QLatin1String("amber") ||
+            com_stage.role == QLatin1String("amber") || com_h_stage.role == QLatin1String("amber") ||
+            com_d_stage.role == QLatin1String("amber") ||
+            btc_d_stage.role == QLatin1String("amber");
 
         BotCockpitHealthStage decide_stage;
         decide_stage.id = QStringLiteral("decide");
@@ -1999,7 +2049,8 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         settle_stage.role = settlement.isEmpty() ? QStringLiteral("grey") : QStringLiteral("green");
         settle_stage.value = QString::number(settlement.size());
 
-        scene.health_stages = {harvest_stage, thr_stage, m15_stage, decide_stage, settle_stage};
+        scene.health_stages = {harvest_stage, thr_stage,   m15_stage,  com_stage, com_h_stage,
+                               com_d_stage,   btc_d_stage, decide_stage, settle_stage};
 
         if (harvest_stage.role == QStringLiteral("red")) {
             scene.health_role = QStringLiteral("red");

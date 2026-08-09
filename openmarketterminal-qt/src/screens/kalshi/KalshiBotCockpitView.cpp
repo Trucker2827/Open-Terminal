@@ -39,9 +39,9 @@ constexpr int kFrameIntervalMs = 33;
 constexpr int kFlashFrames = 45;
 
 constexpr int kMargin = 14;
-// The health-first strip (HARVEST -> THR -> 15M -> DECIDE -> SETTLE): a
-// headline line and a row of coloured-dot stage chips, drawn above the mood
-// banner so a dead feed cannot hide behind a ticking paper loop.
+// The health-first strip (HARVEST -> THR -> 15M -> COM* -> BTC-D -> DECIDE ->
+// SETTLE): a headline line and a row of coloured-dot stage chips, drawn above
+// the mood banner so a dead feed cannot hide behind a ticking paper loop.
 constexpr int kHealthHeadlineHeight = 16;
 constexpr int kHealthStageRowHeight = 16;
 constexpr int kHealthStripGap = 6;
