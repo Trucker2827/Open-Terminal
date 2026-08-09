@@ -42,6 +42,7 @@ import zoneinfo
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from openterminal_paths import evidence_file
+import calibrator_eligibility as ce
 import outside_info_features as oif
 
 EVIDENCE_PATH = evidence_file("kalshi-ws-books.json")
@@ -392,6 +393,16 @@ def default_state():
         "contract_scores_physics_confirm_only": [],
         "contract_scores_physics_brti_avg60": [],
         "contract_scores_physics_vol_regime_confirm": [],
+        # Same contracts, scored over ONLY the observations where the model's
+        # edge over the mid reached the bot's bid threshold -- the population
+        # the trust flag is actually used to authorise. See
+        # calibrator_eligibility.
+        "contract_scores_eligible_full": [],
+        "contract_scores_eligible_market_mid_raw": [],
+        "contract_scores_eligible_physics_veto_on_conflict": [],
+        "contract_scores_eligible_physics_confirm_only": [],
+        "contract_scores_eligible_physics_brti_avg60": [],
+        "contract_scores_eligible_physics_vol_regime_confirm": [],
         "resolved": 0,
         "observation_count": 0,
     }
@@ -417,6 +428,15 @@ def load_state(path=STATE_PATH):
     state.setdefault("contract_scores_physics_confirm_only", [])
     state.setdefault("contract_scores_physics_brti_avg60", [])
     state.setdefault("contract_scores_physics_vol_regime_confirm", [])
+    # Same hazard as the contract_scores_* keys above: an already-schema-4
+    # state file predates these six keys, so a bare index/append below would
+    # KeyError on the first settlement.
+    state.setdefault("contract_scores_eligible_full", [])
+    state.setdefault("contract_scores_eligible_market_mid_raw", [])
+    state.setdefault("contract_scores_eligible_physics_veto_on_conflict", [])
+    state.setdefault("contract_scores_eligible_physics_confirm_only", [])
+    state.setdefault("contract_scores_eligible_physics_brti_avg60", [])
+    state.setdefault("contract_scores_eligible_physics_vol_regime_confirm", [])
     state.setdefault("resolved", 0)
     state.setdefault("observation_count", 0)
     return state
@@ -880,6 +900,18 @@ def settle_cycle(state, now_ms, resolver=None, brti_samples=None):
         state["contract_scores_physics_confirm_only"].append(brier(confirm_pairs))
         state["contract_scores_physics_brti_avg60"].append(brier(brti_pairs))
         state["contract_scores_physics_vol_regime_confirm"].append(brier(vol_pairs))
+        eligible_rows = [(obs["p_model"], obs["yes_mid"]) for obs in observations]
+        eligible_model, eligible_mid = ce.eligible_pairs(eligible_rows, outcome)
+        if eligible_model:
+            state["contract_scores_eligible_full"].append(brier(eligible_model))
+            state["contract_scores_eligible_market_mid_raw"].append(brier(eligible_mid))
+        for key in ("physics_veto_on_conflict", "physics_confirm_only",
+                    "physics_brti_avg60", "physics_vol_regime_confirm"):
+            rows = [((obs.get("p_ablations") or {}).get(key, obs["p_model"]), obs["yes_mid"])
+                    for obs in observations]
+            v_model, _v_mid = ce.eligible_pairs(rows, outcome)
+            if v_model:
+                state[f"contract_scores_eligible_{key}"].append(brier(v_model))
         state["resolved"] = int(state.get("resolved") or 0) + 1
         del state["pending"][ticker]
     for key in (
@@ -889,6 +921,12 @@ def settle_cycle(state, now_ms, resolver=None, brti_samples=None):
         "contract_scores_physics_confirm_only",
         "contract_scores_physics_brti_avg60",
         "contract_scores_physics_vol_regime_confirm",
+        "contract_scores_eligible_full",
+        "contract_scores_eligible_market_mid_raw",
+        "contract_scores_eligible_physics_veto_on_conflict",
+        "contract_scores_eligible_physics_confirm_only",
+        "contract_scores_eligible_physics_brti_avg60",
+        "contract_scores_eligible_physics_vol_regime_confirm",
     ):
         state[key] = state[key][-SCORED_CONTRACT_WINDOW:]
 
@@ -918,12 +956,45 @@ def select_trusted_variant(state):
     return oif.select_best_trusted(board, ABLATION_KEYS)
 
 
+def eligible_ablation_scoreboard(state):
+    """Per-variant Brier vs mid over the BET-ELIGIBLE observations only."""
+    return oif.paired_ablation_scoreboard(
+        {
+            "physics": state.get("contract_scores_eligible_full") or [],
+            "physics_veto_on_conflict":
+                state.get("contract_scores_eligible_physics_veto_on_conflict") or [],
+            "physics_confirm_only":
+                state.get("contract_scores_eligible_physics_confirm_only") or [],
+            "physics_brti_avg60":
+                state.get("contract_scores_eligible_physics_brti_avg60") or [],
+            "physics_vol_regime_confirm":
+                state.get("contract_scores_eligible_physics_vol_regime_confirm") or [],
+        },
+        state.get("contract_scores_eligible_market_mid_raw") or [],
+        ce.MIN_ELIGIBLE_CONTRACTS,
+    )
+
+
+def select_trusted_variant_eligible(state):
+    """Best ablation that beats mid ON THE BET-ELIGIBLE SUBSET at >=100
+    contracts; else None (fail-closed).
+
+    Deliberately separate from select_trusted_variant: that one also selects
+    live_p, the published probability. This one gates trust only.
+    """
+    board, _b_mid = eligible_ablation_scoreboard(state)
+    return oif.select_best_trusted(board, ABLATION_KEYS)
+
+
 def build_report(state, predictions, now_ms):
     scored = state.get("contract_scores_full") or []
     b_full = mean_or_none(scored)
     ablations, b_mid = ablation_scoreboard(state)
     trusted_variant = select_trusted_variant(state)
     adds_value = trusted_variant is not None
+    eligible_ablations, b_eligible_mid = eligible_ablation_scoreboard(state)
+    eligible = state.get("contract_scores_eligible_full") or []
+    trusted_variant_eligible = select_trusted_variant_eligible(state)
     return {
         "schema": STATE_SCHEMA,
         "event": "kxbtc15m_calibrator",
@@ -946,6 +1017,13 @@ def build_report(state, predictions, now_ms):
         "ablations": ablations,
         "trusted_variant": trusted_variant,
         "adds_value_over_market": adds_value,
+        "eligible_ablations": eligible_ablations,
+        "eligible_scored_contracts": len(eligible),
+        "brier_eligible_full": mean_or_none(eligible),
+        "brier_eligible_market_mid_raw": b_eligible_mid,
+        "min_eligible_contracts": ce.MIN_ELIGIBLE_CONTRACTS,
+        "trusted_variant_eligible": trusted_variant_eligible,
+        "adds_value_on_bet_eligible": trusted_variant_eligible is not None,
         "predictions": predictions,
     }
 

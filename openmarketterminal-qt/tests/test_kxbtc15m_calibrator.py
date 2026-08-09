@@ -314,5 +314,52 @@ class TickerParseTest(unittest.TestCase):
         self.assertFalse(cal.is_kxbtc15m_ticker("KXBTCD-26AUG0712-T64000"))
 
 
+class BetEligibleTrustTest(unittest.TestCase):
+    VARIANTS = ("physics", "physics_veto_on_conflict", "physics_confirm_only",
+                "physics_brti_avg60", "physics_vol_regime_confirm")
+
+    def _state(self, eligible_model, eligible_mid, n):
+        state = cal.default_state()
+        state["contract_scores_full"] = [0.05] * n
+        state["contract_scores_market_mid_raw"] = [0.06] * n
+        for key in ("physics_veto_on_conflict", "physics_confirm_only",
+                    "physics_brti_avg60", "physics_vol_regime_confirm"):
+            state[f"contract_scores_{key}"] = [0.05] * n
+            state[f"contract_scores_eligible_{key}"] = [eligible_model] * n
+        state["contract_scores_eligible_full"] = [eligible_model] * n
+        state["contract_scores_eligible_market_mid_raw"] = [eligible_mid] * n
+        return state
+
+    def test_losing_where_it_bets_is_untrusted_on_the_new_flag(self):
+        # Wins the easy full population, loses the population it bets.
+        state = self._state(0.2576, 0.2130, 100)
+        self.assertIsNone(cal.select_trusted_variant_eligible(state))
+        r = cal.build_report(state, {}, 1_700_000_000_000)
+        self.assertFalse(r["adds_value_on_bet_eligible"])
+
+    def test_winning_where_it_bets_can_earn_the_new_flag(self):
+        state = self._state(0.2130, 0.2576, 100)
+        self.assertIsNotNone(cal.select_trusted_variant_eligible(state))
+        r = cal.build_report(state, {}, 1_700_000_000_000)
+        self.assertTrue(r["adds_value_on_bet_eligible"])
+
+    def test_below_the_eligible_floor_is_untrusted(self):
+        state = self._state(0.2130, 0.2576, 99)
+        self.assertIsNone(cal.select_trusted_variant_eligible(state))
+
+    def test_live_predictor_selection_is_untouched(self):
+        # select_trusted_variant also picks live_p (the PUBLISHED probability).
+        # This change must not move it: it gates trust, not prediction.
+        state = self._state(0.2576, 0.2130, 100)
+        self.assertIsNotNone(cal.select_trusted_variant(state))
+
+    def test_publishes_the_eligible_numbers(self):
+        r = cal.build_report(self._state(0.21, 0.26, 100), {}, 1_700_000_000_000)
+        self.assertEqual(r["eligible_scored_contracts"], 100)
+        self.assertAlmostEqual(r["brier_eligible_full"], 0.21)
+        self.assertAlmostEqual(r["brier_eligible_market_mid_raw"], 0.26)
+        self.assertEqual(r["min_eligible_contracts"], 100)
+
+
 if __name__ == "__main__":
     unittest.main()
