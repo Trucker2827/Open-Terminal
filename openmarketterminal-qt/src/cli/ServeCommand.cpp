@@ -120,6 +120,16 @@ bool kalshi_non_execution_process_timed_out(bool active, qint64 process_age_ms,
     return active && process_age_ms >= 0 && process_age_ms > timeout_ms;
 }
 
+bool kalshi_process_slot_is_wedged(bool active, bool already_timed_out,
+                                   qint64 process_age_ms, qint64 timeout_ms,
+                                   qint64 grace_ms) {
+    // Only a slot we ALREADY tried to kill can be wedged: before that the
+    // ordinary timeout path owns it. An unknown age never forces a release.
+    if (!active || !already_timed_out) return false;
+    if (process_age_ms < 0 || timeout_ms <= 0) return false;
+    return process_age_ms > timeout_ms + std::max<qint64>(0, grace_ms);
+}
+
 qint64 kalshi_planner_process_timeout_ms(qint64 fetch_timeout_ms) {
     // Allowance for everything the planner does OUTSIDE its network budget:
     // process spawn, Qt/DB init, model load, surface build, optimize, journal
@@ -1557,9 +1567,17 @@ class KalshiLiveEventEngine final : public QObject {
                     }
                     maybe_start_work();
                 });
-        connect(process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
-            last_error_ = process_ ? process_->errorString() : QStringLiteral("process error");
+        connect(process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+            const QString detail =
+                process_ ? process_->errorString() : QStringLiteral("process error");
+            last_error_ = detail;
             status_dirty_ = true;
+            // FailedToStart is terminal AND emits no finished(), so this is the
+            // only chance to give the slot back. Without it one failed spawn --
+            // e.g. the binary being replaced underneath us -- halts the engine
+            // permanently.
+            if (error == QProcess::FailedToStart)
+                force_release_process(QStringLiteral("subprocess failed to start: %1").arg(detail));
         });
         process_->start(QCoreApplication::applicationFilePath(), args);
         status_dirty_ = true;
@@ -1575,9 +1593,30 @@ class KalshiLiveEventEngine final : public QObject {
         return QStringLiteral("unknown");
     }
 
+    /// Give the single work slot back after a terminal signal we cannot rely on.
+    ///
+    /// The slot is normally cleared from QProcess::finished. Qt emits no
+    /// finished() for a process that failed to start, and a kill that does not
+    /// land leaves us waiting on a signal that will never arrive -- either way
+    /// plan, paper, execute AND account reconciliation stop until the daemon is
+    /// restarted. Releasing here is what makes the engine self-heal.
+    void force_release_process(const QString& reason) {
+        if (!process_) return;
+        process_->kill();
+        process_->deleteLater();
+        process_ = nullptr;
+        process_started_ms_ = 0;
+        process_timed_out_ = false;
+        last_process_at_ = now_utc();
+        last_process_result_ = reason;
+        last_error_ = reason;
+        status_dirty_ = true;
+        maybe_start_work();
+    }
+
     void check_process_timeout(qint64 now_ms, qint64 planner_timeout_ms,
                                qint64 paper_timeout_ms, qint64 account_timeout_ms) {
-        if (!process_ || process_timed_out_) return;
+        if (!process_) return;
         // An execution process may have reached the broker before it can report
         // the result. Do not kill it: reconciliation owns that uncertainty.
         qint64 timeout_ms = -1;
@@ -1586,6 +1625,16 @@ class KalshiLiveEventEngine final : public QObject {
         else if (active_work_ == Work::AccountReconcile) timeout_ms = account_timeout_ms;
         if (timeout_ms <= 0) return;
         const qint64 age_ms = process_started_ms_ > 0 ? now_ms - process_started_ms_ : -1;
+        // Grace for a kill to actually land. Past this the terminal signal is
+        // never coming, so recover rather than hold the slot forever.
+        static constexpr qint64 kProcessSlotGraceMs = 30'000;
+        if (kalshi_process_slot_is_wedged(true, process_timed_out_, age_ms, timeout_ms,
+                                          kProcessSlotGraceMs)) {
+            force_release_process(QStringLiteral("%1 slot wedged for %2 ms; force-released")
+                                      .arg(work_name(active_work_)).arg(age_ms));
+            return;
+        }
+        if (process_timed_out_) return;
         const bool timed_out = active_work_ == Work::Plan
             ? kalshi_planner_process_timed_out(true, age_ms, timeout_ms)
             : kalshi_non_execution_process_timed_out(true, age_ms, timeout_ms);

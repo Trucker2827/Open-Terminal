@@ -250,6 +250,31 @@ private slots:
     // and kalshi-auto-plans.jsonl only at the END of a run, so 90 of 99 live
     // cycles were killed before writing anything and the evidence file froze
     // for a week. The deadline must be DERIVED from the network budget.
+    // Regression: the engine's ONE work slot is cleared only from
+    // QProcess::finished, and Qt never emits finished() for a process that
+    // failed to start. A missed terminal signal therefore wedged plan, paper,
+    // execute AND account reconciliation permanently -- observed live as an
+    // account-reconcile slot held 2.22h against an 18s budget with no child
+    // alive and decision_cycles frozen. The watchdog must keep looking after
+    // its first kill and force-release, instead of giving up forever.
+    void kalshi_wedged_process_slot_is_recovered() {
+        constexpr qint64 timeout = 18'000, grace = 30'000;
+        // An idle slot is never wedged.
+        QVERIFY(!kalshi_process_slot_is_wedged(false, true, 999'999, timeout, grace));
+        // Still inside its budget, or not yet killed once: the normal timeout
+        // path owns it, not this one.
+        QVERIFY(!kalshi_process_slot_is_wedged(true, false, 999'999, timeout, grace));
+        QVERIFY(!kalshi_process_slot_is_wedged(true, true, timeout - 1, timeout, grace));
+        // Killed once, and given the full grace period to actually die.
+        QVERIFY(!kalshi_process_slot_is_wedged(true, true, timeout + grace, timeout, grace));
+        // Past the grace period the kill plainly did not land -- recover.
+        QVERIFY(kalshi_process_slot_is_wedged(true, true, timeout + grace + 1, timeout, grace));
+        // The real observed case: 2.22h against an 18s budget.
+        QVERIFY(kalshi_process_slot_is_wedged(true, true, 7'978'472, timeout, grace));
+        // An unknown age must never trigger a force-release.
+        QVERIFY(!kalshi_process_slot_is_wedged(true, true, -1, timeout, grace));
+    }
+
     void kalshi_planner_deadline_clears_its_own_fetch_budget() {
         const qint64 deadline = kalshi_planner_process_timeout_ms(kKalshiPlannerFetchTimeoutMs);
         // Must leave a real allowance beyond the network budget for all the

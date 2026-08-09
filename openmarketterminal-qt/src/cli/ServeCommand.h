@@ -49,6 +49,22 @@ constexpr qint64 kKalshiPlannerFetchTimeoutMs = 9'000;
 // take 10.9-13.0s at rest, so cycles that actually used their network budget
 // were killed before they could write and the evidence file froze.
 qint64 kalshi_planner_process_timeout_ms(qint64 fetch_timeout_ms);
+// True when the engine's single work slot is stuck and must be force-released.
+//
+// KalshiLiveEventEngine serializes plan / paper / execute / account-reconcile
+// behind ONE QProcess, and that slot is cleared only from QProcess::finished.
+// Qt does not emit finished() when a process fails to start -- errorOccurred()
+// is then the only terminal signal -- so a missed terminal signal leaves the
+// slot occupied forever and silently halts EVERY kind of work. Observed live:
+// an account-reconcile slot held for 2.22h (its budget is 18s) with no child
+// process alive, decision_cycles frozen, and the evidence file going stale
+// again exactly as it had before.
+//
+// The timeout path kills once and sets a flag; this predicate is what lets the
+// watchdog keep looking afterwards and recover instead of giving up.
+bool kalshi_process_slot_is_wedged(bool active, bool already_timed_out,
+                                   qint64 process_age_ms, qint64 timeout_ms,
+                                   qint64 grace_ms);
 struct KalshiBookReceipt {
     QString signature;
     QJsonObject snapshot;
