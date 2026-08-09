@@ -802,7 +802,7 @@ QJsonArray KalshiBotDecision::paper_cashout(const QJsonArray& open_positions,
     const qint64 age_ms =
         (generated_ms > 0 && now_ms >= generated_ms) ? (now_ms - generated_ms) : -1;
     if (report.isEmpty() || generated_ms <= 0 || age_ms < 0 ||
-        age_ms > config.max_report_age_ms) {
+        age_ms >= config.max_report_age_ms) {
         // One refusal row for the tick — not per position — so a stale report
         // does not spam the ledger while still documenting the fail-closed hold.
         if (!open_positions.isEmpty()) {

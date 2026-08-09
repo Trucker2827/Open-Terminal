@@ -16,6 +16,7 @@ were open — slim to fixed height so COM-H/D and other cadences can share.
 ## Lessons
 
 - **Cockpit FLOW lanes must not stretch:** `lane_height = flow_body / drawn` made 3–4 books look like fat cards and wasted space for COM-H/D. Paint at fixed `kLaneHeight` (24); `drawable` still uses that height for scroll capacity.
+- **Bot freeze == bot refuse:** Rain freeze must use `age >= max_report_age_ms` like `KalshiBotDecision`; Auto cockpit keeps `timestamp_stale` as `age > bound`. Tick `signal_trusted` must OR all six family reports. Health chips watch present reports (not only rain columns) so empty COM-H/BTC-D cannot hide as idle; folded KPI colour is worst-of cadences.
 - **Staged ≠ working tree:** After partial reverts / edits, always check `git diff --cached` *and* `git diff HEAD`. Inverse staged/unstaged diffs mean a commit would ship the broken index, not the good tree.
 - **`translate_action` arity:** Signature is 4-arg `(choice, net_qty, edge_direction, params)`. A 3-arg call with `ActionParams{}` as 3rd arg fails to compile against current `TypedAction.h`.
 - **Direction is env-owned, not LLM-owned:** `edge_direction_of` → assess/floor/`side_direction`; model only picks verb + conviction.

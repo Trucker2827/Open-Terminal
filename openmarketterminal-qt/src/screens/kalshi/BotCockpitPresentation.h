@@ -53,6 +53,8 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QList>
+
+#include <initializer_list>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -106,6 +108,23 @@ inline QString family_cadence_chip(const QJsonObject& report) {
                                                        : QStringLiteral("U"))
         .arg(scored)
         .arg(floor);
+}
+
+/// Worst-of trust colour for a folded KPI cell (e.g. COM 15m|H|D). Empty
+/// reports are ignored; any present untrusted cadence keeps the cell amber.
+inline QString fold_cadence_trust_role(
+    const std::initializer_list<QJsonObject>& reports) {
+    using services::prediction::kalshi_ns::KalshiBotDecision;
+    bool saw = false;
+    bool all_trusted = true;
+    for (const QJsonObject& report : reports) {
+        if (report.isEmpty()) continue;
+        if (report.value(QStringLiteral("generated_at_ms")).toDouble() <= 0) continue;
+        saw = true;
+        if (!KalshiBotDecision::signal_trusted(report)) all_trusted = false;
+    }
+    if (!saw) return QStringLiteral("grey");
+    return all_trusted ? QStringLiteral("green") : QStringLiteral("amber");
 }
 
 /// Pick the open KXBTC15M ticker the calibrator readout should follow.
@@ -1028,8 +1047,9 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         stamp.generated_at_ms =
             static_cast<qint64>(source_report.value(QStringLiteral("generated_at_ms")).toDouble());
         if (stamp.generated_at_ms > 0) stamp.age_ms = now_ms - stamp.generated_at_ms;
-        stamp.frozen =
-            auto_cockpit_detail::timestamp_stale(stamp.generated_at_ms, now_ms, freeze_bound);
+        // Match KalshiBotDecision refuse: age_ms >= max_report_age_ms (not Auto's `>`).
+        stamp.frozen = stamp.generated_at_ms <= 0 || stamp.age_ms < 0 ||
+                       stamp.age_ms >= freeze_bound;
         stamp.freeze_reason =
             stamp.generated_at_ms <= 0
                 ? QStringLiteral("the %1 report carries no generation time").arg(source)
@@ -1677,15 +1697,18 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         const bool known = !kxbtc15m_report.isEmpty() &&
                            kxbtc15m_report.value(QStringLiteral("brier_full")).isDouble() &&
                            kxbtc15m_report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
+        // Hero keeps 15m-only colour; KPI cell uses worst-of 15m|D.
         const bool adds_value = KalshiBotDecision::signal_trusted(kxbtc15m_report);
-        const QString role = !known       ? QStringLiteral("grey")
-                             : adds_value ? QStringLiteral("green")
-                                          : QStringLiteral("amber");
+        const QString hero_role = !known       ? QStringLiteral("grey")
+                                  : adds_value ? QStringLiteral("green")
+                                               : QStringLiteral("amber");
+        const QString role =
+            fold_cadence_trust_role({kxbtc15m_report, kxbtc_daily_report});
         scene.kpi << QStringLiteral("BTC 15M|D %1 · D %2")
                          .arg(line, family_cadence_chip(kxbtc_daily_report));
         scene.kpi_roles << role;
         scene.kxbtc15m_hero_line = QStringLiteral("KXBTC15M · %1").arg(line);
-        scene.kxbtc15m_hero_role = role;
+        scene.kxbtc15m_hero_role = hero_role;
         scene.kxbtc15m_hero_scored =
             kxbtc15m_report.value(QStringLiteral("scored_contracts")).toInt();
         scene.kxbtc15m_hero_floor =
@@ -1696,14 +1719,8 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     // Commodities multi-cadence pace on the strip (still one KPI cell).
     {
         const QString line = commodities_15m_scoreboard_line(commodities_15m_report);
-        const bool known =
-            !commodities_15m_report.isEmpty() &&
-            commodities_15m_report.value(QStringLiteral("brier_full")).isDouble() &&
-            commodities_15m_report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
-        const bool adds_value = KalshiBotDecision::signal_trusted(commodities_15m_report);
-        const QString role = !known       ? QStringLiteral("grey")
-                             : adds_value ? QStringLiteral("green")
-                                          : QStringLiteral("amber");
+        const QString role = fold_cadence_trust_role(
+            {commodities_15m_report, commodities_hourly_report, commodities_daily_report});
         scene.kpi << QStringLiteral("COM 15m|H|D %1 · H %2 · D %3")
                          .arg(line, family_cadence_chip(commodities_hourly_report),
                               family_cadence_chip(commodities_daily_report));
@@ -1883,14 +1900,22 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         }
 
         // Per-family CALIBRATE chips: THR, BTC 15m, COM 15m/H/D, BTC-D.
-        // Idle (no columns from that source) is grey so a quiet family cannot
-        // redden the strip; the banner still alarms when *no* family is active.
-        const bool threshold_active = threshold_count > 0;
-        const bool kxbtc15m_active = kxbtc15m_count > 0;
-        const bool commodities_active = commodities_count > 0;
-        const bool commodities_hourly_active = commodities_hourly_count > 0;
-        const bool commodities_daily_active = commodities_daily_count > 0;
-        const bool kxbtc_daily_active = kxbtc_daily_count > 0;
+        // A family is "watched" when it has rain columns OR a present report
+        // (generated_at). Missing files stay grey idle; empty-but-present
+        // reports show progress/trust so a stale COM-H file cannot hide.
+        const auto family_watched = [](const QJsonObject& family_report, int column_count) {
+            if (column_count > 0) return true;
+            return !family_report.isEmpty() &&
+                   family_report.value(QStringLiteral("generated_at_ms")).toDouble() > 0;
+        };
+        const bool threshold_active = family_watched(report, threshold_count);
+        const bool kxbtc15m_active = family_watched(kxbtc15m_report, kxbtc15m_count);
+        const bool commodities_active = family_watched(commodities_15m_report, commodities_count);
+        const bool commodities_hourly_active =
+            family_watched(commodities_hourly_report, commodities_hourly_count);
+        const bool commodities_daily_active =
+            family_watched(commodities_daily_report, commodities_daily_count);
+        const bool kxbtc_daily_active = family_watched(kxbtc_daily_report, kxbtc_daily_count);
         const bool any_active = threshold_active || kxbtc15m_active || commodities_active ||
                                 commodities_hourly_active || commodities_daily_active ||
                                 kxbtc_daily_active;

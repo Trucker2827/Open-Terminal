@@ -869,7 +869,10 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     // Families may be trusted independently.
     result.signal_trusted = KalshiBotDecision::signal_trusted(threshold_report) ||
                             KalshiBotDecision::signal_trusted(kxbtc15m_report) ||
-                            KalshiBotDecision::signal_trusted(commodities_15m_report);
+                            KalshiBotDecision::signal_trusted(commodities_15m_report) ||
+                            KalshiBotDecision::signal_trusted(commodities_hourly_report) ||
+                            KalshiBotDecision::signal_trusted(commodities_daily_report) ||
+                            KalshiBotDecision::signal_trusted(kxbtc_daily_report);
     result.state = QStringLiteral("ok");
     if (rows.size() == 1) {
         const QString reason = rows.first().toObject().value(QStringLiteral("reason_code")).toString();
@@ -1020,7 +1023,10 @@ TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config
     // tick that passed every contract SIGNAL_UNTRUSTED must never print TRUSTED.
     result.signal_trusted = KalshiBotDecision::signal_trusted(threshold_report) ||
                             KalshiBotDecision::signal_trusted(kxbtc15m_report) ||
-                            KalshiBotDecision::signal_trusted(commodities_15m_report);
+                            KalshiBotDecision::signal_trusted(commodities_15m_report) ||
+                            KalshiBotDecision::signal_trusted(commodities_hourly_report) ||
+                            KalshiBotDecision::signal_trusted(commodities_daily_report) ||
+                            KalshiBotDecision::signal_trusted(kxbtc_daily_report);
     result.state = QStringLiteral("ok");
     if (rows.size() == 1) {
         const QString reason =

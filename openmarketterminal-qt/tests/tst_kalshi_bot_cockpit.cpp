@@ -387,6 +387,8 @@ class KalshiBotCockpitTest : public QObject {
                 .frozen;
         };
         QVERIFY(!frozen_at(bound - 1'000));
+        // Exact refuse age must freeze — matches KalshiBotDecision age_ms >= bound.
+        QVERIFY(frozen_at(bound));
         QVERIFY(frozen_at(bound + 1'000));
     }
 
@@ -1243,6 +1245,63 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(stage_role(scene, QStringLiteral("calibrate_commodities_hourly")),
                  QStringLiteral("grey"));
         QCOMPARE(stage_role(scene, QStringLiteral("calibrate_kxbtc_daily")), QStringLiteral("grey"));
+    }
+
+    // Empty-but-present hourly report must not hide as idle — watch the file.
+    void empty_present_hourly_report_lights_com_h_chip_not_idle() {
+        const QJsonObject threshold =
+            calibrator_report(kNow - 10'000, QJsonObject{{"KX-A", prediction(0.55, 0.42)}});
+        QJsonObject com_h = calibrator_report(kNow - 8'000, {}, /*adds_value=*/false);
+        com_h.insert(QStringLiteral("event"), QStringLiteral("commodities_hourly_calibrator"));
+        com_h.insert(QStringLiteral("scored_contracts"), 0);
+        com_h.insert(QStringLiteral("min_scored_contracts"), 100);
+        com_h.insert(QStringLiteral("predictions"), QJsonObject{});
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene = present_bot_cockpit(
+            panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(), kBotCockpitMaxColumns,
+            kBotCockpitMaxPulses, feed_live(), {}, {}, {}, {}, com_h);
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_commodities_hourly")),
+                 QStringLiteral("amber"));
+        QCOMPARE(stage_value(scene, QStringLiteral("calibrate_commodities_hourly")),
+                 QStringLiteral("0/100"));
+        // Stale empty report must redden the chip (not stay idle).
+        QJsonObject stale_h = com_h;
+        stale_h.insert(QStringLiteral("generated_at_ms"),
+                       double(kNow - bot_cockpit_freeze_bound_ms()));
+        const BotCockpitScene stale = present_bot_cockpit(
+            panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(), kBotCockpitMaxColumns,
+            kBotCockpitMaxPulses, feed_live(), {}, {}, {}, {}, stale_h);
+        QCOMPARE(stage_role(stale, QStringLiteral("calibrate_commodities_hourly")),
+                 QStringLiteral("red"));
+        QCOMPARE(stage_value(stale, QStringLiteral("calibrate_commodities_hourly")),
+                 QStringLiteral("stale"));
+    }
+
+    void com_kpi_role_is_worst_of_15m_hourly_and_daily() {
+        const QJsonObject threshold =
+            calibrator_report(kNow - 10'000, QJsonObject{{"KX-A", prediction(0.55, 0.42)}},
+                              /*adds_value=*/true);
+        QJsonObject com15 = calibrator_report(kNow - 8'000, {}, /*adds_value=*/true);
+        com15.insert(QStringLiteral("event"), QStringLiteral("commodities_15m_calibrator"));
+        com15.insert(QStringLiteral("brier_full"), 0.20);
+        com15.insert(QStringLiteral("brier_market_mid_raw"), 0.22);
+        QJsonObject com_d = calibrator_report(kNow - 8'000, {}, /*adds_value=*/false);
+        com_d.insert(QStringLiteral("event"), QStringLiteral("commodities_daily_calibrator"));
+        com_d.insert(QStringLiteral("brier_full"), 0.25);
+        com_d.insert(QStringLiteral("brier_market_mid_raw"), 0.22);
+        const BotCockpitScene scene = present_bot_cockpit(
+            panel_for(passing_ledger()), threshold, {}, passing_ledger(), {}, kNow, QByteArray(),
+            kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed_live(), {}, com15, {}, {}, {}, com_d);
+        QVERIFY(!scene.kpi.isEmpty());
+        int com_idx = -1;
+        for (int i = 0; i < scene.kpi.size(); ++i) {
+            if (scene.kpi.at(i).startsWith(QStringLiteral("COM 15m|H|D"))) {
+                com_idx = i;
+                break;
+            }
+        }
+        QVERIFY(com_idx >= 0);
+        QCOMPARE(scene.kpi_roles.at(com_idx), QStringLiteral("amber"));
     }
 
     void threshold_hero_pins_ambition_scoreboard_above_rain() {
