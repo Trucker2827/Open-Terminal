@@ -1,23 +1,26 @@
 // CryptoOrderEntry.cpp — production order ticket.
 //
-// Layout (top → bottom):
+// Layout (top → bottom, form scrolls under a pinned header):
 //   1. Header strip       — title + paper/live badge
 //   2. Account card       — Balance | Mark | Avail-after-order
 //   3. BUY / SELL tabs    — full-width, color-coded
-//   4. Type buttons       — Market / Limit / Stop / Stop-Limit
+//   4. Type buttons       — Market / Limit / Stop / S-LMT
 //   5. Quantity input     — large monospace, with unit suffix and 25/50/75/100 quick fills
 //   6. Price + Stop rows  — auto-shown only for the order types that need them
 //   7. Order breakdown    — Cost / Fee / Total / Receive / % of balance
 //   8. Advanced (collapsible) — SL / TP
 //   9. Futures (visible only when set_futures_mode(true)) — leverage spin + margin segmented control
-//  10. Submit             — color-coded big button with computed subtitle
-//  11. Status              — inline validation message
+//  10. Submit             — primary color-coded button + subtitle
+//  11. Status             — inline validation message
+//  12. Maker buy          — secondary disclosure (collapsed); post-only cash+limit
 //
 // Sizing principles:
 //  • No fixed pixel heights on inputs/buttons — everything uses padding via QSS so
 //    rows scale with the user's terminal font size and HiDPI multipliers.
-//  • Right panel is ~290 px wide; layout is single-column with paired label/value
-//    sub-rows for compact cost breakdown.
+//  • Right panel is ~340 px wide; form scrolls inside a QScrollArea so the book
+//    can keep scan height without clipping the ticket.
+//  • Maker quick-buy is a secondary disclosure (collapsed by default) — one
+//    primary green submit on the full ticket, not two competing BUY buttons.
 //  • Live cost preview runs on every keystroke (qty / price / type changes) and
 //    feeds the submit-button subtitle so the user never has to compute anything.
 
@@ -31,6 +34,8 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QMessageBox>
+#include <QScrollArea>
+#include <QSizePolicy>
 #include <QSpinBox>
 #include <QStyle>
 #include <QVBoxLayout>
@@ -239,7 +244,11 @@ MakerFeeEstimate maker_budget_from_cash(double cash_budget, const FeeSchedule& s
 
 CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
     setObjectName("cryptoOrderEntry");
-    setMinimumWidth(240);
+    setMinimumWidth(280);
+    // Hard floor so the vertical right splitter cannot let the order book
+    // swallow the ticket (book alone looked like the whole rail).
+    setMinimumHeight(360);
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
@@ -264,19 +273,26 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
 
     root->addWidget(header);
 
-    // ── Scrollable content ──────────────────────────────────────────────────
-    auto* content = new QWidget(this);
+    // ── Scrollable content (header stays pinned) ────────────────────────────
+    auto* scroll = new QScrollArea(this);
+    scroll->setObjectName("cryptoOeScroll");
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+    auto* content = new QWidget;
     auto* form = new QVBoxLayout(content);
-    form->setContentsMargins(8, 6, 8, 6);
-    form->setSpacing(6);
+    form->setContentsMargins(8, 6, 8, 8);
+    form->setSpacing(5);
 
     // ── 1. Account card (Balance / Mark / Avail) ────────────────────────────
     {
         auto* card = make_card();
         auto* grid = new QGridLayout(card);
-        grid->setContentsMargins(12, 10, 12, 10);
-        grid->setHorizontalSpacing(12);
-        grid->setVerticalSpacing(4);
+        grid->setContentsMargins(10, 7, 10, 7);
+        grid->setHorizontalSpacing(10);
+        grid->setVerticalSpacing(2);
         grid->setColumnStretch(0, 0);
         grid->setColumnStretch(1, 1);
 
@@ -294,111 +310,6 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
         form->addWidget(card);
     }
 
-    // ── 1b. Maker-only quick buy ───────────────────────────────────────────
-    // This deliberately exposes fewer controls than the full ticket below:
-    // cash amount + limit price only, with post-only forced in code.
-    {
-        auto* card = make_card("cryptoOeBreakdown");
-        auto* v = new QVBoxLayout(card);
-        v->setContentsMargins(8, 6, 8, 6);
-        v->setSpacing(4);
-
-        auto* title_row = new QHBoxLayout;
-        title_row->setContentsMargins(0, 0, 0, 0);
-        title_row->setSpacing(6);
-        maker_title_ = new QLabel(tr("MAKER BUY"));
-        maker_title_->setObjectName("cryptoOeTitle");
-        title_row->addWidget(maker_title_);
-        title_row->addStretch();
-        auto* locked = new QLabel(tr("POST ONLY"));
-        locked->setObjectName("cryptoOeMode");
-        locked->setProperty("mode", "paper");
-        locked->setToolTip(tr("Forced maker protection: this ticket only submits post-only limit buys."));
-        title_row->addWidget(locked);
-        v->addLayout(title_row);
-
-        maker_help_label_ = new QLabel(tr("Cash + limit below ask. Market orders disabled."));
-        maker_help_label_->setObjectName("cryptoOeSubmitSubtitle");
-        maker_help_label_->setWordWrap(false);
-        v->addWidget(maker_help_label_);
-
-        maker_usd_title_ = new QLabel(tr("AMOUNT"));
-        maker_usd_title_->setObjectName("cryptoOeLabel");
-        v->addWidget(maker_usd_title_);
-
-        auto* amount_wrap = new QWidget;
-        amount_wrap->setObjectName("cryptoOeInputWrap");
-        auto* amount_h = new QHBoxLayout(amount_wrap);
-        amount_h->setContentsMargins(0, 0, 0, 0);
-        amount_h->setSpacing(0);
-        maker_usd_edit_ = new QLineEdit;
-        maker_usd_edit_->setObjectName("cryptoOeInput");
-        maker_usd_edit_->setPlaceholderText(QStringLiteral("200.00"));
-        maker_usd_edit_->setValidator(make_decimal_validator(this));
-        maker_usd_edit_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        amount_h->addWidget(maker_usd_edit_, 1);
-        auto* cash_unit = new QLabel(quote_label());
-        cash_unit->setObjectName("cryptoOeUnit");
-        cash_unit->setMinimumWidth(40);
-        cash_unit->setAlignment(Qt::AlignCenter);
-        cash_unit->setProperty("ftRoleUnit", "quote");
-        amount_h->addWidget(cash_unit);
-        v->addWidget(amount_wrap);
-
-        maker_limit_title_ = new QLabel(tr("LIMIT"));
-        maker_limit_title_->setObjectName("cryptoOeLabel");
-        v->addWidget(maker_limit_title_);
-
-        auto* limit_wrap = new QWidget;
-        limit_wrap->setObjectName("cryptoOeInputWrap");
-        auto* limit_h = new QHBoxLayout(limit_wrap);
-        limit_h->setContentsMargins(0, 0, 0, 0);
-        limit_h->setSpacing(4);
-        maker_limit_edit_ = new QLineEdit;
-        maker_limit_edit_->setObjectName("cryptoOeInput");
-        maker_limit_edit_->setPlaceholderText(QStringLiteral("59294.01"));
-        maker_limit_edit_->setValidator(make_decimal_validator(this));
-        maker_limit_edit_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        limit_h->addWidget(maker_limit_edit_, 1);
-        maker_use_bid_btn_ = new QPushButton(tr("BID"));
-        maker_use_bid_btn_->setObjectName("cryptoOePctBtn");
-        maker_use_bid_btn_->setCursor(Qt::PointingHandCursor);
-        maker_use_bid_btn_->setFocusPolicy(Qt::NoFocus);
-        maker_use_bid_btn_->setToolTip(tr("Use current best bid as the maker limit price."));
-        limit_h->addWidget(maker_use_bid_btn_);
-        v->addWidget(limit_wrap);
-
-        maker_preview_label_ = new QLabel(tr("Enter amount and limit price to preview."));
-        maker_preview_label_->setObjectName("cryptoOeSubmitSubtitle");
-        maker_preview_label_->setWordWrap(true);
-        maker_preview_label_->setAlignment(Qt::AlignCenter);
-        v->addWidget(maker_preview_label_);
-
-        maker_submit_btn_ = new QPushButton(tr("BUY MAKER"));
-        maker_submit_btn_->setObjectName("cryptoBuySubmit");
-        maker_submit_btn_->setCursor(Qt::PointingHandCursor);
-        maker_submit_btn_->setEnabled(false);
-        v->addWidget(maker_submit_btn_);
-
-        maker_status_label_ = new QLabel;
-        maker_status_label_->setObjectName("cryptoOeStatus");
-        maker_status_label_->setProperty("severity", "info");
-        maker_status_label_->setWordWrap(false);
-        maker_status_label_->setVisible(false);
-        v->addWidget(maker_status_label_);
-
-        connect(maker_usd_edit_, &QLineEdit::textChanged, this, [this]() { update_maker_preview(); });
-        connect(maker_limit_edit_, &QLineEdit::textChanged, this, [this]() { update_maker_preview(); });
-        connect(maker_use_bid_btn_, &QPushButton::clicked, this, [this]() {
-            const double px = best_bid_ > 0 ? best_bid_ : current_price_;
-            if (px > 0)
-                maker_limit_edit_->setText(QString::number(px, 'f', 2));
-        });
-        connect(maker_submit_btn_, &QPushButton::clicked, this, &CryptoOrderEntry::on_maker_submit);
-
-        form->addWidget(card);
-    }
-
     // ── 2. BUY / SELL tabs ──────────────────────────────────────────────────
     {
         auto* side_row = new QHBoxLayout;
@@ -410,6 +321,7 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
         buy_tab_->setProperty("active", true);
         buy_tab_->setCursor(Qt::PointingHandCursor);
         buy_tab_->setFocusPolicy(Qt::NoFocus);
+        buy_tab_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         connect(buy_tab_, &QPushButton::clicked, this, [this]() { set_buy_side(true); });
         side_row->addWidget(buy_tab_, 1);
 
@@ -418,29 +330,32 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
         sell_tab_->setProperty("active", false);
         sell_tab_->setCursor(Qt::PointingHandCursor);
         sell_tab_->setFocusPolicy(Qt::NoFocus);
+        sell_tab_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         connect(sell_tab_, &QPushButton::clicked, this, [this]() { set_buy_side(false); });
         side_row->addWidget(sell_tab_, 1);
 
         form->addLayout(side_row);
     }
 
-    // ── 3. Order type segmented control ─────────────────────────────────────
+    // ── 3. Order type grid (2×2 so a narrow rail never clips STOP / S-LMT) ──
     {
-        auto* type_row = new QHBoxLayout;
-        type_row->setSpacing(0);
-        type_row->setContentsMargins(0, 0, 0, 0);
-        // Slightly more readable than the previous 3-letter abbreviations.
-        const QString type_labels[] = {tr("MARKET"), tr("LIMIT"), tr("STOP"), tr("STOP-LMT")};
+        auto* type_grid = new QGridLayout;
+        type_grid->setSpacing(0);
+        type_grid->setContentsMargins(0, 0, 0, 0);
+        const QString type_labels[] = {tr("MARKET"), tr("LIMIT"), tr("STOP"), tr("S-LMT")};
         for (int i = 0; i < 4; ++i) {
             type_btns_[i] = new QPushButton(type_labels[i]);
             type_btns_[i]->setObjectName("cryptoOeTypeBtn");
             type_btns_[i]->setCursor(Qt::PointingHandCursor);
             type_btns_[i]->setFocusPolicy(Qt::NoFocus);
+            type_btns_[i]->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
             if (i == 0) type_btns_[i]->setProperty("active", true);
             connect(type_btns_[i], &QPushButton::clicked, this, [this, i]() { set_order_type(i); });
-            type_row->addWidget(type_btns_[i], 1);
+            type_grid->addWidget(type_btns_[i], i / 2, i % 2);
         }
-        form->addLayout(type_row);
+        type_grid->setColumnStretch(0, 1);
+        type_grid->setColumnStretch(1, 1);
+        form->addLayout(type_grid);
     }
 
     // ── 4. Quantity input + 25/50/75/100% quick fills ───────────────────────
@@ -473,18 +388,24 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
 
         form->addWidget(qty_wrap);
 
-        // Quick % fills — bigger touch targets than the old 18 px buttons.
-        auto* pct_row = new QHBoxLayout;
-        pct_row->setSpacing(4);
+        // Quick % fills in 2×2 so 75/100 stay visible in a narrow rail.
+        auto* pct_grid = new QGridLayout;
+        pct_grid->setSpacing(4);
+        pct_grid->setContentsMargins(0, 0, 0, 0);
+        int pct_i = 0;
         for (int pct : {25, 50, 75, 100}) {
             auto* btn = new QPushButton(QString::number(pct) + QStringLiteral("%"));
             btn->setObjectName("cryptoOePctBtn");
             btn->setCursor(Qt::PointingHandCursor);
             btn->setFocusPolicy(Qt::NoFocus);
+            btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
             connect(btn, &QPushButton::clicked, this, [this, pct]() { on_pct_clicked(pct); });
-            pct_row->addWidget(btn, 1);
+            pct_grid->addWidget(btn, pct_i / 2, pct_i % 2);
+            ++pct_i;
         }
-        form->addLayout(pct_row);
+        pct_grid->setColumnStretch(0, 1);
+        pct_grid->setColumnStretch(1, 1);
+        form->addLayout(pct_grid);
 
         // Symbol-change signal will update the unit label.
         connect(this, &CryptoOrderEntry::destroyed, unit, [](){});
@@ -595,8 +516,29 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
         form->addWidget(card);
     }
 
-    // ── 8. Advanced toggle (SL / TP) ────────────────────────────────────────
-    advanced_toggle_ = new QPushButton(tr("▾  Advanced  (SL / TP)"));
+    // ── 8. Primary submit (above Advanced so the CTA is never below the fold)
+    submit_btn_ = new QPushButton(tr("BUY  %1").arg(current_symbol_));
+    submit_btn_->setObjectName("cryptoBuySubmit");
+    submit_btn_->setCursor(Qt::PointingHandCursor);
+    submit_btn_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Return));
+    submit_btn_->setToolTip(tr("Submit order  (⌘/Ctrl+Enter)"));
+    connect(submit_btn_, &QPushButton::clicked, this, &CryptoOrderEntry::on_submit);
+    form->addWidget(submit_btn_);
+
+    submit_subtitle_ = new QLabel(tr("Enter a quantity to preview"));
+    submit_subtitle_->setObjectName("cryptoOeSubmitSubtitle");
+    submit_subtitle_->setAlignment(Qt::AlignCenter);
+    submit_subtitle_->setWordWrap(true);
+    form->addWidget(submit_subtitle_);
+
+    status_label_ = new QLabel;
+    status_label_->setObjectName("cryptoOeStatus");
+    status_label_->setWordWrap(true);
+    status_label_->setVisible(false);
+    form->addWidget(status_label_);
+
+    // ── 9. Advanced toggle (SL / TP) ────────────────────────────────────────
+    advanced_toggle_ = new QPushButton(tr("▸  Advanced  (SL / TP)"));
     advanced_toggle_->setObjectName("cryptoAdvToggle");
     advanced_toggle_->setCursor(Qt::PointingHandCursor);
     advanced_toggle_->setFocusPolicy(Qt::NoFocus);
@@ -630,11 +572,11 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
     connect(advanced_toggle_, &QPushButton::clicked, this, [this]() {
         const bool show = !advanced_section_->isVisible();
         advanced_section_->setVisible(show);
-        advanced_toggle_->setText(show ? tr("▴  Advanced  (SL / TP)")
-                                       : tr("▾  Advanced  (SL / TP)"));
+        advanced_toggle_->setText(show ? tr("▾  Advanced  (SL / TP)")
+                                       : tr("▸  Advanced  (SL / TP)"));
     });
 
-    // ── 9. Futures controls (leverage + margin mode) ────────────────────────
+    // ── 10. Futures controls (leverage + margin mode) ───────────────────────
     futures_section_ = new QWidget(this);
     futures_section_->setVisible(false);
     {
@@ -677,30 +619,130 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
     connect(margin_mode_combo_, &QComboBox::currentIndexChanged, this,
             [this](int idx) { emit margin_mode_changed(margin_mode_combo_->itemData(idx).toString()); });
 
-    // ── 10. Submit button + computed subtitle ───────────────────────────────
-    submit_btn_ = new QPushButton(tr("BUY  %1").arg(current_symbol_));
-    submit_btn_->setObjectName("cryptoBuySubmit");
-    submit_btn_->setCursor(Qt::PointingHandCursor);
-    submit_btn_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Return));
-    submit_btn_->setToolTip(tr("Submit order  (⌘/Ctrl+Enter)"));
-    connect(submit_btn_, &QPushButton::clicked, this, &CryptoOrderEntry::on_submit);
-    form->addWidget(submit_btn_);
+    // ── 11. Maker-only quick buy (secondary; collapsed by default) ──────────
+    // Cash amount + limit only; post-only forced in code. Kept below the
+    // primary ticket so the rail has one clear green submit.
+    {
+        maker_toggle_ = new QPushButton(tr("▸  Maker buy  (post-only)"));
+        maker_toggle_->setObjectName("cryptoAdvToggle");
+        maker_toggle_->setCursor(Qt::PointingHandCursor);
+        maker_toggle_->setFocusPolicy(Qt::NoFocus);
+        maker_toggle_->setToolTip(
+            tr("Cash + limit below ask. Forced post-only. Expand when you want the quick maker ticket."));
+        form->addWidget(maker_toggle_);
 
-    submit_subtitle_ = new QLabel(tr("Enter a quantity to preview"));
-    submit_subtitle_->setObjectName("cryptoOeSubmitSubtitle");
-    submit_subtitle_->setAlignment(Qt::AlignCenter);
-    submit_subtitle_->setWordWrap(true);
-    form->addWidget(submit_subtitle_);
+        maker_body_ = make_card("cryptoOeBreakdown");
+        maker_body_->setVisible(false);
+        auto* v = new QVBoxLayout(maker_body_);
+        v->setContentsMargins(8, 6, 8, 6);
+        v->setSpacing(4);
 
-    // ── 11. Inline status / validation message ──────────────────────────────
-    status_label_ = new QLabel;
-    status_label_->setObjectName("cryptoOeStatus");
-    status_label_->setWordWrap(true);
-    status_label_->setVisible(false);
-    form->addWidget(status_label_);
+        auto* title_row = new QHBoxLayout;
+        title_row->setContentsMargins(0, 0, 0, 0);
+        title_row->setSpacing(6);
+        maker_title_ = new QLabel(tr("MAKER BUY"));
+        maker_title_->setObjectName("cryptoOeTitle");
+        title_row->addWidget(maker_title_);
+        title_row->addStretch();
+        auto* locked = new QLabel(tr("POST ONLY"));
+        locked->setObjectName("cryptoOeMode");
+        locked->setProperty("mode", "paper");
+        locked->setToolTip(
+            tr("Forced maker protection: this ticket only submits post-only limit buys."));
+        title_row->addWidget(locked);
+        v->addLayout(title_row);
+
+        maker_help_label_ = new QLabel(tr("Cash + limit below ask. Market orders disabled."));
+        maker_help_label_->setObjectName("cryptoOeSubmitSubtitle");
+        maker_help_label_->setWordWrap(true);
+        v->addWidget(maker_help_label_);
+
+        maker_usd_title_ = new QLabel(tr("AMOUNT"));
+        maker_usd_title_->setObjectName("cryptoOeLabel");
+        v->addWidget(maker_usd_title_);
+
+        auto* amount_wrap = new QWidget;
+        amount_wrap->setObjectName("cryptoOeInputWrap");
+        auto* amount_h = new QHBoxLayout(amount_wrap);
+        amount_h->setContentsMargins(0, 0, 0, 0);
+        amount_h->setSpacing(0);
+        maker_usd_edit_ = new QLineEdit;
+        maker_usd_edit_->setObjectName("cryptoOeInput");
+        maker_usd_edit_->setPlaceholderText(QStringLiteral("200.00"));
+        maker_usd_edit_->setValidator(make_decimal_validator(this));
+        maker_usd_edit_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        amount_h->addWidget(maker_usd_edit_, 1);
+        auto* cash_unit = new QLabel(quote_label());
+        cash_unit->setObjectName("cryptoOeUnit");
+        cash_unit->setMinimumWidth(40);
+        cash_unit->setAlignment(Qt::AlignCenter);
+        cash_unit->setProperty("ftRoleUnit", "quote");
+        amount_h->addWidget(cash_unit);
+        v->addWidget(amount_wrap);
+
+        maker_limit_title_ = new QLabel(tr("LIMIT"));
+        maker_limit_title_->setObjectName("cryptoOeLabel");
+        v->addWidget(maker_limit_title_);
+
+        auto* limit_wrap = new QWidget;
+        limit_wrap->setObjectName("cryptoOeInputWrap");
+        auto* limit_h = new QHBoxLayout(limit_wrap);
+        limit_h->setContentsMargins(0, 0, 0, 0);
+        limit_h->setSpacing(4);
+        maker_limit_edit_ = new QLineEdit;
+        maker_limit_edit_->setObjectName("cryptoOeInput");
+        maker_limit_edit_->setPlaceholderText(QStringLiteral("59294.01"));
+        maker_limit_edit_->setValidator(make_decimal_validator(this));
+        maker_limit_edit_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        limit_h->addWidget(maker_limit_edit_, 1);
+        maker_use_bid_btn_ = new QPushButton(tr("BID"));
+        maker_use_bid_btn_->setObjectName("cryptoOePctBtn");
+        maker_use_bid_btn_->setCursor(Qt::PointingHandCursor);
+        maker_use_bid_btn_->setFocusPolicy(Qt::NoFocus);
+        maker_use_bid_btn_->setToolTip(tr("Use current best bid as the maker limit price."));
+        limit_h->addWidget(maker_use_bid_btn_);
+        v->addWidget(limit_wrap);
+
+        maker_preview_label_ = new QLabel(tr("Enter amount and limit price to preview."));
+        maker_preview_label_->setObjectName("cryptoOeSubmitSubtitle");
+        maker_preview_label_->setWordWrap(true);
+        maker_preview_label_->setAlignment(Qt::AlignCenter);
+        v->addWidget(maker_preview_label_);
+
+        maker_submit_btn_ = new QPushButton(tr("PAPER BUY"));
+        maker_submit_btn_->setObjectName("cryptoMakerSubmit");
+        maker_submit_btn_->setCursor(Qt::PointingHandCursor);
+        maker_submit_btn_->setEnabled(false);
+        v->addWidget(maker_submit_btn_);
+
+        maker_status_label_ = new QLabel;
+        maker_status_label_->setObjectName("cryptoOeStatus");
+        maker_status_label_->setProperty("severity", "info");
+        maker_status_label_->setWordWrap(true);
+        maker_status_label_->setVisible(false);
+        v->addWidget(maker_status_label_);
+
+        connect(maker_usd_edit_, &QLineEdit::textChanged, this, [this]() { update_maker_preview(); });
+        connect(maker_limit_edit_, &QLineEdit::textChanged, this, [this]() { update_maker_preview(); });
+        connect(maker_use_bid_btn_, &QPushButton::clicked, this, [this]() {
+            const double px = best_bid_ > 0 ? best_bid_ : current_price_;
+            if (px > 0)
+                maker_limit_edit_->setText(QString::number(px, 'f', 2));
+        });
+        connect(maker_submit_btn_, &QPushButton::clicked, this, &CryptoOrderEntry::on_maker_submit);
+        connect(maker_toggle_, &QPushButton::clicked, this, [this]() {
+            const bool show = !maker_body_->isVisible();
+            maker_body_->setVisible(show);
+            maker_toggle_->setText(show ? tr("▾  Maker buy  (post-only)")
+                                        : tr("▸  Maker buy  (post-only)"));
+        });
+
+        form->addWidget(maker_body_);
+    }
 
     form->addStretch();
-    root->addWidget(content, 1);
+    scroll->setWidget(content);
+    root->addWidget(scroll, 1);
 
     update_cost_preview();
     update_maker_preview();
@@ -1223,6 +1265,9 @@ void CryptoOrderEntry::retranslateUi() {
     if (avail_title_)   avail_title_->setText(tr("AVAIL"));
 
     // Maker-only quick ticket
+    if (maker_toggle_ && maker_body_)
+        maker_toggle_->setText(maker_body_->isVisible() ? tr("▾  Maker buy  (post-only)")
+                                                        : tr("▸  Maker buy  (post-only)"));
     if (maker_title_) maker_title_->setText(tr("MAKER BUY"));
     if (maker_help_label_)
         maker_help_label_->setText(tr("Cash + limit below ask. Market orders disabled."));
@@ -1238,7 +1283,7 @@ void CryptoOrderEntry::retranslateUi() {
     if (sell_tab_) sell_tab_->setText(tr("SELL"));
 
     // Order type segmented control
-    const QString type_labels[] = {tr("MARKET"), tr("LIMIT"), tr("STOP"), tr("STOP-LMT")};
+    const QString type_labels[] = {tr("MARKET"), tr("LIMIT"), tr("STOP"), tr("S-LMT")};
     for (int i = 0; i < 4; ++i)
         if (type_btns_[i]) type_btns_[i]->setText(type_labels[i]);
 
@@ -1272,8 +1317,8 @@ void CryptoOrderEntry::retranslateUi() {
 
     // Advanced toggle reflects current expanded state
     if (advanced_toggle_ && advanced_section_)
-        advanced_toggle_->setText(advanced_section_->isVisible() ? tr("▴  Advanced  (SL / TP)")
-                                                                 : tr("▾  Advanced  (SL / TP)"));
+        advanced_toggle_->setText(advanced_section_->isVisible() ? tr("▾  Advanced  (SL / TP)")
+                                                                 : tr("▸  Advanced  (SL / TP)"));
 
     // Submit button + tooltip + subtitle
     if (submit_btn_) {

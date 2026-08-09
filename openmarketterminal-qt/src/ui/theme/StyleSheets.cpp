@@ -395,9 +395,10 @@ QString crypto_trading_styles() {
                "#cryptoSellTab[active=\"true\"] { color: %1; background: %11; "
                "  border-color: %11; }"
 
+               /* 2×2 type grid — keep a full border on every cell (no border-right:none). */
                "#cryptoOeTypeBtn { background: %1; color: %7; border: 1px solid %3; "
-               "  border-right: none; padding: 4px 0; "
-               "  font-size: 9px; font-weight: 700; letter-spacing: 0.2px; }"
+               "  padding: 5px 2px; "
+               "  font-size: 10px; font-weight: 700; letter-spacing: 0.2px; }"
                "#cryptoOeTypeBtn:hover { color: %4; background: %13; }"
                "#cryptoOeTypeBtn[active=\"true\"] { color: %12; background: %16; "
                "  border-color: %10; }"
@@ -440,12 +441,24 @@ QString crypto_trading_styles() {
                /* Back-compat for old [error=true] callers */
                "#cryptoOeStatus[error=\"true\"] { color: %11; background: %18; border-color: %20; }"
 
+               "#cryptoOeScroll { background: transparent; border: none; }"
+               "#cryptoOeScroll > QWidget > QWidget { background: transparent; }"
+
                "#cryptoBuySubmit { background: %15; color: %1; "
                "  border: 1px solid %15; padding: 6px 5px; "
                "  font-weight: 800; font-size: 11px; letter-spacing: 0.4px; "
                "  border-radius: 4px; }"
                "#cryptoBuySubmit:hover { background: %19; color: %15; border-color: %19; }"
                "#cryptoBuySubmit:pressed { background: %15; color: %1; }"
+               /* Secondary outline CTA for the collapsed maker ticket — must not
+                  compete with the primary #cryptoBuySubmit on the full ticket. */
+               "#cryptoMakerSubmit { background: transparent; color: %15; "
+               "  border: 1px solid %15; padding: 5px 5px; "
+               "  font-weight: 700; font-size: 11px; letter-spacing: 0.4px; "
+               "  border-radius: 4px; }"
+               "#cryptoMakerSubmit:hover { background: %17; color: %15; border-color: %19; }"
+               "#cryptoMakerSubmit:pressed { background: %15; color: %1; }"
+               "#cryptoMakerSubmit:disabled { color: %9; border-color: %3; background: transparent; }"
                "#cryptoSellSubmit { background: %11; color: %1; "
                "  border: 1px solid %11; padding: 6px 5px; "
                "  font-weight: 800; font-size: 11px; letter-spacing: 0.4px; "

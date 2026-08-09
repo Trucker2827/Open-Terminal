@@ -93,7 +93,10 @@ class CryptoOrderEntry : public QWidget {
     QLabel* avail_label_ = nullptr;
     QLabel* mode_label_ = nullptr;
 
-    // Idiot-proof maker-only quick ticket.
+    // Idiot-proof maker-only quick ticket (collapsed by default so the
+    // primary BUY/SELL ticket owns the rail).
+    QPushButton* maker_toggle_ = nullptr;
+    QWidget* maker_body_ = nullptr;
     QLabel* maker_title_ = nullptr;
     QLabel* maker_help_label_ = nullptr;
     QLabel* maker_usd_title_ = nullptr;

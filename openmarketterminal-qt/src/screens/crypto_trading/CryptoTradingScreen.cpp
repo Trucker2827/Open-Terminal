@@ -337,8 +337,10 @@ void CryptoTradingScreen::setup_ui() {
     auto* right_splitter = new QSplitter(Qt::Vertical);
     right_splitter->setObjectName("cryptoRightSplitter");
     right_splitter->setHandleWidth(1);
+    right_splitter->setMinimumWidth(320);
 
     orderbook_ = new CryptoOrderBook;
+    orderbook_->setMinimumHeight(160);
     right_splitter->addWidget(orderbook_);
 
     order_entry_ = new CryptoOrderEntry;
@@ -346,20 +348,25 @@ void CryptoTradingScreen::setup_ui() {
     right_splitter->addWidget(order_entry_);
 
     right_splitter->setChildrenCollapsible(false);
-    right_splitter->setStretchFactor(0, 5); // order book gets the useful vertical scan space
-    right_splitter->setStretchFactor(1, 3); // order ticket stays usable but no longer dominates
-    right_splitter->setSizes({560, 420});
+    // Ticket owns more of the vertical budget than the book — a crushed
+    // entry pane reads as "order book only" and looks broken.
+    right_splitter->setStretchFactor(0, 2);
+    right_splitter->setStretchFactor(1, 3);
+    right_splitter->setSizes({360, 520});
 
     main_splitter->addWidget(right_splitter);
 
-    // Splitter proportions: watchlist 220 | chart stretch | right 290.
+    // Splitter proportions: watchlist 220 | chart stretch | right 340.
+    // Right rail is pinned with a hard min width so BUY|SELL and the ticket
+    // never clip; ticket scrolls under the book.
     // (DOM ladder column is hidden for now — see above.)
     // Prediction markets live in the dedicated Predictions screen, not in the
     // crypto/bitcoin trading workspace.
-    main_splitter->setSizes({220, 780, 290});
+    main_splitter->setSizes({220, 740, 340});
     main_splitter->setStretchFactor(0, 0);
     main_splitter->setStretchFactor(1, 1);  // chart column absorbs extra width
     main_splitter->setStretchFactor(2, 0);
+    main_splitter->setCollapsible(2, false);
 
     main_layout->addWidget(main_splitter, 1);
 
