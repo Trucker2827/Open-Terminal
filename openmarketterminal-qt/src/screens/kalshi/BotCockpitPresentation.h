@@ -219,6 +219,17 @@ inline QString commodities_15m_scoreboard_line(const QJsonObject& report) {
     return line;
 }
 
+/// Threshold / KXBTCD strike scoreboard — same measurement shape as the 15m
+/// line, worded for the strike calibrator (`calibrator.json`). Paper ambition
+/// pins this family above FLOW while 15m stays an observe/KPI scoreboard.
+inline QString threshold_scoreboard_line(const QJsonObject& report) {
+    if (report.isEmpty()) {
+        return QStringLiteral("NO %1 — the strike/threshold calibrator has not published here yet")
+            .arg(QString::fromLatin1(kKalshiCalibratorFile));
+    }
+    return kxbtc15m_scoreboard_line(report);
+}
+
 /// The age at which a column freezes: the bot's own report-refusal age, not a
 /// threshold this scene chose. A second constant here would let the rain keep
 /// falling on a report the loop has already given up on.
@@ -348,12 +359,12 @@ inline QString bot_cockpit_source_tag(const QString& signal_source) {
     return {};
 }
 
-/// Rain sort rank: live 15m races (BTC, then commodities) before threshold
-/// books. Unknown sources sort last.
+/// Rain sort rank: strike/threshold books first (paper ambition), then BTC 15m,
+/// then commodities. Unknown sources sort last.
 inline int bot_cockpit_rain_family_rank(const QString& signal_source) {
-    if (signal_source == QLatin1String("kxbtc15m")) return 0;
-    if (signal_source == QLatin1String("commodities15m")) return 1;
-    if (signal_source == QLatin1String("threshold")) return 2;
+    if (signal_source == QLatin1String("threshold")) return 0;
+    if (signal_source == QLatin1String("kxbtc15m")) return 1;
+    if (signal_source == QLatin1String("commodities15m")) return 2;
     return 3;
 }
 
@@ -496,10 +507,18 @@ struct BotCockpitScene {
     QString health_banner;                       ///< the health-first headline (worst stage)
     QString health_role = QStringLiteral("grey");///< colour of the headline
 
-    // ── KXBTC15M scoreboard hero (pinned above the rain) ───────────────────
-    // Same facts as the orbit node / KPI line, but never truncated by the
-    // strip. `hero_known` means Brier numbers exist; progress uses scored/floor
-    // even before that (so the climb to 100 is visible).
+    // ── THRESHOLD / KXBTCD scoreboard hero (pinned above the rain) ─────────
+    // Paper ambition family. Same facts as the CALIBRATOR orbit node / KPI,
+    // never truncated by the strip. `hero_known` means Brier numbers exist.
+    QString threshold_hero_line;
+    QString threshold_hero_role = QStringLiteral("grey");
+    int threshold_hero_scored = 0;
+    int threshold_hero_floor = 100;
+    bool threshold_hero_known = false;
+
+    // KXBTC15M remains on the KPI strip + orbit node (observe/scoreboard).
+    // Kept as hero_* fields only for a one-release paint fallback if the
+    // threshold report is missing — prefer threshold_hero_* in the view.
     QString kxbtc15m_hero_line;
     QString kxbtc15m_hero_role = QStringLiteral("grey");
     int kxbtc15m_hero_scored = 0;
@@ -1205,7 +1224,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
 
     // columns_total = open/watched only (closed 15m never count as FLOW).
     scene.columns_total = columns.size();
-    // Live 15m races first (BTC, then commodities), then threshold books;
+    // Strike/threshold first (paper ambition), then BTC 15m, then commodities;
     // within a family |edge| so a cap drops quiet books before open races.
     // Unmeasured edges sort last; ticker breaks ties.
     std::stable_sort(columns.begin(), columns.end(),
@@ -1231,11 +1250,12 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     } else if (scene.columns.isEmpty()) {
         // Report files exist, but every open contract was filtered (closed 15m)
         // or the family has not published the next window yet.
-        scene.census = QStringLiteral("NO FLOW · waiting for next open contract · L→R · 0 "
-                                      "threshold · 0 kxbtc15m · 0 commodities15m");
+        scene.census = QStringLiteral("NO FLOW · waiting for next open contract · L→R · ambition "
+                                      "KXBTCD · 0 threshold · 0 kxbtc15m · 0 commodities15m");
     } else if (scene.columns_total > scene.columns.size()) {
-        scene.census = QStringLiteral("%1 of %2 watched contracts · L→R · 15m first · |edge| · %3 not "
-                                      "drawn · %4 threshold · %5 kxbtc15m · %6 commodities15m")
+        scene.census = QStringLiteral("%1 of %2 watched contracts · L→R · threshold first · ambition "
+                                      "KXBTCD · |edge| · %3 not drawn · %4 threshold · %5 kxbtc15m · "
+                                      "%6 commodities15m")
                            .arg(scene.columns.size())
                            .arg(scene.columns_total)
                            .arg(scene.columns_total - scene.columns.size())
@@ -1243,8 +1263,9 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                            .arg(kxbtc15m_count)
                            .arg(commodities_count);
     } else {
-        scene.census = QStringLiteral("%1 watched contracts · all drawn · L→R · 15m first · %2 "
-                                      "threshold · %3 kxbtc15m · %4 commodities15m")
+        scene.census = QStringLiteral("%1 watched contracts · all drawn · L→R · threshold first · "
+                                      "ambition KXBTCD · %2 threshold · %3 kxbtc15m · %4 "
+                                      "commodities15m")
                            .arg(scene.columns_total)
                            .arg(threshold_count)
                            .arg(kxbtc15m_count)
@@ -1534,8 +1555,28 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     scene.kpi << rate;
     scene.kpi_roles << QStringLiteral("grey");
 
-    // KXBTC15M pace on the strip + pinned hero — same sentence as the orbit
-    // node, so the three cannot disagree about scored/floor or ΔBrier.
+    // THRESHOLD / KXBTCD pinned hero — paper ambition family. Same sentence as
+    // the CALIBRATOR orbit node so hero / node cannot disagree. Not a 7th KPI
+    // (pin stays 6); the strip still carries KXBTC15M as the observe scoreboard.
+    // Leave hero fields empty when the strike report is absent so the view can
+    // fall back to the 15m scoreboard pin.
+    if (!report.isEmpty()) {
+        const QString line = threshold_scoreboard_line(report);
+        const bool known = report.value(QStringLiteral("brier_full")).isDouble() &&
+                           report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
+        const bool adds_value = KalshiBotDecision::signal_trusted(report);
+        const QString role = !known       ? QStringLiteral("grey")
+                             : adds_value ? QStringLiteral("green")
+                                          : QStringLiteral("amber");
+        scene.threshold_hero_line = QStringLiteral("KXBTCD · %1").arg(line);
+        scene.threshold_hero_role = role;
+        scene.threshold_hero_scored = report.value(QStringLiteral("scored_contracts")).toInt();
+        scene.threshold_hero_floor =
+            report.value(QStringLiteral("min_scored_contracts")).toInt(100);
+        scene.threshold_hero_known = known;
+    }
+
+    // KXBTC15M pace on the strip (observe/scoreboard; not the pinned ambition).
     {
         const QString line = kxbtc15m_scoreboard_line(kxbtc15m_report);
         const bool known = !kxbtc15m_report.isEmpty() &&

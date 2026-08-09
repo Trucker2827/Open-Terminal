@@ -1,15 +1,14 @@
 # Open-Terminal — Cursor scratchpad & lessons
 
-## Scratchpad — FLOW empty after closed-15m filter (2026-08-08)
+## Scratchpad — Cockpit ambition on KXBTCD (2026-08-09)
 
-Task: After omitting closed races, FLOW showed no HH:MM. Root cause: at
-15m rollover WS universe lagged (stuck refresh / just-closed cohort ate a
-slot); kxbtc15m report went to 0 preds. Fix: still-open cohorts×4, REST+BRTI
-fallback, honest NO FLOW waiting copy; kick daemon.
+Task: Paper ambition on strike/threshold (KXBTCD), not 15m lottery.
+Bot already runs both families with separate trust. Cockpit should pin
+THRESHOLD hero, rain-sort threshold first, keep 15m as scoreboard/KPI.
 
-[X] ServeCommand: still-open only, 4 cohorts (was 2 + just-closed)
-[X] kxbtc15m REST fallback when WS snapshots have no open race
-[X] Census/empty FLOW: waiting for next open; tests; rebuild CLI+GUI
+[X] threshold_scoreboard_line + threshold_hero_* on scene
+[X] Rain rank threshold→15m→commodities; census “threshold first · ambition KXBTCD”
+[X] View paints threshold hero; tests (72) + rebuild/relaunch
 
 ---
 
@@ -28,6 +27,7 @@ fallback, honest NO FLOW waiting copy; kick daemon.
 - **Charter carve-out:** Deterministic Kalshi bot may bid only when human-armed, hard caps ($2/$3), promotion gate PASS on paper, kill switch, GUI parity. AI cannot arm live.
 - **KXBTC15M vs spot_calibrator:** Hourly threshold calibrator must not own 15m race trust. Separate `kxbtc15m-calibrator.json`; `KalshiBotDecision::filter_predictions_for_family` + dual `decide` so trust cannot leak across families.
 - **Cockpit additive pins:** Dual-source rain changes census (`· N threshold · M kxbtc15m`), adds `kxbtc15m` orbit node, and always appends a KXBTC15M KPI line — update `health_fields_are_additive_*` pins when those land. Commodities 15m adds `commodities15m` node + COMMOD15M KPI. Postmortem adds a 6th KPI (`PM …` / `PM UNAVAILABLE`) — baseline pin is **8 nodes / 6 KPI**. Outside-info detail rides on those lines — do not add nodes without updating the pin. Commodities rain adds census `· K commodities15m` and a `COM` source tag — update rain/census pins when that lands; still prefer no 9th orbit node. Bid postmortem inspect opens from the **PM KPI** (or BOT VIEW), not a new node. Always reserve the PM cell in the KPI strip so narrow widths cannot bury it under `… N more`.
+- **Cockpit ambition = KXBTCD:** Rain sorts threshold first; census says `threshold first · ambition KXBTCD`. Pinned hero is `threshold_hero_*` (falls back to KXBTC15M only when strike report absent). Do not add a 7th KPI for KXBTCD — hero + CALIBRATOR node carry it. Bot already runs both families with separate trust; UI priority ≠ disabling 15m.
 - **Postmortem ≠ W/L:** Join settlements to bids by `position_id`; classify loss modes; never invent late-flip/gamma without path replay. `settle_paper` copies bid snapshot + optional `market_mid_at_settle`. Paper cashout closes with `early_exit` / `won:null`. Paper ticks attach `mid_path` when sampled. Always write **historic** + **current-rules** summaries when markers exist; cockpit/status PM judges CURRENT, not lifetime. Sealed gate still uses historic. Early exits are cashouts, not family L. GUI: Predictions BOT card + cockpit PM KPI inspect.
 - **Paper cashout:** Sell-to-close at floor(held-side bid) only (`LOCK_WIN` / `CUT_EDGE_REVERSED` via AutoEngine). Mid is never a sell proxy. Default ON for paper; `--no-paper-cashout` disables. Hold-to-settle when HOLD or bid missing.
 - **Postmortem → decide:** `FADE_YES_NEAR_CLOSE` lifts on venue-lead confirm-down **or** BRTI avg60 below open (p_brti < 0.5 when present); missing confirm → ban stands. Favourite cross asks ≥0.65 need +0.03 margin.
