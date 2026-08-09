@@ -360,6 +360,30 @@ class BetEligibleTrustTest(unittest.TestCase):
         self.assertAlmostEqual(r["brier_eligible_market_mid_raw"], 0.26)
         self.assertEqual(r["min_eligible_contracts"], 100)
 
+    def test_variant_is_judged_against_its_own_eligible_mid(self):
+        # Physics is eligible on a population where the mid is very good
+        # (0.05) -- physics itself loses, and that is irrelevant to this
+        # test. physics_veto_on_conflict is eligible on a DIFFERENT
+        # population (per-predictor eligibility), where the mid is much
+        # worse (0.30) and the variant beats it easily (0.10).
+        #
+        # Under the old (buggy) pairing, every variant was scored against
+        # physics's shared mid list (0.05), so the variant would wrongly
+        # fail to beat 0.05 with a 0.10 Brier and never earn trust. Judged
+        # against its OWN eligible mid (0.30), it correctly wins.
+        n = 100
+        state = cal.default_state()
+        state["contract_scores_eligible_full"] = [0.20] * n
+        state["contract_scores_eligible_market_mid_raw"] = [0.05] * n
+        state["contract_scores_eligible_physics_veto_on_conflict"] = [0.10] * n
+        state["contract_scores_eligible_mid_physics_veto_on_conflict"] = [0.30] * n
+        for key in ("physics_confirm_only", "physics_brti_avg60",
+                    "physics_vol_regime_confirm"):
+            state[f"contract_scores_eligible_{key}"] = []
+            state[f"contract_scores_eligible_mid_{key}"] = []
+        self.assertEqual(
+            cal.select_trusted_variant_eligible(state), "physics_veto_on_conflict")
+
 
 if __name__ == "__main__":
     unittest.main()

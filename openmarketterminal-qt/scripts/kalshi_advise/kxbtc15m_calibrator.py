@@ -403,6 +403,15 @@ def default_state():
         "contract_scores_eligible_physics_confirm_only": [],
         "contract_scores_eligible_physics_brti_avg60": [],
         "contract_scores_eligible_physics_vol_regime_confirm": [],
+        # Each variant's OWN eligible mid population -- a contract can be
+        # eligible for one variant and not another, so the variant's Brier
+        # must be paired against the mid observed on ITS eligible contracts,
+        # not physics's. (physics keeps using
+        # contract_scores_eligible_market_mid_raw above.)
+        "contract_scores_eligible_mid_physics_veto_on_conflict": [],
+        "contract_scores_eligible_mid_physics_confirm_only": [],
+        "contract_scores_eligible_mid_physics_brti_avg60": [],
+        "contract_scores_eligible_mid_physics_vol_regime_confirm": [],
         "resolved": 0,
         "observation_count": 0,
     }
@@ -437,6 +446,11 @@ def load_state(path=STATE_PATH):
     state.setdefault("contract_scores_eligible_physics_confirm_only", [])
     state.setdefault("contract_scores_eligible_physics_brti_avg60", [])
     state.setdefault("contract_scores_eligible_physics_vol_regime_confirm", [])
+    # Same hazard again: each variant's own eligible-mid population.
+    state.setdefault("contract_scores_eligible_mid_physics_veto_on_conflict", [])
+    state.setdefault("contract_scores_eligible_mid_physics_confirm_only", [])
+    state.setdefault("contract_scores_eligible_mid_physics_brti_avg60", [])
+    state.setdefault("contract_scores_eligible_mid_physics_vol_regime_confirm", [])
     state.setdefault("resolved", 0)
     state.setdefault("observation_count", 0)
     return state
@@ -909,9 +923,16 @@ def settle_cycle(state, now_ms, resolver=None, brti_samples=None):
                     "physics_brti_avg60", "physics_vol_regime_confirm"):
             rows = [((obs.get("p_ablations") or {}).get(key, obs["p_model"]), obs["yes_mid"])
                     for obs in observations]
-            v_model, _v_mid = ce.eligible_pairs(rows, outcome)
+            v_model, v_mid = ce.eligible_pairs(rows, outcome)
             if v_model:
+                # Pair this variant's Brier against the mid observed on ITS
+                # OWN eligible contracts, not physics's -- eligibility is
+                # per-predictor, so a variant's eligible population can
+                # differ from physics's. Appended under the same `if
+                # v_model:` guard as the model score so the two lists stay
+                # index-aligned and equal-length.
                 state[f"contract_scores_eligible_{key}"].append(brier(v_model))
+                state[f"contract_scores_eligible_mid_{key}"].append(brier(v_mid))
         state["resolved"] = int(state.get("resolved") or 0) + 1
         del state["pending"][ticker]
     for key in (
@@ -927,6 +948,10 @@ def settle_cycle(state, now_ms, resolver=None, brti_samples=None):
         "contract_scores_eligible_physics_confirm_only",
         "contract_scores_eligible_physics_brti_avg60",
         "contract_scores_eligible_physics_vol_regime_confirm",
+        "contract_scores_eligible_mid_physics_veto_on_conflict",
+        "contract_scores_eligible_mid_physics_confirm_only",
+        "contract_scores_eligible_mid_physics_brti_avg60",
+        "contract_scores_eligible_mid_physics_vol_regime_confirm",
     ):
         state[key] = state[key][-SCORED_CONTRACT_WINDOW:]
 
@@ -957,22 +982,44 @@ def select_trusted_variant(state):
 
 
 def eligible_ablation_scoreboard(state):
-    """Per-variant Brier vs mid over the BET-ELIGIBLE observations only."""
-    return oif.paired_ablation_scoreboard(
-        {
-            "physics": state.get("contract_scores_eligible_full") or [],
-            "physics_veto_on_conflict":
-                state.get("contract_scores_eligible_physics_veto_on_conflict") or [],
-            "physics_confirm_only":
-                state.get("contract_scores_eligible_physics_confirm_only") or [],
-            "physics_brti_avg60":
-                state.get("contract_scores_eligible_physics_brti_avg60") or [],
-            "physics_vol_regime_confirm":
-                state.get("contract_scores_eligible_physics_vol_regime_confirm") or [],
-        },
+    """Per-variant Brier vs mid over the BET-ELIGIBLE observations only.
+
+    Each variant is paired against the mid observed on ITS OWN eligible
+    contracts, not physics's. Eligibility is evaluated per predictor -- a
+    contract can be eligible for one variant and not another -- so a shared
+    mid baseline would score a variant's Brier against a different
+    population's market prices than the one it was actually measured on.
+    That is the exact defect this module exists to remove, so
+    oif.paired_ablation_scoreboard (which takes one series map and one mid
+    list) is called once per variant with that variant's own mid list, and
+    the resulting rows are merged into a single board with the same shape
+    the old single-call board produced, so oif.select_best_trusted still
+    works unchanged.
+    """
+    board = {}
+    physics_board, global_mid = oif.paired_ablation_scoreboard(
+        {"physics": state.get("contract_scores_eligible_full") or []},
         state.get("contract_scores_eligible_market_mid_raw") or [],
         ce.MIN_ELIGIBLE_CONTRACTS,
     )
+    board.update(physics_board)
+    for key, mid_key in (
+        ("physics_veto_on_conflict",
+         "contract_scores_eligible_mid_physics_veto_on_conflict"),
+        ("physics_confirm_only",
+         "contract_scores_eligible_mid_physics_confirm_only"),
+        ("physics_brti_avg60",
+         "contract_scores_eligible_mid_physics_brti_avg60"),
+        ("physics_vol_regime_confirm",
+         "contract_scores_eligible_mid_physics_vol_regime_confirm"),
+    ):
+        variant_board, _variant_mid = oif.paired_ablation_scoreboard(
+            {key: state.get(f"contract_scores_eligible_{key}") or []},
+            state.get(mid_key) or [],
+            ce.MIN_ELIGIBLE_CONTRACTS,
+        )
+        board.update(variant_board)
+    return board, global_mid
 
 
 def select_trusted_variant_eligible(state):
