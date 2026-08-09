@@ -9,6 +9,7 @@ were open — slim to fixed height so COM-H/D and other cadences can share.
 [X] Tint COM-H/COM-D/BTC-D with existing green/amber family colors
 [X] Rebuild GUI; kill stale OpenTerminal (was still on 14:31 binary) + relaunch
 [X] Eyeball OK — slim FLOW + COM-D AU/AG visible (15m/hourly empty until open)
+[X] Health strip chips: COM / COM-H / COM-D / BTC-D (idle grey)
 
 ---
 
