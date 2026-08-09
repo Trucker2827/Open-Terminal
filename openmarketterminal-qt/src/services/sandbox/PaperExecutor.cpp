@@ -176,6 +176,32 @@ struct OpenPlan {
     double notional_usd = 0;
 };
 
+// Materialise a result set before doing any writes.
+//
+// SQLite holds a read transaction on a connection for as long as a SELECT
+// cursor is open on it. A write issued on that SAME connection must upgrade
+// that read transaction, and when another connection holds the write lock
+// SQLite returns SQLITE_BUSY *immediately, without invoking the busy
+// handler* -- waiting could never succeed, so it does not try. That turned
+// the 5s busy_timeout into an instant "database is locked": measured, a
+// write with the cursor open failed in 0.00s where the same write after
+// draining waited the full 5.18s. It was failing 89% of sandbox ticks.
+//
+// Drain first, then write. Each write is then a plain autocommit statement
+// that CAN wait out a momentary collision -- and the write lock on this
+// database measured free 98.9% of the time, so waiting nearly always wins.
+QVector<QVariantList> drain_rows(QSqlQuery& query, int column_count) {
+    QVector<QVariantList> rows;
+    while (query.next()) {
+        QVariantList row;
+        row.reserve(column_count);
+        for (int i = 0; i < column_count; ++i)
+            row.append(query.value(i));
+        rows.append(row);
+    }
+    return rows;
+}
+
 // Inserts one new sandbox_position row plus its 'open' sandbox_fill row (the
 // creation transition -- distinct from the 'fill' transition a pending_fill
 // position gets later in step 2). Deliberately NOT soft-caught: a
@@ -577,18 +603,18 @@ Result<void> open_spot_like_candidates(const StrategyRow& strategy, const QJsonO
         if (sel.is_err())
             return Result<void>::err(sel.error());
 
-        auto& q = sel.value();
-        while (q.next()) {
-            const QString horizon = q.value(2).toString();
-            const double confidence = q.value(3).toDouble();
+        const QVector<QVariantList> rows = drain_rows(sel.value(), 7);
+        for (const QVariantList& row : rows) {
+            const QString horizon = row.at(2).toString();
+            const double confidence = row.at(3).toDouble();
             if (horizon_seconds(horizon) < min_horizon_sec || confidence < min_confidence)
                 continue;
 
-            const QString id = q.value(0).toString();
-            const qint64 created_at = q.value(1).toLongLong();
-            const QJsonObject features = parse_object(q.value(4).toString());
-            const QJsonObject freshness = parse_object(q.value(5).toString());
-            const double model_probability = q.value(6).toDouble();
+            const QString id = row.at(0).toString();
+            const qint64 created_at = row.at(1).toLongLong();
+            const QJsonObject features = parse_object(row.at(4).toString());
+            const QJsonObject freshness = parse_object(row.at(5).toString());
+            const double model_probability = row.at(6).toDouble();
             const double ref = features.value(QStringLiteral("reference_price")).toDouble();
             if (ref <= 0.0) {
                 report.skipped++;
@@ -740,20 +766,20 @@ Result<void> open_prediction_candidates(const StrategyRow& strategy, const QJson
     if (sel.is_err())
         return Result<void>::err(sel.error());
 
-    auto& q = sel.value();
-    while (q.next()) {
-        const QString id = q.value(0).toString();
-        const qint64 created_at = q.value(1).toLongLong();
-        const QString symbol = q.value(2).toString();
-        const double probability = q.value(3).toDouble();
-        const QJsonObject freshness = parse_object(q.value(4).toString());
-        const QString side = q.value(5).toString().trimmed().toLower();
-        const QString row_horizon = q.value(6).toString().trimmed().toLower();
-        const QString market_id = q.value(7).toString();
-        const int seconds_left = q.value(8).toInt();
-        const double journal_fee_per_contract = q.value(9).toDouble();
-        const double edge_after_cost = q.value(10).toDouble();
-        const QJsonObject features = parse_object(q.value(11).toString());
+    const QVector<QVariantList> rows = drain_rows(sel.value(), 12);
+    for (const QVariantList& row : rows) {
+        const QString id = row.at(0).toString();
+        const qint64 created_at = row.at(1).toLongLong();
+        const QString symbol = row.at(2).toString();
+        const double probability = row.at(3).toDouble();
+        const QJsonObject freshness = parse_object(row.at(4).toString());
+        const QString side = row.at(5).toString().trimmed().toLower();
+        const QString row_horizon = row.at(6).toString().trimmed().toLower();
+        const QString market_id = row.at(7).toString();
+        const int seconds_left = row.at(8).toInt();
+        const double journal_fee_per_contract = row.at(9).toDouble();
+        const double edge_after_cost = row.at(10).toDouble();
+        const QJsonObject features = parse_object(row.at(11).toString());
         const QJsonObject signal = features.value(QStringLiteral("signal")).toObject();
 
         if (!horizon_filter.isEmpty() && row_horizon != horizon_filter) {
@@ -874,15 +900,15 @@ Result<void> open_price_forecast_candidates(const StrategyRow& strategy, const Q
         if (sel.is_err())
             return Result<void>::err(sel.error());
 
-        auto& q = sel.value();
-        while (q.next()) {
-            const QString id = q.value(0).toString();
-            const qint64 created_at = q.value(1).toLongLong();
-            const QString row_symbol = q.value(2).toString();
-            const QString side = q.value(3).toString();
-            const QString row_horizon = q.value(4).toString().trimmed().toLower();
-            const QJsonObject features = parse_object(q.value(5).toString());
-            const QJsonObject freshness = parse_object(q.value(6).toString());
+        const QVector<QVariantList> rows = drain_rows(sel.value(), 7);
+        for (const QVariantList& row : rows) {
+            const QString id = row.at(0).toString();
+            const qint64 created_at = row.at(1).toLongLong();
+            const QString row_symbol = row.at(2).toString();
+            const QString side = row.at(3).toString();
+            const QString row_horizon = row.at(4).toString().trimmed().toLower();
+            const QJsonObject features = parse_object(row.at(5).toString());
+            const QJsonObject freshness = parse_object(row.at(6).toString());
             const double ref = features.value(QStringLiteral("reference_price")).toDouble();
 
             if (!horizon_filter.isEmpty() && row_horizon != horizon_filter) {
@@ -970,14 +996,14 @@ Result<void> open_hypothetical_candidates(const StrategyRow& strategy, const QJs
     if (sel.is_err())
         return Result<void>::err(sel.error());
 
-    auto& q = sel.value();
-    while (q.next()) {
-        const QString id = q.value(0).toString();
-        const qint64 created_at = q.value(1).toLongLong();
-        const QString symbol = q.value(2).toString();
-        const QString side = q.value(3).toString();
-        const QJsonObject features = parse_object(q.value(4).toString());
-        const QJsonObject freshness = parse_object(q.value(5).toString());
+    const QVector<QVariantList> rows = drain_rows(sel.value(), 6);
+    for (const QVariantList& row : rows) {
+        const QString id = row.at(0).toString();
+        const qint64 created_at = row.at(1).toLongLong();
+        const QString symbol = row.at(2).toString();
+        const QString side = row.at(3).toString();
+        const QJsonObject features = parse_object(row.at(4).toString());
+        const QJsonObject freshness = parse_object(row.at(5).toString());
         const double ref = features.value(QStringLiteral("reference_price")).toDouble();
 
         if (!is_recognized_side(side)) {
