@@ -44,6 +44,7 @@ class PredictionExchangeAdapter;
 }
 namespace openmarketterminal::screens::crypto { class CryptoOrderBook; }
 namespace openmarketterminal::screens { class WeatherScreen; }
+namespace openmarketterminal::screens { class ManualTradingScreen; }
 
 namespace openmarketterminal::screens::kalshi {
 
@@ -208,6 +209,9 @@ class KalshiScreen final : public QWidget {
     // changes because of the stack's existence.
     QStackedWidget* category_stack_ = nullptr;
     screens::WeatherScreen* weather_screen_ = nullptr;
+    // Manual Trading (paper) — category_stack_ page 3, the "Manual" family.
+    // Additive-only: another view page, never a change to page 0 (crypto).
+    screens::ManualTradingScreen* manual_trading_screen_ = nullptr;
     CategoryPlaceholderPage* category_placeholder_ = nullptr;
     QSplitter* workspace_splitter_ = nullptr;
     QWidget* dom_panel_ = nullptr;

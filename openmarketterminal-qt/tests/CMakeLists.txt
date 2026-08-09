@@ -167,6 +167,16 @@ target_include_directories(tst_weather_evidence_reader PRIVATE ${CMAKE_SOURCE_DI
 target_link_libraries(tst_weather_evidence_reader PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_weather_evidence_reader COMMAND tst_weather_evidence_reader)
 
+# Pure P&L core for the Manual Trading (paper) screen — the teaching invariant
+# that opposite YES/NO across the two paper accounts on the SAME order book
+# nets to minus fees. Widget-free; depends only on Qt Core.
+add_executable(tst_manual_trading_pnl
+    manual_trading/tst_manual_trading_pnl.cpp
+    ${CMAKE_SOURCE_DIR}/src/screens/manual_trading/ManualTradingPnl.cpp)
+target_include_directories(tst_manual_trading_pnl PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_manual_trading_pnl PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_manual_trading_pnl COMMAND tst_manual_trading_pnl)
+
 add_executable(tst_command_dispatch
     tst_command_dispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/CommandDispatch.cpp

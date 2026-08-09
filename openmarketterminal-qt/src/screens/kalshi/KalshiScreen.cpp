@@ -3,6 +3,7 @@
 #include "screens/kalshi/ArenaContextPresentation.h"
 #include "screens/kalshi/BotCockpitPresentation.h"
 #include "screens/kalshi/CategoryPlaceholderPage.h"
+#include "screens/manual_trading/ManualTradingScreen.h"
 #include "screens/kalshi/KalshiBotCockpitView.h"
 #include "screens/kalshi/KalshiBotPanelPresentation.h"
 #include "screens/kalshi/MarketRollPresentation.h"
@@ -720,8 +721,8 @@ void KalshiScreen::build_ui() {
     command_layout->addWidget(title);
     family_combo_ = new QComboBox(command);
     family_combo_->addItems({QStringLiteral("Crypto"), QStringLiteral("Sports"), QStringLiteral("Politics"),
-                             QStringLiteral("Economics"), QStringLiteral("Weather"), QStringLiteral("Entertainment"),
-                             QStringLiteral("Science & Tech")});
+                             QStringLiteral("Economics"), QStringLiteral("Weather"), QStringLiteral("Manual"),
+                             QStringLiteral("Entertainment"), QStringLiteral("Science & Tech")});
     family_combo_->setFixedWidth(150);
     command_layout->addWidget(family_combo_);
     search_ = new QLineEdit(command);
@@ -1644,6 +1645,8 @@ void KalshiScreen::build_ui() {
     category_stack_->addWidget(weather_screen_); // page 1: Weather
     category_placeholder_ = new CategoryPlaceholderPage(family_, category_stack_);
     category_stack_->addWidget(category_placeholder_); // page 2: everything else
+    manual_trading_screen_ = new screens::ManualTradingScreen(category_stack_);
+    category_stack_->addWidget(manual_trading_screen_); // page 3: Manual Trading (paper)
     category_stack_->setCurrentIndex(0);
     root->addWidget(category_stack_, 1);
 
@@ -2101,7 +2104,8 @@ void KalshiScreen::set_family(const QString& family) {
     // Weather is paper-only — surface that plainly instead of the (now
     // hidden) live account chip, which would otherwise misleadingly imply a
     // live Kalshi account backs this screen.
-    if (paper_badge_) paper_badge_->setVisible(family_ == QStringLiteral("Weather"));
+    if (paper_badge_)
+        paper_badge_->setVisible(family_ == QStringLiteral("Weather") || family_ == QStringLiteral("Manual"));
     // Category page-stack (Task 6, additive-only): Crypto keeps the existing
     // workspace on page 0; Weather switches to the embedded WeatherScreen;
     // everything else shows the placeholder. This is purely a view swap —
@@ -2111,6 +2115,8 @@ void KalshiScreen::set_family(const QString& family) {
             category_stack_->setCurrentIndex(0);
         } else if (family_ == QStringLiteral("Weather")) {
             category_stack_->setCurrentIndex(1);
+        } else if (family_ == QStringLiteral("Manual")) {
+            category_stack_->setCurrentIndex(3);
         } else {
             if (category_placeholder_) category_placeholder_->set_category(family_);
             category_stack_->setCurrentIndex(2);
