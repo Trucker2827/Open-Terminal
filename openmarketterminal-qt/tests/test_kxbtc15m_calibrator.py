@@ -227,6 +227,81 @@ class PerContractScoringTest(unittest.TestCase):
         self.assertLess(report["scored_contracts"], cal.MIN_SCORED_CONTRACTS)
         self.assertFalse(report["adds_value_over_market"])
 
+    @staticmethod
+    def _obs(p_model, yes_mid):
+        """A pending observation shaped like _record_live_prediction's, with
+        every ablation set equal to p_model -- this drives the settle-loop
+        GLUE (eligible_rows/rows + ce.eligible_pairs call sites), not the
+        ablation math (covered elsewhere), so every variant is eligible
+        under the same simple edge-vs-mid rule as physics."""
+        return {
+            "p_model": p_model,
+            "p_ablations": {
+                "physics": p_model,
+                "physics_veto_on_conflict": p_model,
+                "physics_confirm_only": p_model,
+                "physics_brti_avg60": p_model,
+                "physics_vol_regime_confirm": p_model,
+            },
+            "yes_mid": yes_mid,
+            "features": {},
+            "ts_ms": 0,
+        }
+
+    def settle_with_obs(self, state, ticker, obs_list, outcome, close_at=0):
+        """Like settle_one, but with directly-shaped observations so a
+        contract's observations can straddle the eligibility edge (settle_one
+        replays one identical snapshot n times and so can never do that)."""
+        state["pending"][ticker] = {
+            "close_ms": close_at, "open_price": 64000.0, "obs": obs_list,
+        }
+        cal.settle_cycle(state, close_at + 121_000, resolver=lambda t, o: outcome)
+
+    def test_settle_cycle_pairs_each_eligible_variant_with_its_own_mid(self):
+        """Drives settle_cycle itself over a contract with a MIX of eligible
+        and ineligible observations -- every other BetEligibleTrustTest case
+        hand-builds the final state and never exercises the settle-loop glue
+        (kxbtc15m_calibrator.py's eligible_rows/rows comprehensions and the
+        ce.eligible_pairs call sites), which is exactly where the original
+        population-mismatch bug lived."""
+        state = cal.default_state()
+        eligible_ticker = "KXBTC15M-26AUG071200-00"
+        self.settle_with_obs(
+            state, eligible_ticker,
+            [
+                self._obs(p_model=0.70, yes_mid=0.50),  # edge 0.20 -- eligible
+                self._obs(p_model=0.70, yes_mid=0.68),  # edge 0.02 -- ineligible
+            ],
+            outcome=True, close_at=0)
+
+        self.assertEqual(len(state["contract_scores_eligible_full"]), 1)
+        self.assertEqual(len(state["contract_scores_eligible_market_mid_raw"]), 1)
+        for key in ("physics_veto_on_conflict", "physics_confirm_only",
+                    "physics_brti_avg60", "physics_vol_regime_confirm"):
+            model_list = state[f"contract_scores_eligible_{key}"]
+            mid_list = state[f"contract_scores_eligible_mid_{key}"]
+            self.assertEqual(len(model_list), 1, key)
+            self.assertEqual(len(mid_list), 1, key)
+            self.assertEqual(len(model_list), len(mid_list), key)
+
+        # A second contract with NO eligible observation must append nothing
+        # anywhere -- lengths must stay exactly where they were, not grow.
+        ineligible_ticker = "KXBTC15M-26AUG071230-30"
+        self.settle_with_obs(
+            state, ineligible_ticker,
+            [
+                self._obs(p_model=0.55, yes_mid=0.50),  # edge 0.05 -- ineligible
+                self._obs(p_model=0.52, yes_mid=0.50),  # edge 0.02 -- ineligible
+            ],
+            outcome=True, close_at=10_000_000)
+
+        self.assertEqual(len(state["contract_scores_eligible_full"]), 1)
+        self.assertEqual(len(state["contract_scores_eligible_market_mid_raw"]), 1)
+        for key in ("physics_veto_on_conflict", "physics_confirm_only",
+                    "physics_brti_avg60", "physics_vol_regime_confirm"):
+            self.assertEqual(len(state[f"contract_scores_eligible_{key}"]), 1, key)
+            self.assertEqual(len(state[f"contract_scores_eligible_mid_{key}"]), 1, key)
+
 
 class TrustGateTest(unittest.TestCase):
     def scored_state(self, full, mid, contracts):
@@ -312,6 +387,160 @@ class TickerParseTest(unittest.TestCase):
     def test_is_kxbtc15m(self):
         self.assertTrue(cal.is_kxbtc15m_ticker("KXBTC15M-26AUG071230-30"))
         self.assertFalse(cal.is_kxbtc15m_ticker("KXBTCD-26AUG0712-T64000"))
+
+
+class BetEligibleTrustTest(unittest.TestCase):
+    VARIANTS = ("physics", "physics_veto_on_conflict", "physics_confirm_only",
+                "physics_brti_avg60", "physics_vol_regime_confirm")
+
+    def _state(self, eligible_model, eligible_mid, n):
+        state = cal.default_state()
+        state["contract_scores_full"] = [0.05] * n
+        state["contract_scores_market_mid_raw"] = [0.06] * n
+        for key in ("physics_veto_on_conflict", "physics_confirm_only",
+                    "physics_brti_avg60", "physics_vol_regime_confirm"):
+            state[f"contract_scores_{key}"] = [0.05] * n
+            state[f"contract_scores_eligible_{key}"] = [eligible_model] * n
+            state[f"contract_scores_eligible_mid_{key}"] = [eligible_mid] * n
+        state["contract_scores_eligible_full"] = [eligible_model] * n
+        state["contract_scores_eligible_market_mid_raw"] = [eligible_mid] * n
+        return state
+
+    def test_losing_where_it_bets_is_untrusted_on_the_new_flag(self):
+        # Wins the easy full population, loses the population it bets.
+        state = self._state(0.2576, 0.2130, 100)
+        self.assertIsNone(cal.select_trusted_variant_eligible(state))
+        r = cal.build_report(state, {}, 1_700_000_000_000)
+        self.assertFalse(r["adds_value_on_bet_eligible"])
+
+    def test_winning_where_it_bets_can_earn_the_new_flag(self):
+        state = self._state(0.2130, 0.2576, 100)
+        self.assertIsNotNone(cal.select_trusted_variant_eligible(state))
+        r = cal.build_report(state, {}, 1_700_000_000_000)
+        self.assertTrue(r["adds_value_on_bet_eligible"])
+
+    def test_below_the_eligible_floor_is_untrusted(self):
+        state = self._state(0.2130, 0.2576, 99)
+        self.assertIsNone(cal.select_trusted_variant_eligible(state))
+
+    def test_live_predictor_selection_is_untouched(self):
+        # select_trusted_variant also picks live_p (the PUBLISHED probability).
+        # This change must not move it: it gates trust, not prediction.
+        state = self._state(0.2576, 0.2130, 100)
+        self.assertIsNotNone(cal.select_trusted_variant(state))
+
+    def test_publishes_the_eligible_numbers(self):
+        r = cal.build_report(self._state(0.21, 0.26, 100), {}, 1_700_000_000_000)
+        self.assertEqual(r["eligible_scored_contracts"], 100)
+        self.assertAlmostEqual(r["brier_eligible_full"], 0.21)
+        self.assertAlmostEqual(r["brier_eligible_market_mid_raw"], 0.26)
+        self.assertEqual(r["min_eligible_contracts"], 100)
+
+    def test_variant_is_judged_against_its_own_eligible_mid(self):
+        # Physics is eligible on a population where the mid is very good
+        # (0.05) -- physics itself loses, and that is irrelevant to this
+        # test. physics_veto_on_conflict is eligible on a DIFFERENT
+        # population (per-predictor eligibility), where the mid is much
+        # worse (0.30) and the variant beats it easily (0.10).
+        #
+        # Under the old (buggy) pairing, every variant was scored against
+        # physics's shared mid list (0.05), so the variant would wrongly
+        # fail to beat 0.05 with a 0.10 Brier and never earn trust. Judged
+        # against its OWN eligible mid (0.30), it correctly wins.
+        n = 100
+        state = cal.default_state()
+        state["contract_scores_eligible_full"] = [0.20] * n
+        state["contract_scores_eligible_market_mid_raw"] = [0.05] * n
+        state["contract_scores_eligible_physics_veto_on_conflict"] = [0.10] * n
+        state["contract_scores_eligible_mid_physics_veto_on_conflict"] = [0.30] * n
+        for key in ("physics_confirm_only", "physics_brti_avg60",
+                    "physics_vol_regime_confirm"):
+            state[f"contract_scores_eligible_{key}"] = []
+            state[f"contract_scores_eligible_mid_{key}"] = []
+        self.assertEqual(
+            cal.select_trusted_variant_eligible(state), "physics_veto_on_conflict")
+
+    # ── The claim and the measurement it is a claim about must be one pair ──
+    #
+    # `live_p` is priced from select_trusted_variant (the FULL-population
+    # board). If the flag could be earned by a DIFFERENT variant winning the
+    # eligible board, a bid would be priced from predictor A and authorised
+    # by eligible evidence about predictor B, and the two C++ conjuncts that
+    # exist to guard "the claim, and the measurement it is a claim about"
+    # (KalshiBotDecision.h) would be guarding a different pair of numbers
+    # than the claim.
+
+    def _split_board_state(self, n=100):
+        """Full board's winner is physics_veto_on_conflict; eligible board's
+        winner is physics. Two different variants, both boards satisfied."""
+        state = cal.default_state()
+        state["contract_scores_market_mid_raw"] = [0.30] * n
+        state["contract_scores_full"] = [0.20] * n
+        state["contract_scores_physics_veto_on_conflict"] = [0.10] * n
+        for key in ("physics_confirm_only", "physics_brti_avg60",
+                    "physics_vol_regime_confirm"):
+            state[f"contract_scores_{key}"] = [0.25] * n
+        # Eligible board: physics wins (0.20 < 0.30); the full board's winner
+        # LOSES on the population it would actually bet (0.28 > 0.26).
+        state["contract_scores_eligible_full"] = [0.20] * n
+        state["contract_scores_eligible_market_mid_raw"] = [0.30] * n
+        state["contract_scores_eligible_physics_veto_on_conflict"] = [0.28] * n
+        state["contract_scores_eligible_mid_physics_veto_on_conflict"] = [0.26] * n
+        for key in ("physics_confirm_only", "physics_brti_avg60",
+                    "physics_vol_regime_confirm"):
+            state[f"contract_scores_eligible_{key}"] = []
+            state[f"contract_scores_eligible_mid_{key}"] = []
+        return state
+
+    def test_two_different_variants_winning_two_boards_earns_no_trust(self):
+        state = self._split_board_state()
+        self.assertEqual(cal.select_trusted_variant(state), "physics_veto_on_conflict")
+        self.assertEqual(cal.select_trusted_variant_eligible(state), "physics")
+        r = cal.build_report(state, {}, 1_700_000_000_000)
+        # adds_value_over_market is untouched -- it is the full-population flag.
+        self.assertTrue(r["adds_value_over_market"])
+        # ... but the eligible evidence is about a DIFFERENT predictor than
+        # the one live_p is priced from, so it authorises nothing.
+        self.assertFalse(r["adds_value_on_bet_eligible"])
+
+    def test_published_eligible_briers_are_the_trusted_variant_own(self):
+        # The guarded numbers must be the claim's own measurement: the
+        # eligible Briers of the variant that prices live_p, not physics's.
+        r = cal.build_report(self._split_board_state(), {}, 1_700_000_000_000)
+        self.assertEqual(r["trusted_variant"], "physics_veto_on_conflict")
+        self.assertAlmostEqual(r["brier_eligible_full"], 0.28)
+        self.assertAlmostEqual(r["brier_eligible_market_mid_raw"], 0.26)
+
+    def test_same_variant_on_both_boards_still_earns_trust(self):
+        # The tightening must not break the case it is meant to allow.
+        n = 100
+        state = self._split_board_state(n)
+        state["contract_scores_eligible_physics_veto_on_conflict"] = [0.15] * n
+        state["contract_scores_eligible_mid_physics_veto_on_conflict"] = [0.26] * n
+        self.assertEqual(cal.select_trusted_variant(state), "physics_veto_on_conflict")
+        self.assertEqual(
+            cal.select_trusted_variant_eligible(state), "physics_veto_on_conflict")
+        r = cal.build_report(state, {}, 1_700_000_000_000)
+        self.assertTrue(r["adds_value_on_bet_eligible"])
+        self.assertAlmostEqual(r["brier_eligible_full"], 0.15)
+        self.assertAlmostEqual(r["brier_eligible_market_mid_raw"], 0.26)
+
+    def test_empty_physics_eligible_population_cannot_confer_trust(self):
+        # Publishing the winning variant's own Briers must not make trust
+        # EASIER than before: previously `brier_eligible_full` was physics's
+        # and was None here, so the C++ isDouble() conjunct refused. The
+        # floor on eligible_scored_contracts keeps that refusal.
+        n = 100
+        state = self._split_board_state(n)
+        state["contract_scores_eligible_physics_veto_on_conflict"] = [0.15] * n
+        state["contract_scores_eligible_mid_physics_veto_on_conflict"] = [0.26] * n
+        state["contract_scores_eligible_full"] = []
+        state["contract_scores_eligible_market_mid_raw"] = []
+        self.assertEqual(
+            cal.select_trusted_variant_eligible(state), "physics_veto_on_conflict")
+        r = cal.build_report(state, {}, 1_700_000_000_000)
+        self.assertEqual(r["eligible_scored_contracts"], 0)
+        self.assertFalse(r["adds_value_on_bet_eligible"])
 
 
 if __name__ == "__main__":

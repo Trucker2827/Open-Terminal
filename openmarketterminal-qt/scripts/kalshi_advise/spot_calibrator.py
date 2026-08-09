@@ -54,6 +54,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from openterminal_paths import evidence_file
+import calibrator_eligibility as ce
 
 EVIDENCE_PATH = evidence_file("kalshi-ws-books.json")
 STATE_PATH = evidence_file("spot-calibrator-state.json")
@@ -772,6 +773,12 @@ def default_state():
             "contract_scores_full": [],
             "contract_scores_market_trained_logit": [],
             "contract_scores_market_mid_raw": [],
+            # Same contracts, scored over ONLY the observations where the model's
+            # edge over the mid reached the bot's bid threshold -- the population
+            # the trust flag is actually used to authorise. See
+            # calibrator_eligibility and docs/design/2026-08-09-kalshi-bet-eligible-trust-design.md.
+            "contract_scores_eligible_full": [],
+            "contract_scores_eligible_market_mid_raw": [],
             # One {"observations": [features...], "outcome": bool} per resolved
             # contract, same window/order as the contract_scores_* lists above.
             # This is the ONLY place a contract's raw (features, outcome) survive
@@ -898,6 +905,11 @@ def settle_cycle(state, now_ms, resolver=resolve_outcome_kalshi):
     # (any already-schema-2 file — migrate_state only backfills schema-1
     # states) would otherwise KeyError the first time a contract resolves.
     state.setdefault("resolved_record", [])
+    # Same hazard as resolved_record above: an already-schema-2 state file
+    # predates these two keys (migrate_state only backfills schema-1 states),
+    # so a bare index/append below would KeyError on the first settlement.
+    state.setdefault("contract_scores_eligible_full", [])
+    state.setdefault("contract_scores_eligible_market_mid_raw", [])
     for ticker in list(state["pending"].keys()):
         entry = state["pending"][ticker]
         if now_ms < entry["close_ms"] + 120_000:   # grace for settlement to post
@@ -921,6 +933,11 @@ def settle_cycle(state, now_ms, resolver=resolve_outcome_kalshi):
             brier([(market.predict(f), outcome) for f in observations]))
         state["contract_scores_market_mid_raw"].append(
             brier([(f["yes_mid"], outcome) for f in observations]))
+        eligible_model, eligible_mid = ce.eligible_pairs(
+            [(full.predict(f), f["yes_mid"]) for f in observations], outcome)
+        if eligible_model:
+            state["contract_scores_eligible_full"].append(brier(eligible_model))
+            state["contract_scores_eligible_market_mid_raw"].append(brier(eligible_mid))
         # The raw material ablation_report replays: this contract's own
         # observations paired with its outcome, captured here (same place,
         # same moment as the three scores above) because nowhere else keeps it.
@@ -931,7 +948,9 @@ def settle_cycle(state, now_ms, resolver=resolve_outcome_kalshi):
         state["resolved"] += 1
         del state["pending"][ticker]
     for key in ("contract_scores_full", "contract_scores_market_trained_logit",
-                "contract_scores_market_mid_raw", "resolved_record"):
+                "contract_scores_market_mid_raw", "resolved_record",
+                "contract_scores_eligible_full",
+                "contract_scores_eligible_market_mid_raw"):
         state[key] = state[key][-SCORED_CONTRACT_WINDOW:]
     state["full"] = full.to_json()
     state["market"] = market.to_json()
@@ -949,6 +968,8 @@ def build_report(state, predictions, now_ms):
     b_full = mean_or_none(scored)
     b_logit = mean_or_none(state["contract_scores_market_trained_logit"])
     b_mid_raw = mean_or_none(state["contract_scores_market_mid_raw"])
+    eligible = state.get("contract_scores_eligible_full") or []
+    eligible_mid = state.get("contract_scores_eligible_market_mid_raw") or []
     # The gate, stated where it is enforced: at least MIN_SCORED_CONTRACTS = 100
     # CONTRACTS (not observations), and a Brier strictly better than the RAW
     # MID — the price the bot would otherwise take. Beating the trained logit
@@ -971,6 +992,11 @@ def build_report(state, predictions, now_ms):
                                    and enough and b_full < b_mid_raw),
         "beats_trained_logit_baseline": (b_full is not None and b_logit is not None
                                          and enough and b_full < b_logit),
+        "eligible_scored_contracts": len(eligible),
+        "brier_eligible_full": mean_or_none(eligible),
+        "brier_eligible_market_mid_raw": mean_or_none(eligible_mid),
+        "min_eligible_contracts": ce.MIN_ELIGIBLE_CONTRACTS,
+        "adds_value_on_bet_eligible": ce.adds_value(eligible, eligible_mid),
         "predictions": predictions,
         # Additive-only (Task 3): per-signal ablation over the retained
         # resolved-contract record, plus its own beats-market verdict. Does

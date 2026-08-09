@@ -41,6 +41,13 @@ QJsonObject prediction(double p_full, double market_mid, double minutes_left) {
 /// ≥100-CONTRACT gate) carrying one contract. Schema 2 (issue #171): the Brier
 /// is scored per contract, `scored_contracts` is its denominator, and the
 /// claim is measured against the RAW MID, not the trained logit baseline.
+///
+/// `trusted` also drives the bet-eligible-subset fields added on top of the
+/// full-population claim: a report that wins where the bot bets (`trusted`)
+/// carries the same shape a genuinely trusted calibrator report would, and one
+/// that does not is untrusted on both counts, never just the population one.
+/// Tests that exercise the eligible-subset rule itself build their own
+/// QJsonObjects rather than going through this helper.
 QJsonObject report(double p_full, double market_mid, double minutes_left,
                    bool trusted = true, qint64 generated_ms = kNow) {
     return QJsonObject{
@@ -57,6 +64,9 @@ QJsonObject report(double p_full, double market_mid, double minutes_left,
         {QStringLiteral("brier_market_trained_logit"), 0.1101},
         {QStringLiteral("adds_value_over_market"), trusted},
         {QStringLiteral("beats_trained_logit_baseline"), true},
+        {QStringLiteral("adds_value_on_bet_eligible"), trusted},
+        {QStringLiteral("brier_eligible_full"), trusted ? 0.2130 : 0.2576},
+        {QStringLiteral("brier_eligible_market_mid_raw"), trusted ? 0.2576 : 0.2130},
         {QStringLiteral("predictions"),
          QJsonObject{{QStringLiteral("KXBTC15M-26JUL241015-15"),
                       prediction(p_full, market_mid, minutes_left)}}},
@@ -1518,6 +1528,104 @@ class TestKalshiBotDecision : public QObject {
         KalshiBotDecision::PaperGenerationRisk current;
         current.max_drawdown_usd = 5.0;
         QVERIFY(!KalshiBotDecision::paper_bid_pause(gate, current).paused);
+    }
+
+    // Regression: adds_value_over_market is measured over EVERY resolved
+    // contract, a population dominated by far-from-strike contracts the bot
+    // never bets. Trust must additionally require the model to beat the mid on
+    // the contracts whose edge cleared the bid threshold.
+    void signal_untrusted_when_it_loses_where_it_bets() {
+        QJsonObject report{
+            {QStringLiteral("adds_value_over_market"), true},
+            {QStringLiteral("brier_full"), 0.06767},
+            {QStringLiteral("brier_market_mid_raw"), 0.06897},
+            {QStringLiteral("adds_value_on_bet_eligible"), false},
+            {QStringLiteral("brier_eligible_full"), 0.2576},
+            {QStringLiteral("brier_eligible_market_mid_raw"), 0.2130}};
+        QVERIFY(!KalshiBotDecision::signal_trusted(report));
+    }
+
+    void signal_trusted_when_it_wins_where_it_bets() {
+        QJsonObject report{
+            {QStringLiteral("adds_value_over_market"), true},
+            {QStringLiteral("brier_full"), 0.06767},
+            {QStringLiteral("brier_market_mid_raw"), 0.06897},
+            {QStringLiteral("adds_value_on_bet_eligible"), true},
+            {QStringLiteral("brier_eligible_full"), 0.2130},
+            {QStringLiteral("brier_eligible_market_mid_raw"), 0.2576}};
+        QVERIFY(KalshiBotDecision::signal_trusted(report));
+    }
+
+    // A report predating this change cannot confer trust: the same fail-closed
+    // rule the existing conjuncts apply to a missing Brier.
+    void signal_untrusted_when_the_eligible_fields_are_absent() {
+        QJsonObject report{
+            {QStringLiteral("adds_value_over_market"), true},
+            {QStringLiteral("brier_full"), 0.06767},
+            {QStringLiteral("brier_market_mid_raw"), 0.06897}};
+        QVERIFY(!KalshiBotDecision::signal_trusted(report));
+    }
+
+    // Claiming value over a track record it does not carry is self-contradiction.
+    void signal_untrusted_when_eligible_flag_lacks_its_briers() {
+        QJsonObject report{
+            {QStringLiteral("adds_value_over_market"), true},
+            {QStringLiteral("brier_full"), 0.06767},
+            {QStringLiteral("brier_market_mid_raw"), 0.06897},
+            {QStringLiteral("adds_value_on_bet_eligible"), true}};
+        QVERIFY(!KalshiBotDecision::signal_trusted(report));
+    }
+
+    // Fix round 1, Finding 1: a SIGNAL_UNTRUSTED row must disclose WHICH
+    // conjunct refused it, not just that one did. Before this fix
+    // track_record() carried only the full-population flag and Briers, so a
+    // row refused purely on the bet-eligible subset looked identical to one
+    // that never had a track record at all. Full population beats the mid
+    // (adds_value_over_market=true) here; the eligible subset does not — the
+    // exact live shape this task exists to catch.
+    void the_ledger_row_discloses_the_eligible_evidence_that_refused_it() {
+        QJsonObject losing_where_it_bets = report(0.95, 0.35, 10.0, true);
+        losing_where_it_bets.insert(QStringLiteral("adds_value_on_bet_eligible"), false);
+        losing_where_it_bets.insert(QStringLiteral("brier_eligible_full"), 0.2576);
+        losing_where_it_bets.insert(QStringLiteral("brier_eligible_market_mid_raw"), 0.2130);
+
+        const QJsonArray rows =
+            KalshiBotDecision::decide(losing_where_it_bets, {}, {}, kNow, {});
+        QCOMPARE(rows.size(), 1);
+        const QJsonObject row = only_row(rows);
+        QCOMPARE(row.value(QStringLiteral("reason_code")).toString(),
+                 QStringLiteral("SIGNAL_UNTRUSTED"));
+        QCOMPARE(row.value(QStringLiteral("signal_trusted")).toBool(), false);
+
+        const QJsonObject record = row.value(QStringLiteral("track_record")).toObject();
+        // The conjunct that passed still reads true -- an auditor must be
+        // able to tell the population claim was fine and the eligible one
+        // was not, not just "something failed".
+        QCOMPARE(record.value(QStringLiteral("adds_value_over_market")).toBool(), true);
+        QCOMPARE(record.value(QStringLiteral("brier_available")).toBool(), true);
+        // The conjunct that actually refused it is disclosed, evidence and all.
+        QVERIFY(record.contains(QStringLiteral("adds_value_on_bet_eligible")));
+        QCOMPARE(record.value(QStringLiteral("adds_value_on_bet_eligible")).toBool(), false);
+        QVERIFY(record.contains(QStringLiteral("brier_eligible_available")));
+        QCOMPARE(record.value(QStringLiteral("brier_eligible_available")).toBool(), true);
+        QCOMPARE(record.value(QStringLiteral("brier_eligible_full")).toDouble(), 0.2576);
+        QCOMPARE(record.value(QStringLiteral("brier_eligible_market_mid_raw")).toDouble(), 0.2130);
+    }
+
+    // Same presence-guard discipline as `a_report_without_a_brier_says_unavailable_rather_than_zero`:
+    // an absent eligible Brier is an absent key, never a zero, and the flag
+    // says so rather than a caller inferring it from a missing field.
+    void a_report_without_an_eligible_brier_says_unavailable_rather_than_zero() {
+        QJsonObject untrained = report(0.95, 0.83, 10.0, false);
+        untrained.remove(QStringLiteral("brier_eligible_full"));
+        untrained.insert(QStringLiteral("brier_eligible_market_mid_raw"), QJsonValue::Null);
+        const QJsonArray rows = KalshiBotDecision::decide(untrained, {}, {}, kNow, {});
+        QCOMPARE(rows.size(), 1);
+        const QJsonObject record = only_row(rows).value(QStringLiteral("track_record")).toObject();
+        QVERIFY(record.contains(QStringLiteral("brier_eligible_available")));
+        QCOMPARE(record.value(QStringLiteral("brier_eligible_available")).toBool(), false);
+        QVERIFY(!record.contains(QStringLiteral("brier_eligible_full")));
+        QVERIFY(!record.contains(QStringLiteral("brier_eligible_market_mid_raw")));
     }
 
 };

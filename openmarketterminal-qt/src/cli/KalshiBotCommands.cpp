@@ -1742,6 +1742,20 @@ QJsonObject scoreboard_family_summary(const QJsonObject& report, const QString& 
          report.value(QStringLiteral("brier_market_mid_raw"))},
         {QStringLiteral("adds_value_over_market"),
          report.value(QStringLiteral("adds_value_over_market")).toBool()},
+        {QStringLiteral("adds_value_on_bet_eligible"),
+         report.value(QStringLiteral("adds_value_on_bet_eligible")).toBool()},
+        {QStringLiteral("brier_eligible_full"), report.value(QStringLiteral("brier_eligible_full"))},
+        {QStringLiteral("brier_eligible_market_mid_raw"),
+         report.value(QStringLiteral("brier_eligible_market_mid_raw"))},
+        // The one rule the bot itself gates bidding on (issue #165, plus the
+        // bet-eligible tightening in
+        // docs/design/2026-08-09-kalshi-bet-eligible-trust-design.md, which
+        // has no issue of its own) -- distinct from `adds_value_over_market`
+        // above, which is the raw full-population flag alone and can be true
+        // while this is false. Screens must read THIS field, never derive
+        // their own promotion state from the raw flag (KalshiBotCommands.cpp
+        // "one scorer, many readers").
+        {QStringLiteral("signal_trusted"), KalshiBotDecision::signal_trusted(report)},
         {QStringLiteral("trusted_variant"), report.value(QStringLiteral("trusted_variant"))},
         {QStringLiteral("open_predictions"), predictions.size()},
         {QStringLiteral("tickers"),
@@ -1783,7 +1797,7 @@ void print_scoreboard_ablations_human(const QJsonObject& ablations) {
 
 void print_scoreboard_family_human(const QJsonObject& summary) {
     const bool present = summary.value(QStringLiteral("present")).toBool();
-    const bool trusted = summary.value(QStringLiteral("adds_value_over_market")).toBool();
+    const bool trusted = summary.value(QStringLiteral("signal_trusted")).toBool();
     const qint64 age_ms = static_cast<qint64>(summary.value(QStringLiteral("age_ms")).toDouble(-1));
     const QString variant = summary.value(QStringLiteral("trusted_variant")).toString();
     std::printf("%s  file=%s  %s  age=%s  scored=%s/%s  obs=%s  brier=%s vs mid=%s  trust=%s  "

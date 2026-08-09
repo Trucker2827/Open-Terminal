@@ -862,5 +862,145 @@ class MissingFeatureNeutralTest(unittest.TestCase):
         self.assertEqual(state["resolved"], 1)
 
 
+class BetEligibleTrustTest(unittest.TestCase):
+    """The trust flag must be measured where the bot would actually have bet."""
+
+    def _report(self, eligible_model, eligible_mid, n):
+        state = cal.default_state()
+        state["contract_scores_full"] = [0.05] * n
+        state["contract_scores_market_mid_raw"] = [0.06] * n
+        state["contract_scores_market_trained_logit"] = [0.07] * n
+        state["contract_scores_eligible_full"] = [eligible_model] * n
+        state["contract_scores_eligible_market_mid_raw"] = [eligible_mid] * n
+        return cal.build_report(state, {}, 1_700_000_000_000)
+
+    def test_publishes_the_eligible_numbers(self):
+        r = self._report(0.20, 0.30, 100)
+        self.assertEqual(r["eligible_scored_contracts"], 100)
+        self.assertAlmostEqual(r["brier_eligible_full"], 0.20)
+        self.assertAlmostEqual(r["brier_eligible_market_mid_raw"], 0.30)
+        self.assertEqual(r["min_eligible_contracts"], 100)
+
+    def test_trusted_on_the_full_population_but_losing_where_it_bets(self):
+        # The live shape: model wins the easy far-from-strike population and
+        # loses the near-money one it actually bets.
+        r = self._report(0.2576, 0.2130, 100)
+        self.assertTrue(r["adds_value_over_market"])
+        self.assertFalse(r["adds_value_on_bet_eligible"])
+
+    def test_winning_where_it_bets_at_the_floor(self):
+        r = self._report(0.2130, 0.2576, 100)
+        self.assertTrue(r["adds_value_on_bet_eligible"])
+
+    def test_below_the_eligible_floor_is_false_even_when_winning(self):
+        r = self._report(0.2130, 0.2576, 99)
+        self.assertFalse(r["adds_value_on_bet_eligible"])
+
+    def test_eligible_pairs_keeps_only_the_eligible_observations(self):
+        # Named for what it exercises: ce.eligible_pairs, called directly.
+        # The settle_cycle GLUE that feeds it is covered separately, below.
+        # Two observations: one where the model is far from the mid (eligible)
+        # and one where it hugs the mid (not). Only the first may be scored.
+        rows = [(0.95, 0.60), (0.61, 0.60)]
+        model_pairs, mid_pairs = cal.ce.eligible_pairs(rows, True)
+        self.assertEqual(len(model_pairs), 1)
+        self.assertEqual(model_pairs[0][0], 0.95)
+        self.assertEqual(mid_pairs[0][0], 0.60)
+
+    # ── The settle_cycle glue itself ───────────────────────────────────────
+    #
+    # spot_calibrator's eligible scoring is one comprehension inside
+    # settle_cycle:
+    #
+    #     ce.eligible_pairs([(full.predict(f), f["yes_mid"]) for f in obs], ...)
+    #
+    # The predictor in it MUST be `full` -- the model whose Brier the trust
+    # claim is about -- not `market`, the handicapped one-feature baseline.
+    # Nothing above drives that line, so the two tests below do, with
+    # VALUE-level assertions: the seeded models below make `full` and
+    # `market` disagree about which observations are eligible AND about the
+    # score, so swapping one for the other changes the recorded numbers.
+
+    @staticmethod
+    def _fixed_p_model(features, p):
+        """A model whose predict() is exactly `p` for every observation.
+
+        n_seen = 0 < MIN_STANDARDIZE_SAMPLES, so _standardize returns all
+        zeros and predict() collapses to sigmoid(bias). Setting the bias
+        therefore pins the output, with no dependence on the feature values
+        -- which is what makes the assertions below exact arithmetic rather
+        than a reimplementation of the model.
+        """
+        model = cal.OnlineLogit(features)
+        model.w[-1] = math.log(p / (1.0 - p))
+        return model
+
+    def _two_model_state(self):
+        """State where `full` predicts 0.90 and `market` predicts 0.60."""
+        state = cal.default_state()
+        state["full"] = self._fixed_p_model(cal.FULL_FEATURES, 0.90).to_json()
+        state["market"] = self._fixed_p_model(cal.MARKET_FEATURES, 0.60).to_json()
+        return state
+
+    @staticmethod
+    def _obs(yes_mid):
+        return {"signed_distance_bps": 0.0, "per_min_vol_bps": 5.0,
+                "sqrt_minutes_left": 3.0, "required_move_sigma": 1.0,
+                "realized_move_bps": 0.0, "yes_mid": yes_mid}
+
+    def test_settle_cycle_scores_the_eligible_subset_with_the_full_model(self):
+        state = self._two_model_state()
+        state["pending"]["KXBTCD-GLUE"] = {"close_ms": 1_000, "obs": [
+            # full 0.90 vs mid 0.60 -> edge 0.30, ELIGIBLE for `full`.
+            # market 0.60 vs mid 0.60 -> edge 0.00, ineligible for `market`.
+            self._obs(0.60),
+            # full 0.90 vs mid 0.85 -> edge 0.05, ineligible for `full`.
+            # market 0.60 vs mid 0.85 -> edge 0.25, ELIGIBLE for `market`.
+            self._obs(0.85),
+        ]}
+        cal.settle_cycle(state, now_ms=1_000 + 200_000,
+                         resolver=lambda ticker, **k: True)
+        # Exactly one contract score, computed over the FIRST observation only.
+        self.assertEqual(len(state["contract_scores_eligible_full"]), 1)
+        self.assertEqual(len(state["contract_scores_eligible_market_mid_raw"]), 1)
+        # brier([(0.90, True)]) = (1 - 0.90)^2 = 0.0100 -- `full`'s number.
+        # Scored with `market` instead it would be the OTHER observation's
+        # (1 - 0.60)^2 = 0.1600, so this assertion is what pins the predictor.
+        self.assertAlmostEqual(state["contract_scores_eligible_full"][0], 0.0100)
+        # brier([(0.60, True)]) = 0.1600 -- the mid on the SAME observation.
+        self.assertAlmostEqual(
+            state["contract_scores_eligible_market_mid_raw"][0], 0.1600)
+
+    def test_settle_cycle_scores_nothing_when_no_observation_is_eligible(self):
+        # A contract with no eligible observation is not evidence about
+        # betting, so it contributes to neither Brier nor the count -- while
+        # still being resolved and still scoring the full-population lists.
+        state = self._two_model_state()
+        state["pending"]["KXBTCD-HUGS-MID"] = {"close_ms": 1_000, "obs": [
+            self._obs(0.85),   # full 0.90 vs 0.85 -> 0.05, ineligible
+            self._obs(0.88),   # full 0.90 vs 0.88 -> 0.02, ineligible
+        ]}
+        cal.settle_cycle(state, now_ms=1_000 + 200_000,
+                         resolver=lambda ticker, **k: True)
+        self.assertEqual(state["resolved"], 1)
+        self.assertEqual(len(state["contract_scores_full"]), 1)
+        self.assertEqual(state["contract_scores_eligible_full"], [])
+        self.assertEqual(state["contract_scores_eligible_market_mid_raw"], [])
+
+    def test_settle_cycle_backfills_missing_eligible_keys(self):
+        # A state file written by an already-schema-2 calibrator (before this
+        # change) has no contract_scores_eligible_* keys at all -- migrate_state
+        # only backfills schema-1 files. settle_cycle must not KeyError the
+        # first time a contract resolves under the old state shape.
+        state = cal.default_state()
+        del state["contract_scores_eligible_full"]
+        del state["contract_scores_eligible_market_mid_raw"]
+        state["pending"]["KXBTC-OLD"] = {
+            "close_ms": 1_000, "obs": [{"yes_mid": 0.1}]}
+        cal.settle_cycle(state, now_ms=1_000 + 200_000, resolver=lambda ticker, **k: True)
+        self.assertNotIn("KXBTC-OLD", state["pending"])  # settled, no crash
+        self.assertEqual(state["resolved"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

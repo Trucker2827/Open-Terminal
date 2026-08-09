@@ -75,6 +75,7 @@ class TestKalshiEvidence : public QObject {
     void rejectsLateOrFutureOnlyCryptoInputs();
     void formatsCalibratorReadoutWithHonestRecord();
     void withholdsMissingOrStaleCalibratorNumbers();
+    void readoutIsNotTrustedWhenItLosesOnTheBetEligibleSubset();
 };
 
 void TestKalshiEvidence::detectsExecutableRelationships() {
@@ -238,6 +239,11 @@ QJsonObject calibrator_report(qint64 generated_ms, bool adds_value, double per_m
                        {QStringLiteral("brier_market_mid_raw"), 0.102},
                        {QStringLiteral("brier_market_trained_logit"), 0.114},
                        {QStringLiteral("adds_value_over_market"), adds_value},
+                       {QStringLiteral("adds_value_on_bet_eligible"), adds_value},
+                       {QStringLiteral("brier_eligible_full"), adds_value ? 0.2130 : 0.2576},
+                       {QStringLiteral("brier_eligible_market_mid_raw"), adds_value ? 0.2576 : 0.2130},
+                       {QStringLiteral("eligible_scored_contracts"), 104},
+                       {QStringLiteral("min_eligible_contracts"), 100},
                        {QStringLiteral("predictions"),
                         QJsonObject{{QStringLiteral("KXBTC15M-26JUL230800-00"), prediction}}}};
 }
@@ -265,14 +271,35 @@ void TestKalshiEvidence::formatsCalibratorReadoutWithHonestRecord() {
     // line but is no longer the number printed beside the Brier — it read as
     // the sample size of a score computed over far fewer contracts.
     QVERIFY(record.contains(QStringLiteral("Brier 0.109 vs raw mid 0.102 on 118 scored")));
-    QVERIFY(record.contains(QStringLiteral("does NOT beat the mid — opinion, not signal")));
+    // The refusal's own evidence is on the line: the bet-eligible numbers the
+    // trust rule actually reads, and a verdict that names which conjunct
+    // decided. `adds_value_over_market` is false here, so it is that one.
+    QVERIFY(record.contains(
+        QStringLiteral("BET-ELIGIBLE Brier 0.2576 vs mid 0.2130 on 104/100 contracts")));
+    QVERIFY(record.contains(QStringLiteral("no full-population edge — opinion, not signal")));
     QCOMPARE(readout.value(QStringLiteral("trusted")).toBool(), false);
 
     const QJsonObject beats = KalshiEvidenceEngine::calibrator_readout(
         calibrator_report(now - 60'000, true, 2.069), ticker, now);
     QVERIFY(beats.value(QStringLiteral("record")).toString()
-                .contains(QStringLiteral("beats the raw mid")));
+                .contains(QStringLiteral(
+                    "beats the raw mid on the full population AND where it bets")));
+    QVERIFY(beats.value(QStringLiteral("record")).toString()
+                .contains(QStringLiteral(
+                    "BET-ELIGIBLE Brier 0.2130 vs mid 0.2576 on 104/100 contracts")));
     QCOMPARE(beats.value(QStringLiteral("trusted")).toBool(), true);
+
+    // A report that carries no bet-eligible measurement at all says so and
+    // never prints a default number in its place.
+    QJsonObject unmeasured = calibrator_report(now - 60'000, /*adds_value=*/true, 2.069);
+    unmeasured.remove(QStringLiteral("brier_eligible_full"));
+    unmeasured.remove(QStringLiteral("brier_eligible_market_mid_raw"));
+    unmeasured.insert(QStringLiteral("eligible_scored_contracts"), 0);
+    const QJsonObject no_eligible =
+        KalshiEvidenceEngine::calibrator_readout(unmeasured, ticker, now);
+    QVERIFY(no_eligible.value(QStringLiteral("record")).toString()
+                .contains(QStringLiteral("BET-ELIGIBLE unmeasured (0/100 contracts)")));
+    QCOMPARE(no_eligible.value(QStringLiteral("trusted")).toBool(), false);
 
     // A zero ambient vol makes required_move_sigma meaningless; the readout
     // must say so instead of presenting 26.8σ as a measurement.
@@ -281,6 +308,43 @@ void TestKalshiEvidence::formatsCalibratorReadoutWithHonestRecord() {
     const QString no_vol_headline = no_vol.value(QStringLiteral("headline")).toString();
     QVERIFY(!no_vol_headline.contains(QStringLiteral("26.8σ")));
     QVERIFY(no_vol_headline.contains(QStringLiteral("σ UNAVAILABLE")));
+}
+
+// Fix round 1, Finding 2: this readout is a screen, and screens must never
+// promote a signal the bot itself does not (KalshiBotCommands.cpp: "one
+// scorer, many readers"). A report that beats the mid over the full
+// population but loses where the bot actually bets must read the same as any
+// other untrusted report here -- not "beats the raw mid" just because the
+// full-population flag alone says so.
+void TestKalshiEvidence::readoutIsNotTrustedWhenItLosesOnTheBetEligibleSubset() {
+    const qint64 now = 1'784'847'600'000;
+    const QString ticker = QStringLiteral("KXBTC15M-26JUL230800-00");
+
+    QJsonObject losing_where_it_bets = calibrator_report(now - 60'000, /*adds_value=*/true, 2.069);
+    losing_where_it_bets.insert(QStringLiteral("adds_value_on_bet_eligible"), false);
+    losing_where_it_bets.insert(QStringLiteral("brier_eligible_full"), 0.2843);
+    losing_where_it_bets.insert(QStringLiteral("brier_eligible_market_mid_raw"), 0.2659);
+
+    const QJsonObject readout =
+        KalshiEvidenceEngine::calibrator_readout(losing_where_it_bets, ticker, now);
+    // The full-population Brier is still known and printed -- this is not an
+    // unscored report, it is scored and specifically not promoted.
+    QVERIFY(readout.value(QStringLiteral("record")).toString()
+                .contains(QStringLiteral("Brier 0.109 vs raw mid 0.102 on 118 scored")));
+    QVERIFY(!readout.value(QStringLiteral("record")).toString()
+                 .contains(QStringLiteral("beats the raw mid")));
+    // Fix round 2, Finding 3: the refusal is driven by the ELIGIBLE numbers,
+    // so those numbers must be ON the line, and the verdict must name the
+    // conjunct that actually bit. The old line said "does NOT beat the mid"
+    // while printing a full-population Brier the model can be winning --
+    // a screen contradicting its own numbers.
+    QVERIFY(readout.value(QStringLiteral("record")).toString()
+                .contains(QStringLiteral(
+                    "BET-ELIGIBLE Brier 0.2843 vs mid 0.2659 on 104/100 contracts")));
+    QVERIFY(readout.value(QStringLiteral("record")).toString()
+                .contains(QStringLiteral(
+                    "full-population edge only, NOT where it bets — opinion, not signal")));
+    QCOMPARE(readout.value(QStringLiteral("trusted")).toBool(), false);
 }
 
 void TestKalshiEvidence::withholdsMissingOrStaleCalibratorNumbers() {
