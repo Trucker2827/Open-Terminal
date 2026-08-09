@@ -90,9 +90,20 @@ bool KalshiBotDecision::signal_trusted(const QJsonObject& report) {
     // already calls a report without both Briers unavailable; a report that
     // asserts value over a track record it does not carry is contradicting
     // itself, and this fails closed on it rather than believing the flag.
+    //
+    // `adds_value_over_market` is measured over EVERY resolved contract, a
+    // population dominated by far-from-strike contracts where both the model
+    // and the market are nearly always right. The bot does not bet that
+    // population -- it bets where its edge over the mid clears
+    // `edge_threshold`, and there the market has been winning. So trust
+    // additionally requires the model to beat the mid on the BET-ELIGIBLE
+    // subset. A report predating that field cannot confer trust.
     return report.value(QStringLiteral("adds_value_over_market")).toBool() &&
            report.value(QStringLiteral("brier_full")).isDouble() &&
-           report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
+           report.value(QStringLiteral("brier_market_mid_raw")).isDouble() &&
+           report.value(QStringLiteral("adds_value_on_bet_eligible")).toBool() &&
+           report.value(QStringLiteral("brier_eligible_full")).isDouble() &&
+           report.value(QStringLiteral("brier_eligible_market_mid_raw")).isDouble();
 }
 
 QJsonObject KalshiBotDecision::merge_family_reports(const QJsonObject& threshold_report,

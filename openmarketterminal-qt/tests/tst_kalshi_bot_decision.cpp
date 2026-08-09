@@ -41,6 +41,13 @@ QJsonObject prediction(double p_full, double market_mid, double minutes_left) {
 /// ≥100-CONTRACT gate) carrying one contract. Schema 2 (issue #171): the Brier
 /// is scored per contract, `scored_contracts` is its denominator, and the
 /// claim is measured against the RAW MID, not the trained logit baseline.
+///
+/// `trusted` also drives the bet-eligible-subset fields added on top of the
+/// full-population claim: a report that wins where the bot bets (`trusted`)
+/// carries the same shape a genuinely trusted calibrator report would, and one
+/// that does not is untrusted on both counts, never just the population one.
+/// Tests that exercise the eligible-subset rule itself build their own
+/// QJsonObjects rather than going through this helper.
 QJsonObject report(double p_full, double market_mid, double minutes_left,
                    bool trusted = true, qint64 generated_ms = kNow) {
     return QJsonObject{
@@ -57,6 +64,9 @@ QJsonObject report(double p_full, double market_mid, double minutes_left,
         {QStringLiteral("brier_market_trained_logit"), 0.1101},
         {QStringLiteral("adds_value_over_market"), trusted},
         {QStringLiteral("beats_trained_logit_baseline"), true},
+        {QStringLiteral("adds_value_on_bet_eligible"), trusted},
+        {QStringLiteral("brier_eligible_full"), trusted ? 0.2130 : 0.2576},
+        {QStringLiteral("brier_eligible_market_mid_raw"), trusted ? 0.2576 : 0.2130},
         {QStringLiteral("predictions"),
          QJsonObject{{QStringLiteral("KXBTC15M-26JUL241015-15"),
                       prediction(p_full, market_mid, minutes_left)}}},
@@ -1518,6 +1528,52 @@ class TestKalshiBotDecision : public QObject {
         KalshiBotDecision::PaperGenerationRisk current;
         current.max_drawdown_usd = 5.0;
         QVERIFY(!KalshiBotDecision::paper_bid_pause(gate, current).paused);
+    }
+
+    // Regression: adds_value_over_market is measured over EVERY resolved
+    // contract, a population dominated by far-from-strike contracts the bot
+    // never bets. Trust must additionally require the model to beat the mid on
+    // the contracts whose edge cleared the bid threshold.
+    void signal_untrusted_when_it_loses_where_it_bets() {
+        QJsonObject report{
+            {QStringLiteral("adds_value_over_market"), true},
+            {QStringLiteral("brier_full"), 0.06767},
+            {QStringLiteral("brier_market_mid_raw"), 0.06897},
+            {QStringLiteral("adds_value_on_bet_eligible"), false},
+            {QStringLiteral("brier_eligible_full"), 0.2576},
+            {QStringLiteral("brier_eligible_market_mid_raw"), 0.2130}};
+        QVERIFY(!KalshiBotDecision::signal_trusted(report));
+    }
+
+    void signal_trusted_when_it_wins_where_it_bets() {
+        QJsonObject report{
+            {QStringLiteral("adds_value_over_market"), true},
+            {QStringLiteral("brier_full"), 0.06767},
+            {QStringLiteral("brier_market_mid_raw"), 0.06897},
+            {QStringLiteral("adds_value_on_bet_eligible"), true},
+            {QStringLiteral("brier_eligible_full"), 0.2130},
+            {QStringLiteral("brier_eligible_market_mid_raw"), 0.2576}};
+        QVERIFY(KalshiBotDecision::signal_trusted(report));
+    }
+
+    // A report predating this change cannot confer trust: the same fail-closed
+    // rule the existing conjuncts apply to a missing Brier.
+    void signal_untrusted_when_the_eligible_fields_are_absent() {
+        QJsonObject report{
+            {QStringLiteral("adds_value_over_market"), true},
+            {QStringLiteral("brier_full"), 0.06767},
+            {QStringLiteral("brier_market_mid_raw"), 0.06897}};
+        QVERIFY(!KalshiBotDecision::signal_trusted(report));
+    }
+
+    // Claiming value over a track record it does not carry is self-contradiction.
+    void signal_untrusted_when_eligible_flag_lacks_its_briers() {
+        QJsonObject report{
+            {QStringLiteral("adds_value_over_market"), true},
+            {QStringLiteral("brier_full"), 0.06767},
+            {QStringLiteral("brier_market_mid_raw"), 0.06897},
+            {QStringLiteral("adds_value_on_bet_eligible"), true}};
+        QVERIFY(!KalshiBotDecision::signal_trusted(report));
     }
 
 };

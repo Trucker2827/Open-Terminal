@@ -43,7 +43,12 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 ///      true once its per-contract Brier beats the RAW MARKET MID over its
 ///      ≥100-CONTRACT gate (`spot_calibrator.MIN_SCORED_CONTRACTS`, issue
 ///      #171), AND requires the track record that claim is
-///      made of to actually be present. When the signal fails that rule the
+///      made of to actually be present.
+///      AND once that same comparison holds on the BET-ELIGIBLE subset — the
+///      contracts whose model-vs-mid edge reached `edge_threshold`, which is
+///      the population a bid is actually drawn from. The full-population flag
+///      alone was measured where the bot does not bet.
+///      When the signal fails that rule the
 ///      tick is a journaled PASS with `reason_code=SIGNAL_UNTRUSTED` — no
 ///      order, paper or otherwise. Rung 1 papered those bids and labelled them;
 ///      24 hours of rung 6 showed what that buys (42% of bids placed on a
