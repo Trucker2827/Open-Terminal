@@ -1,3 +1,5 @@
+import contextlib
+import io
 import os
 import sys
 import unittest
@@ -97,6 +99,92 @@ class WalkEligibleTest(unittest.TestCase):
         self.assertEqual(summary["model_beats_n"], 1)
         self.assertEqual(summary["by_thesis"]["YES"]["model_loses"], 1)
         self.assertEqual(summary["by_edge_bucket"]["0.10–0.12"]["model_loses"], 1)
+
+
+class ThesisBaselineTest(unittest.TestCase):
+    """"Thesis correct" is meaningless without the zero-skill baseline.
+
+    A model with NO information that says YES on a contract the market prices
+    at 0.70 is still right 70% of the time. Reporting the hit rate alone reads
+    as skill, and on the live book it does: 58.7% correct against a 55.6%
+    baseline. The report must carry the baseline beside the hit rate.
+    """
+
+    def test_walk_eligible_records_the_baseline(self):
+        # Cold predict ≈ 0.5, mid 0.30 → YES thesis; baseline = mid = 0.30.
+        record = [{"observations": [_obs(0.0, 0.30, 25.0)], "outcome": False}]
+        rows = ela.walk_eligible(record)
+        self.assertEqual(rows[0]["thesis"], "YES")
+        self.assertAlmostEqual(rows[0]["thesis_baseline"], 0.30, places=6)
+
+    def test_baseline_is_the_complement_for_a_no_thesis(self):
+        # Cold predict ≈ 0.5, mid 0.70 → NO thesis; baseline = 1 - 0.70.
+        record = [{"observations": [_obs(0.0, 0.70, 25.0)], "outcome": False}]
+        rows = ela.walk_eligible(record)
+        self.assertEqual(rows[0]["thesis"], "NO")
+        self.assertAlmostEqual(rows[0]["thesis_baseline"], 0.30, places=6)
+
+    def test_zero_skill_model_shows_no_excess(self):
+        # One YES thesis right where the market said 0.70, one NO thesis wrong
+        # where the market said 0.70. Hit rate 50%; baseline (0.70+0.30)/2 also
+        # 50%. A model that merely rides the base rate must show excess 0.
+        rows = [
+            _summary_row(thesis="YES", correct=True, baseline=0.70),
+            _summary_row(thesis="NO", correct=False, baseline=0.30),
+        ]
+        summary = ela.summarize(rows)
+        self.assertAlmostEqual(summary["thesis_correct_rate"], 0.50, places=6)
+        self.assertAlmostEqual(summary["thesis_baseline_rate"], 0.50, places=6)
+        self.assertAlmostEqual(summary["thesis_excess_rate"], 0.0, places=6)
+
+    def test_real_skill_shows_positive_excess(self):
+        # Both theses right on contracts the market priced against them.
+        rows = [
+            _summary_row(thesis="YES", correct=True, baseline=0.30),
+            _summary_row(thesis="NO", correct=True, baseline=0.30),
+        ]
+        summary = ela.summarize(rows)
+        self.assertAlmostEqual(summary["thesis_correct_rate"], 1.0, places=6)
+        self.assertAlmostEqual(summary["thesis_baseline_rate"], 0.30, places=6)
+        self.assertAlmostEqual(summary["thesis_excess_rate"], 0.70, places=6)
+
+    def test_human_report_prints_the_baseline_beside_the_hit_rate(self):
+        rows = [
+            _summary_row(thesis="YES", correct=True, baseline=0.70),
+            _summary_row(thesis="NO", correct=False, baseline=0.30),
+        ]
+        summary = ela.summarize(rows)
+        summary["resolved_contracts_replayed"] = 2
+        summary["state_eligible_scored"] = 0
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            ela.print_human(summary)
+        text = buffer.getvalue()
+        self.assertIn("baseline", text.lower())
+        # The baseline must be adjacent to the hit rate, not buried elsewhere.
+        thesis_lines = [ln for ln in text.splitlines() if "thesis correct" in ln.lower()]
+        self.assertTrue(thesis_lines, f"no thesis summary line in:\n{text}")
+        self.assertTrue(
+            any("baseline" in ln.lower() for ln in thesis_lines),
+            f"hit rate printed without its baseline:\n{text}",
+        )
+
+
+def _summary_row(thesis: str, correct: bool, baseline: float) -> dict:
+    """A summarize()-shaped row; only the thesis fields matter to these tests."""
+    return {
+        "model_loses": False,
+        "model_brier": 0.1,
+        "mid_brier": 0.1,
+        "brier_delta": 0.0,
+        "mean_edge": 0.11,
+        "mean_minutes_left": 20.0,
+        "thesis": thesis,
+        "thesis_correct": correct,
+        "thesis_baseline": baseline,
+        "edge_bucket": "0.10–0.12",
+        "minutes_bucket": "15–30m",
+    }
 
 
 if __name__ == "__main__":
