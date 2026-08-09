@@ -134,9 +134,22 @@ regression is visible side by side):
 | `adds_value_on_bet_eligible` | `brier_eligible_full < brier_eligible_market_mid_raw` and `eligible_scored_contracts >= 100` |
 
 For the two variant-based calibrators the same fields are published per variant inside their
-existing `ablations` block, and `trusted_variant` may only name a variant that satisfies the rule
-on the eligible subset. `adds_value_on_bet_eligible` is then true exactly when `trusted_variant` is
-set — preserving the meaning those reports already have, on the corrected population.
+existing `eligible_ablations` block, and `adds_value_on_bet_eligible` is true exactly when the
+variant that wins the eligible board is the **same** variant `select_trusted_variant` already
+picked on the full board — and the eligible population has reached its floor.
+
+The same-variant requirement is not decoration. `select_trusted_variant` also prices `live_p`, the
+published probability, so if the flag could be earned by any variant winning the eligible board, a
+bid would be priced from predictor A and authorised by eligible evidence about predictor B. For the
+same reason `brier_eligible_full` / `brier_eligible_market_mid_raw` publish **that** variant's own
+eligible Briers (from its own row of the eligible board, against its own eligible mid population),
+not physics's: the two C++ conjuncts exist to guard "the claim, and the measurement it is a claim
+about", and they can only do that if the numbers belong to the claim.
+
+`eligible_scored_contracts` stays the physics population's count — the deployment-observability
+number this design asks to be recorded before the C++ half ships — and the floor conjunct is
+stated against it, which also makes the same-variant rule strictly tighter than "any variant won
+the eligible board" rather than tighter in one direction and looser in another.
 
 `adds_value_over_market` keeps its current meaning and is not redefined. Redefining it in place
 would silently change what every existing reader and stored report means; adding a field leaves the

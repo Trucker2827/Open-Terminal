@@ -371,6 +371,86 @@ class BetEligibleTrustTest(unittest.TestCase):
         self.assertEqual(
             cal.select_trusted_variant_eligible(state), "physics_tape_confirm_near_close")
 
+    # ── The claim and the measurement it is a claim about must be one pair ──
+    #
+    # `live_p` is priced from select_trusted_variant (the FULL-population
+    # board). If the flag could be earned by a DIFFERENT variant winning the
+    # eligible board, a bid would be priced from predictor A and authorised
+    # by eligible evidence about predictor B, and the two C++ conjuncts that
+    # exist to guard "the claim, and the measurement it is a claim about"
+    # (KalshiBotDecision.h) would be guarding a different pair of numbers
+    # than the claim.
+
+    def _split_board_state(self, n=100):
+        """Full board's winner is physics_tape_confirm_near_close; eligible
+        board's winner is physics. Two variants, both boards satisfied."""
+        state = cal.default_state()
+        state["contract_scores_market_mid_raw"] = [0.30] * n
+        state["contract_scores_full"] = [0.20] * n
+        state["contract_scores_physics_tape_confirm_near_close"] = [0.10] * n
+        state["contract_scores_physics_vol_regime_confirm"] = [0.25] * n
+        # Eligible board: physics wins (0.20 < 0.30); the full board's winner
+        # LOSES on the population it would actually bet (0.28 > 0.26).
+        state["contract_scores_eligible_full"] = [0.20] * n
+        state["contract_scores_eligible_market_mid_raw"] = [0.30] * n
+        state["contract_scores_eligible_physics_tape_confirm_near_close"] = [0.28] * n
+        state["contract_scores_eligible_mid_physics_tape_confirm_near_close"] = [0.26] * n
+        state["contract_scores_eligible_physics_vol_regime_confirm"] = []
+        state["contract_scores_eligible_mid_physics_vol_regime_confirm"] = []
+        return state
+
+    def test_two_different_variants_winning_two_boards_earns_no_trust(self):
+        state = self._split_board_state()
+        self.assertEqual(
+            cal.select_trusted_variant(state), "physics_tape_confirm_near_close")
+        self.assertEqual(cal.select_trusted_variant_eligible(state), "physics")
+        r = cal.build_report(state, {}, 1_700_000_000_000)
+        # adds_value_over_market is untouched -- it is the full-population flag.
+        self.assertTrue(r["adds_value_over_market"])
+        # ... but the eligible evidence is about a DIFFERENT predictor than
+        # the one live_p is priced from, so it authorises nothing.
+        self.assertFalse(r["adds_value_on_bet_eligible"])
+
+    def test_published_eligible_briers_are_the_trusted_variant_own(self):
+        # The guarded numbers must be the claim's own measurement: the
+        # eligible Briers of the variant that prices live_p, not physics's.
+        r = cal.build_report(self._split_board_state(), {}, 1_700_000_000_000)
+        self.assertEqual(r["trusted_variant"], "physics_tape_confirm_near_close")
+        self.assertAlmostEqual(r["brier_eligible_full"], 0.28)
+        self.assertAlmostEqual(r["brier_eligible_market_mid_raw"], 0.26)
+
+    def test_same_variant_on_both_boards_still_earns_trust(self):
+        # The tightening must not break the case it is meant to allow.
+        n = 100
+        state = self._split_board_state(n)
+        state["contract_scores_eligible_physics_tape_confirm_near_close"] = [0.15] * n
+        state["contract_scores_eligible_mid_physics_tape_confirm_near_close"] = [0.26] * n
+        self.assertEqual(
+            cal.select_trusted_variant(state), "physics_tape_confirm_near_close")
+        self.assertEqual(
+            cal.select_trusted_variant_eligible(state), "physics_tape_confirm_near_close")
+        r = cal.build_report(state, {}, 1_700_000_000_000)
+        self.assertTrue(r["adds_value_on_bet_eligible"])
+        self.assertAlmostEqual(r["brier_eligible_full"], 0.15)
+        self.assertAlmostEqual(r["brier_eligible_market_mid_raw"], 0.26)
+
+    def test_empty_physics_eligible_population_cannot_confer_trust(self):
+        # Publishing the winning variant's own Briers must not make trust
+        # EASIER than before: previously `brier_eligible_full` was physics's
+        # and was None here, so the C++ isDouble() conjunct refused. The
+        # floor on eligible_scored_contracts keeps that refusal.
+        n = 100
+        state = self._split_board_state(n)
+        state["contract_scores_eligible_physics_tape_confirm_near_close"] = [0.15] * n
+        state["contract_scores_eligible_mid_physics_tape_confirm_near_close"] = [0.26] * n
+        state["contract_scores_eligible_full"] = []
+        state["contract_scores_eligible_market_mid_raw"] = []
+        self.assertEqual(
+            cal.select_trusted_variant_eligible(state), "physics_tape_confirm_near_close")
+        r = cal.build_report(state, {}, 1_700_000_000_000)
+        self.assertEqual(r["eligible_scored_contracts"], 0)
+        self.assertFalse(r["adds_value_on_bet_eligible"])
+
 
 if __name__ == "__main__":
     unittest.main()

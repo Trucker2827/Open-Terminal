@@ -104,6 +104,8 @@ QJsonObject calibrator_report(qint64 generated_at_ms, const QJsonObject& predict
                        {"adds_value_on_bet_eligible", adds_value},
                        {"brier_eligible_full", adds_value ? 0.2130 : 0.2576},
                        {"brier_eligible_market_mid_raw", adds_value ? 0.2576 : 0.2130},
+                       {"eligible_scored_contracts", 104},
+                       {"min_eligible_contracts", 100},
                        {"predictions", predictions}};
 }
 
@@ -127,6 +129,8 @@ QJsonObject kxbtc15m_calibrator_report(qint64 generated_at_ms, const QJsonObject
                     {"adds_value_on_bet_eligible", adds_value},
                     {"brier_eligible_full", adds_value ? 0.2130 : 0.2576},
                     {"brier_eligible_market_mid_raw", adds_value ? 0.2576 : 0.2130},
+                    {"eligible_scored_contracts", 104},
+                    {"min_eligible_contracts", 100},
                     {"predictions", predictions}};
     if (!trusted_variant.isEmpty())
         out.insert(QStringLiteral("trusted_variant"), trusted_variant);
@@ -804,7 +808,14 @@ class KalshiBotCockpitTest : public QObject {
         // "unscored", it is scored and specifically NOT promoted.
         QVERIFY(node->known);
         QVERIFY(!node->value.contains(QStringLiteral("ADDS VALUE")));
-        QVERIFY(node->value.contains(QStringLiteral("NO EDGE YET")));
+        // Fix round 2, Finding 3: this node prints brier_full 0.0698 vs raw
+        // mid 0.0729 -- the model WINNING that population -- so a flat "NO
+        // EDGE YET" beside it read as a broken screen. The badge now names
+        // the conjunct that actually refused, and the numbers it refused on
+        // are on the node.
+        QVERIFY(!node->value.contains(QStringLiteral("NO EDGE YET")));
+        QVERIFY(node->value.contains(QStringLiteral("NO EDGE WHERE IT BETS")));
+        QVERIFY(node->value.contains(QStringLiteral("BET-ELIGIBLE Brier 0.2843 vs mid 0.2659")));
         QCOMPARE(node->role, QStringLiteral("amber"));
 
         // Same rule, same evidence, for the KXBTC15M scoreboard line and its
@@ -817,7 +828,28 @@ class KalshiBotCockpitTest : public QObject {
         kxbtc15m.insert(QStringLiteral("brier_eligible_market_mid_raw"), 0.2659);
         const QString line = kxbtc15m_scoreboard_line(kxbtc15m);
         QVERIFY(!line.contains(QStringLiteral("ADDS VALUE")));
-        QVERIFY(line.contains(QStringLiteral("NO EDGE YET")));
+        // Same seam, same fix: the ΔBrier on this line is NEGATIVE (0.2100 vs
+        // 0.2400 -- the model ahead of the mid on the full population), so the
+        // badge must not claim there is no edge at all, and the evidence the
+        // refusal rests on must be readable.
+        QVERIFY(!line.contains(QStringLiteral("NO EDGE YET")));
+        QVERIFY(line.contains(QStringLiteral("NO EDGE WHERE IT BETS")));
+        QVERIFY(line.contains(QStringLiteral("−0.0300")));
+        QVERIFY(line.contains(QStringLiteral("BET-ELIGIBLE Brier 0.2843 vs mid 0.2659")));
+
+        // The inspect body a reader opens next carries the same evidence, the
+        // prose verdict, and WHICH variant won each board -- with the flag now
+        // requiring the same variant on both, a disagreement there is itself a
+        // distinct refusal reason.
+        QJsonObject split = kxbtc15m;
+        split.insert(QStringLiteral("trusted_variant"), QStringLiteral("physics_brti_avg60"));
+        split.insert(QStringLiteral("trusted_variant_eligible"), QStringLiteral("physics"));
+        const QString detail = outside_info_inspect_detail(split);
+        QVERIFY(detail.contains(QStringLiteral("BET-ELIGIBLE Brier 0.2843 vs mid 0.2659")));
+        QVERIFY(detail.contains(QStringLiteral(
+            "full-population edge only, NOT where it bets — opinion, not signal")));
+        QVERIFY(detail.contains(QStringLiteral(
+            "trusted_variant (full) physics_brti_avg60 · (bet-eligible) physics")));
         const BotCockpitScene scene_15m =
             present_bot_cockpit(panel_for(ledger), {}, {}, ledger, {}, kNow, QByteArray(), 0, 0,
                                {}, kxbtc15m);

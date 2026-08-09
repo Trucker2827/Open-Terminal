@@ -1747,8 +1747,10 @@ QJsonObject scoreboard_family_summary(const QJsonObject& report, const QString& 
         {QStringLiteral("brier_eligible_full"), report.value(QStringLiteral("brier_eligible_full"))},
         {QStringLiteral("brier_eligible_market_mid_raw"),
          report.value(QStringLiteral("brier_eligible_market_mid_raw"))},
-        // The one rule the bot itself gates bidding on (issue #165/#XXX
-        // bet-eligible tightening) -- distinct from `adds_value_over_market`
+        // The one rule the bot itself gates bidding on (issue #165, plus the
+        // bet-eligible tightening in
+        // docs/design/2026-08-09-kalshi-bet-eligible-trust-design.md, which
+        // has no issue of its own) -- distinct from `adds_value_over_market`
         // above, which is the raw full-population flag alone and can be true
         // while this is false. Screens must read THIS field, never derive
         // their own promotion state from the raw flag (KalshiBotCommands.cpp

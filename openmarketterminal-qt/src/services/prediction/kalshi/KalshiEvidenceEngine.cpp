@@ -233,16 +233,24 @@ QJsonObject KalshiEvidenceEngine::calibrator_readout(const QJsonObject& report,
     const QJsonValue brier_full = report.value(QStringLiteral("brier_full"));
     const QJsonValue brier_mid_raw = report.value(QStringLiteral("brier_market_mid_raw"));
     const bool trusted = KalshiBotDecision::signal_trusted(report);
+    // The verdict and the bet-eligible evidence come from KalshiBotDecision so
+    // this readout cannot explain a refusal differently from the cockpit. The
+    // old line stated one verdict about the full-population numbers only, and
+    // on this deployment printed "Brier 0.109 vs raw mid 0.102 … does NOT beat
+    // the mid" where the refusal was actually driven by the bet-eligible
+    // subset — numbers that appeared nowhere on screen. Both halves are now
+    // shown: the full-population score, the bet-eligible score, then which one
+    // decided.
     const QString record = !brier_full.isDouble() || !brier_mid_raw.isDouble()
         ? QStringLiteral("TRACK RECORD · %1 resolved · 0 scored · Brier unavailable — opinion, not signal")
               .arg(resolved)
-        : QStringLiteral("TRACK RECORD · %1 resolved · Brier %2 vs raw mid %3 on %4 scored · %5")
+        : QStringLiteral("TRACK RECORD · %1 resolved · Brier %2 vs raw mid %3 on %4 scored · %5 · %6")
               .arg(resolved)
               .arg(brier_full.toDouble(), 0, 'f', 3)
               .arg(brier_mid_raw.toDouble(), 0, 'f', 3)
               .arg(scored)
-              .arg(trusted ? QStringLiteral("beats the raw mid")
-                           : QStringLiteral("does NOT beat the mid — opinion, not signal"));
+              .arg(KalshiBotDecision::bet_eligible_evidence_text(report),
+                   KalshiBotDecision::trust_verdict_text(report));
     return QJsonObject{{QStringLiteral("state"), QStringLiteral("ok")},
                        {QStringLiteral("headline"), headline},
                        {QStringLiteral("record"), record},

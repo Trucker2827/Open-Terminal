@@ -447,6 +447,64 @@ class KalshiBotDecision {
                report.value(QStringLiteral("brier_eligible_market_mid_raw")).isDouble();
     }
 
+    /// The bet-eligible measurement, in the report's OWN numbers, for screens.
+    ///
+    /// `signal_trusted` now refuses on these numbers, and until this existed
+    /// they appeared on no screen: a reader saw "Brier 0.0677 vs raw mid
+    /// 0.0690 … NO EDGE YET" and could only conclude the screen was broken,
+    /// because the printed numbers say the opposite of the printed verdict.
+    /// The refusal's own evidence has to be visible beside it.
+    ///
+    /// Never invents a number: an unmeasured subset says so, and the count is
+    /// always shown against the floor, because "0/100" is the whole
+    /// explanation for most of this criterion's life.
+    static QString bet_eligible_evidence_text(const QJsonObject& report) {
+        const QJsonValue b_full = report.value(QStringLiteral("brier_eligible_full"));
+        const QJsonValue b_mid = report.value(QStringLiteral("brier_eligible_market_mid_raw"));
+        const int scored = report.value(QStringLiteral("eligible_scored_contracts")).toInt();
+        const int floor = report.value(QStringLiteral("min_eligible_contracts")).toInt(100);
+        if (!b_full.isDouble() || !b_mid.isDouble())
+            return QStringLiteral("BET-ELIGIBLE unmeasured (%1/%2 contracts)")
+                .arg(scored)
+                .arg(floor);
+        return QStringLiteral("BET-ELIGIBLE Brier %1 vs mid %2 on %3/%4 contracts")
+            .arg(b_full.toDouble(), 0, 'f', 4)
+            .arg(b_mid.toDouble(), 0, 'f', 4)
+            .arg(scored)
+            .arg(floor);
+    }
+
+    /// Compact trust badge naming WHICH conjunct decided it.
+    ///
+    /// "NO EDGE YET" was printed for every refusal, including the one this
+    /// deployment actually hits — a full-population Brier that DOES beat the
+    /// mid, refused on the bet-eligible subset. That reads as a screen
+    /// contradicting its own numbers. The three outcomes are now three
+    /// strings. Defined here, beside `signal_trusted`, for the same reason
+    /// that rule is: one scorer, many readers — and therefore one refusal
+    /// reason, so two screens cannot explain the same refusal differently.
+    static QString trust_badge_text(const QJsonObject& report) {
+        if (signal_trusted(report)) return QStringLiteral("ADDS VALUE");
+        if (!report.value(QStringLiteral("adds_value_over_market")).toBool())
+            return QStringLiteral("NO EDGE YET");
+        return QStringLiteral("NO EDGE WHERE IT BETS");
+    }
+
+    /// The same verdict as `trust_badge_text`, in prose, for the wider
+    /// readouts. Deliberately does not restate the full-population inequality
+    /// as a verdict: `adds_value_over_market` also carries that population's
+    /// sample floor, so the flag and the raw comparison can legitimately
+    /// disagree, and printing "does NOT beat the mid" beside numbers where it
+    /// does was the defect.
+    static QString trust_verdict_text(const QJsonObject& report) {
+        if (signal_trusted(report))
+            return QStringLiteral("beats the raw mid on the full population AND where it bets");
+        if (!report.value(QStringLiteral("adds_value_over_market")).toBool())
+            return QStringLiteral("no full-population edge — opinion, not signal");
+        return QStringLiteral(
+            "full-population edge only, NOT where it bets — opinion, not signal");
+    }
+
     /// KXBTC15M family — ticker prefix before the first '-'. The directional
     /// 15-minute race uses its own calibrator report; threshold books do not.
     /// Inline so the BOT cockpit presenter (header-only tests) shares the

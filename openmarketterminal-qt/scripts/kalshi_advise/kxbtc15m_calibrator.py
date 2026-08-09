@@ -1039,9 +1039,36 @@ def build_report(state, predictions, now_ms):
     ablations, b_mid = ablation_scoreboard(state)
     trusted_variant = select_trusted_variant(state)
     adds_value = trusted_variant is not None
-    eligible_ablations, b_eligible_mid = eligible_ablation_scoreboard(state)
+    eligible_ablations, _b_eligible_mid = eligible_ablation_scoreboard(state)
     eligible = state.get("contract_scores_eligible_full") or []
     trusted_variant_eligible = select_trusted_variant_eligible(state)
+    # The published eligible Briers must be the CLAIM'S OWN measurement.
+    # `trusted_variant` is the variant that prices live_p, so it is the
+    # variant every downstream reader is actually being asked to trust; the
+    # numbers beside the flag are therefore ITS eligible Briers, taken from
+    # its own row of the eligible board (paired against its own eligible mid
+    # population). Publishing physics's numbers here instead would guard one
+    # predictor's claim with another predictor's evidence.
+    claim_row = ((eligible_ablations or {}).get(trusted_variant) or {}) \
+        if trusted_variant else {}
+    b_eligible_full = claim_row.get("brier")
+    b_eligible_mid = claim_row.get("brier_mid_paired")
+    # Trust on the bet-eligible subset requires the SAME variant to win on
+    # both boards. Two independent selections would let a bid be priced from
+    # predictor A (select_trusted_variant, which sets live_p) while being
+    # authorised by eligible evidence about predictor B. The
+    # `eligible >= MIN_ELIGIBLE_CONTRACTS` conjunct is the design's own
+    # literal definition of the flag and also keeps this strictly tighter
+    # than the previous `trusted_variant_eligible is not None`: it cannot
+    # publish doubles for a variant while physics's eligible population --
+    # the one `eligible_scored_contracts` reports -- is empty or short.
+    adds_value_on_bet_eligible = (
+        trusted_variant is not None
+        and trusted_variant_eligible == trusted_variant
+        and b_eligible_full is not None
+        and b_eligible_mid is not None
+        and len(eligible) >= ce.MIN_ELIGIBLE_CONTRACTS
+    )
     return {
         "schema": STATE_SCHEMA,
         "event": "kxbtc15m_calibrator",
@@ -1065,12 +1092,15 @@ def build_report(state, predictions, now_ms):
         "trusted_variant": trusted_variant,
         "adds_value_over_market": adds_value,
         "eligible_ablations": eligible_ablations,
+        # Count of contracts with at least one eligible observation for the
+        # physics population -- the deployment-observability number, kept as
+        # it was so "how long until the floor is reachable" stays readable.
         "eligible_scored_contracts": len(eligible),
-        "brier_eligible_full": mean_or_none(eligible),
+        "brier_eligible_full": b_eligible_full,
         "brier_eligible_market_mid_raw": b_eligible_mid,
         "min_eligible_contracts": ce.MIN_ELIGIBLE_CONTRACTS,
         "trusted_variant_eligible": trusted_variant_eligible,
-        "adds_value_on_bet_eligible": trusted_variant_eligible is not None,
+        "adds_value_on_bet_eligible": adds_value_on_bet_eligible,
         "predictions": predictions,
     }
 

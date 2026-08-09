@@ -186,11 +186,17 @@ inline QString kxbtc15m_scoreboard_line(const QJsonObject& report) {
     const QString delta_text = QStringLiteral("%1%2")
                                    .arg(delta < 0 ? QStringLiteral("−") : QStringLiteral("+"))
                                    .arg(std::fabs(delta), 0, 'f', 4);
-    QString line = QStringLiteral("%1/%2 scored · ΔBrier %3 vs mid · %4")
+    // The bet-eligible evidence rides on the line because it is what the
+    // refusal is now made of: without it this line printed a negative ΔBrier
+    // (model better than the mid) beside "NO EDGE YET", which reads as the
+    // screen contradicting its own number. The badge names which conjunct
+    // decided (KalshiBotDecision::trust_badge_text).
+    QString line = QStringLiteral("%1/%2 scored · ΔBrier %3 vs mid · %4 · %5")
                        .arg(scored)
                        .arg(floor)
-                       .arg(delta_text)
-                       .arg(trusted ? QStringLiteral("ADDS VALUE") : QStringLiteral("NO EDGE YET"));
+                       .arg(delta_text,
+                            KalshiBotDecision::bet_eligible_evidence_text(report),
+                            KalshiBotDecision::trust_badge_text(report));
     if (trusted && !variant.isEmpty())
         line += QStringLiteral(" · %1").arg(variant);
     else {
@@ -360,13 +366,14 @@ inline QString outside_info_inspect_detail(const QJsonObject& report) {
     QStringList lines;
     const int scored = report.value(QStringLiteral("scored_contracts")).toInt();
     const int floor = report.value(QStringLiteral("min_scored_contracts")).toInt(100);
-    const bool trusted = KalshiBotDecision::signal_trusted(report);
     const QString variant = report.value(QStringLiteral("trusted_variant")).toString();
+    const QString variant_eligible =
+        report.value(QStringLiteral("trusted_variant_eligible")).toString();
     lines << QStringLiteral("scored %1/%2 · trust %3 · trusted_variant %4")
                  .arg(scored)
                  .arg(floor)
-                 .arg(trusted ? QStringLiteral("ADDS VALUE") : QStringLiteral("NO EDGE YET"))
-                 .arg(variant.isEmpty() ? QStringLiteral("—") : variant);
+                 .arg(KalshiBotDecision::trust_badge_text(report),
+                      variant.isEmpty() ? QStringLiteral("—") : variant);
     const QJsonValue brier_full = report.value(QStringLiteral("brier_full"));
     const QJsonValue brier_mid = report.value(QStringLiteral("brier_market_mid_raw"));
     if (brier_full.isDouble() && brier_mid.isDouble()) {
@@ -379,6 +386,18 @@ inline QString outside_info_inspect_detail(const QJsonObject& report) {
     } else {
         lines << QStringLiteral("brier unavailable");
     }
+    // The refusal's own evidence, on the inspect body where a reader has gone
+    // looking for it. A negative Δ above beside "NO EDGE WHERE IT BETS" is
+    // only readable with these two numbers present.
+    lines << KalshiBotDecision::bet_eligible_evidence_text(report);
+    lines << KalshiBotDecision::trust_verdict_text(report);
+    // Which variant won each board. With the flag now requiring the SAME
+    // variant on both, a disagreement here IS the refusal, and a reader who
+    // cannot see both names cannot tell that from a subset that simply lost.
+    if (!variant.isEmpty() || !variant_eligible.isEmpty())
+        lines << QStringLiteral("trusted_variant (full) %1 · (bet-eligible) %2")
+                     .arg(variant.isEmpty() ? QStringLiteral("—") : variant,
+                          variant_eligible.isEmpty() ? QStringLiteral("—") : variant_eligible);
     const QJsonObject ablations = report.value(QStringLiteral("ablations")).toObject();
     if (ablations.isEmpty()) {
         lines << QStringLiteral("ablations: (none)");
@@ -1278,11 +1297,17 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         const bool adds_value = KalshiBotDecision::signal_trusted(report);
         add_node(QStringLiteral("calibrator"),
                  QStringLiteral("CALIBRATOR — THRESHOLD TRACK RECORD"),
-                 QStringLiteral("Brier %1 vs raw mid %2 on %3 scored contracts · %4")
+                 // Same seam as kxbtc15m_scoreboard_line: on this deployment
+                 // brier_full < brier_market_mid_raw while the node read "NO
+                 // EDGE YET", because the refusal comes from the bet-eligible
+                 // subset. That evidence is now on the node beside the verdict
+                 // that rests on it.
+                 QStringLiteral("Brier %1 vs raw mid %2 on %3 scored contracts · %4 · %5")
                      .arg(brier_full.toDouble(), 0, 'f', 4)
                      .arg(brier_mid_raw.toDouble(), 0, 'f', 4)
                      .arg(report.value(QStringLiteral("scored_contracts")).toInt())
-                     .arg(adds_value ? QStringLiteral("ADDS VALUE") : QStringLiteral("NO EDGE YET")),
+                     .arg(KalshiBotDecision::bet_eligible_evidence_text(report),
+                          KalshiBotDecision::trust_badge_text(report)),
                  adds_value ? QStringLiteral("green") : QStringLiteral("amber"), true);
     } else {
         add_node(QStringLiteral("calibrator"), QStringLiteral("CALIBRATOR — THRESHOLD"),
