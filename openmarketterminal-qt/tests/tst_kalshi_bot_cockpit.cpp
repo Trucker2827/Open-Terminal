@@ -1494,6 +1494,18 @@ class KalshiBotCockpitTest : public QObject {
                  QStringLiteral("$62.9k"));
     }
 
+    // Multi-cadence commodity / BTC floor books: underlier chip + strike.
+    void column_head_shows_commodity_and_btc_daily_strikes() {
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXGOLDD-26AUG1017-T4497")),
+                 QStringLiteral("AU $4.5k"));
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXSILVERH-26AUG0915-T64.25")),
+                 QStringLiteral("AG $64.25"));
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXWTI-26AUG1017-T72.5")),
+                 QStringLiteral("CL $72.50"));
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXBTC-26AUG0917-T65000")),
+                 QStringLiteral("$65.0k"));
+    }
+
     // An unrecognized ticker family falls back to the previous behavior
     // rather than mislabeling itself.
     void column_head_falls_back_for_an_unrecognized_family() {

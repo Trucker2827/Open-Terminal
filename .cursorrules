@@ -1,20 +1,20 @@
 # Open-Terminal — Cursor scratchpad & lessons
 
-## Scratchpad — Multi-cadence Kalshi families (2026-08-09)
+## Scratchpad — Cockpit slim FLOW lanes (2026-08-09)
 
-Task: Wire commodities hourly + daily + BTC daily (KXBTC) into decide +
-cockpit rain/KPI without a 9th orbit node. Physics is strike/threshold
-OnlineLogit (not 15m open→close) — H/D/KXBTC are "above $Y" books.
+Task: FLOW contract lanes were stretching to fill the body when few books
+were open — slim to fixed height so COM-H/D and other cadences can share.
 
-[X] strike_threshold_family.py + 3 entry scripts + LaunchAgent plists
-[X] Decide filters / merge / refresh / calibrate --family
-[X] Cockpit rain COM-H/COM-D/BTC-D; KPI BTC 15M|D + COM 15m|H|D; pin 8/6
-[X] Tests + rebuild CLI + install LaunchAgents + kick bot
+[X] Cap lane paint at kLaneHeight=24 (no stretch-to-fill)
+[X] Tint COM-H/COM-D/BTC-D with existing green/amber family colors
+[X] Rebuild GUI; kill stale OpenTerminal (was still on 14:31 binary) + relaunch
+[X] Eyeball OK — slim FLOW + COM-D AU/AG visible (15m/hourly empty until open)
 
 ---
 
 ## Lessons
 
+- **Cockpit FLOW lanes must not stretch:** `lane_height = flow_body / drawn` made 3–4 books look like fat cards and wasted space for COM-H/D. Paint at fixed `kLaneHeight` (24); `drawable` still uses that height for scroll capacity.
 - **Staged ≠ working tree:** After partial reverts / edits, always check `git diff --cached` *and* `git diff HEAD`. Inverse staged/unstaged diffs mean a commit would ship the broken index, not the good tree.
 - **`translate_action` arity:** Signature is 4-arg `(choice, net_qty, edge_direction, params)`. A 3-arg call with `ActionParams{}` as 3rd arg fails to compile against current `TypedAction.h`.
 - **Direction is env-owned, not LLM-owned:** `edge_direction_of` → assess/floor/`side_direction`; model only picks verb + conviction.

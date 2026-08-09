@@ -266,7 +266,9 @@ inline qint64 bot_cockpit_freeze_bound_ms() {
 /// How many columns the scene draws at once. A cap is a rendering limit, so the
 /// count it dropped is always stated (see `census`) — a silent top-N reads as
 /// "these are all the contracts", which is the quiet kind of lie.
-inline constexpr int kBotCockpitMaxColumns = 24;
+// Cap high enough that multi-cadence COM-D strike ladders can scroll into view
+// after threshold / 15m; FLOW paint still shows only what fits at kLaneHeight.
+inline constexpr int kBotCockpitMaxColumns = 48;
 
 /// How many pulses (ignitions, dissolves, gate/report events) the ledger stream
 /// keeps. Also stated when it truncates.
