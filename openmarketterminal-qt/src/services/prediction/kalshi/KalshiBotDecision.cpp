@@ -110,7 +110,10 @@ QJsonObject KalshiBotDecision::merge_family_reports(const QJsonObject& threshold
                                                     const QJsonObject& kxbtc15m_report,
                                                     qint64 now_ms,
                                                     const Config& config,
-                                                    const QJsonObject& commodities_15m_report) {
+                                                    const QJsonObject& commodities_15m_report,
+                                                    const QJsonObject& commodities_hourly_report,
+                                                    const QJsonObject& commodities_daily_report,
+                                                    const QJsonObject& kxbtc_daily_report) {
     QJsonObject merged_predictions;
     qint64 newest_ms = 0;
     const auto take_fresh_filtered = [&](const QJsonObject& filtered_report) {
@@ -128,6 +131,9 @@ QJsonObject KalshiBotDecision::merge_family_reports(const QJsonObject& threshold
     take_fresh_filtered(filter_predictions_for_family(threshold_report, /*keep_kxbtc15m=*/false));
     take_fresh_filtered(filter_predictions_for_family(kxbtc15m_report, /*keep_kxbtc15m=*/true));
     take_fresh_filtered(filter_commodity_15m_predictions(commodities_15m_report));
+    take_fresh_filtered(filter_commodity_hourly_predictions(commodities_hourly_report));
+    take_fresh_filtered(filter_commodity_daily_predictions(commodities_daily_report));
+    take_fresh_filtered(filter_kxbtc_daily_predictions(kxbtc_daily_report));
     if (merged_predictions.isEmpty() || newest_ms <= 0) return {};
     return QJsonObject{{QStringLiteral("generated_at_ms"), static_cast<double>(newest_ms)},
                        {QStringLiteral("predictions"), merged_predictions},
@@ -796,7 +802,7 @@ QJsonArray KalshiBotDecision::paper_cashout(const QJsonArray& open_positions,
     const qint64 age_ms =
         (generated_ms > 0 && now_ms >= generated_ms) ? (now_ms - generated_ms) : -1;
     if (report.isEmpty() || generated_ms <= 0 || age_ms < 0 ||
-        age_ms > config.max_report_age_ms) {
+        age_ms >= config.max_report_age_ms) {
         // One refusal row for the tick — not per position — so a stale report
         // does not spam the ledger while still documenting the fail-closed hold.
         if (!open_positions.isEmpty()) {

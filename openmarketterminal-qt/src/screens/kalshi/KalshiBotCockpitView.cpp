@@ -39,9 +39,9 @@ constexpr int kFrameIntervalMs = 33;
 constexpr int kFlashFrames = 45;
 
 constexpr int kMargin = 14;
-// The health-first strip (HARVEST -> THR -> 15M -> DECIDE -> SETTLE): a
-// headline line and a row of coloured-dot stage chips, drawn above the mood
-// banner so a dead feed cannot hide behind a ticking paper loop.
+// The health-first strip (HARVEST -> THR -> 15M -> COM* -> BTC-D -> DECIDE ->
+// SETTLE): a headline line and a row of coloured-dot stage chips, drawn above
+// the mood banner so a dead feed cannot hide behind a ticking paper loop.
 constexpr int kHealthHeadlineHeight = 16;
 constexpr int kHealthStageRowHeight = 16;
 constexpr int kHealthStripGap = 6;
@@ -56,7 +56,10 @@ constexpr int kNodeRowHeight = 104;
 constexpr int kKpiHeight = 38;
 constexpr int kStreamWidth = 300;
 // Horizontal contract lanes: sticky label | L→R glyph track | status.
-constexpr int kMinLaneHeight = 34;
+// Fixed compact height — do not stretch few books to fill the FLOW body; multi-
+// cadence (COM-H/D, BTC-D) needs the spare rows more than padded empty lanes.
+constexpr int kLaneHeight = 24;
+constexpr int kMinLaneHeight = kLaneHeight; // scroll / drawable math
 constexpr int kLaneLabelWidth = 96;
 constexpr int kLaneStatusWidth = 72;
 constexpr int kFlowAxisHeight = 16;
@@ -67,12 +70,15 @@ QColor with_alpha(QColor color, int alpha) {
     return color;
 }
 
-/// Soft lane tint by calibrator family — threshold cyan, BTC 15m amber,
+/// Soft lane tint by calibrator family — threshold cyan, BTC amber,
 /// commodities green — so multi-source flow is readable without reading tags.
 QColor source_tint(const QString& signal_source, bool dormant) {
-    if (signal_source == QLatin1String("kxbtc15m"))
+    if (signal_source == QLatin1String("kxbtc15m") ||
+        signal_source == QLatin1String("kxbtc_daily"))
         return with_alpha(QColor(colors::WARNING()), dormant ? 10 : 22);
-    if (signal_source == QLatin1String("commodities15m"))
+    if (signal_source == QLatin1String("commodities15m") ||
+        signal_source == QLatin1String("commodities_hourly") ||
+        signal_source == QLatin1String("commodities_daily"))
         return with_alpha(QColor(colors::GREEN()), dormant ? 8 : 18);
     if (signal_source == QLatin1String("threshold"))
         return with_alpha(QColor(colors::CYAN()), dormant ? 8 : 16);
@@ -738,7 +744,9 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
                                         "(closed 15m windows are omitted)"));
     } else {
         const int gutter = scrollable ? kFlowScrollGutter : 0;
-        const double lane_height = static_cast<double>(flow_body.height() - 8) / drawn;
+        // Cap at kLaneHeight so 3–4 open books stay slim; spare FLOW height is
+        // reserved for commodities / other cadences as they appear (or scroll).
+        const double lane_height = static_cast<double>(kLaneHeight);
         for (int i = 0; i < drawn; ++i) {
             const BotCockpitColumn& column = scene_.columns.at(lane_scroll_ + i);
             const QRectF lane(flow_body.left() + 4, flow_body.top() + 4 + (i * lane_height),

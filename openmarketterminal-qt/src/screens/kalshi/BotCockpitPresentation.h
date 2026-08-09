@@ -53,6 +53,8 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QList>
+
+#include <initializer_list>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -70,6 +72,9 @@ using openmarketterminal::services::prediction::kalshi_ns::KalshiBotDecision;
 inline constexpr auto kKalshiCalibratorFile = "calibrator.json";
 inline constexpr auto kKalshiKxbtc15mCalibratorFile = "kxbtc15m-calibrator.json";
 inline constexpr auto kKalshiCommodities15mCalibratorFile = "commodities-15m-calibrator.json";
+inline constexpr auto kKalshiCommoditiesHourlyCalibratorFile = "commodities-hourly-calibrator.json";
+inline constexpr auto kKalshiCommoditiesDailyCalibratorFile = "commodities-daily-calibrator.json";
+inline constexpr auto kKalshiKxbtcDailyCalibratorFile = "kxbtc-daily-calibrator.json";
 
 inline QString kalshi_calibrator_path() {
     return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiCalibratorFile));
@@ -80,6 +85,46 @@ inline QString kalshi_kxbtc15m_calibrator_path() {
 }
 inline QString kalshi_commodities_15m_calibrator_path() {
     return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiCommodities15mCalibratorFile));
+}
+inline QString kalshi_commodities_hourly_calibrator_path() {
+    return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiCommoditiesHourlyCalibratorFile));
+}
+inline QString kalshi_commodities_daily_calibrator_path() {
+    return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiCommoditiesDailyCalibratorFile));
+}
+inline QString kalshi_kxbtc_daily_calibrator_path() {
+    return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiKxbtcDailyCalibratorFile));
+}
+
+/// Compact cadence status for orbit/KPI folding (no new nodes).
+inline QString family_cadence_chip(const QJsonObject& report) {
+    if (report.isEmpty()) return QStringLiteral("—");
+    const int scored = report.value(QStringLiteral("scored_contracts")).toInt();
+    const int floor = report.value(QStringLiteral("min_scored_contracts")).toInt(100);
+    if (!report.value(QStringLiteral("brier_full")).isDouble())
+        return QStringLiteral("%1/%2").arg(scored).arg(floor);
+    return QStringLiteral("%1 %2/%3")
+        .arg(KalshiBotDecision::signal_trusted(report) ? QStringLiteral("T")
+                                                       : QStringLiteral("U"))
+        .arg(scored)
+        .arg(floor);
+}
+
+/// Worst-of trust colour for a folded KPI cell (e.g. COM 15m|H|D). Empty
+/// reports are ignored; any present untrusted cadence keeps the cell amber.
+inline QString fold_cadence_trust_role(
+    const std::initializer_list<QJsonObject>& reports) {
+    using services::prediction::kalshi_ns::KalshiBotDecision;
+    bool saw = false;
+    bool all_trusted = true;
+    for (const QJsonObject& report : reports) {
+        if (report.isEmpty()) continue;
+        if (report.value(QStringLiteral("generated_at_ms")).toDouble() <= 0) continue;
+        saw = true;
+        if (!KalshiBotDecision::signal_trusted(report)) all_trusted = false;
+    }
+    if (!saw) return QStringLiteral("grey");
+    return all_trusted ? QStringLiteral("green") : QStringLiteral("amber");
 }
 
 /// Pick the open KXBTC15M ticker the calibrator readout should follow.
@@ -240,7 +285,9 @@ inline qint64 bot_cockpit_freeze_bound_ms() {
 /// How many columns the scene draws at once. A cap is a rendering limit, so the
 /// count it dropped is always stated (see `census`) — a silent top-N reads as
 /// "these are all the contracts", which is the quiet kind of lie.
-inline constexpr int kBotCockpitMaxColumns = 24;
+// Cap high enough that multi-cadence COM-D strike ladders can scroll into view
+// after threshold / 15m; FLOW paint still shows only what fits at kLaneHeight.
+inline constexpr int kBotCockpitMaxColumns = 48;
 
 /// How many pulses (ignitions, dissolves, gate/report events) the ledger stream
 /// keeps. Also stated when it truncates.
@@ -344,8 +391,11 @@ struct BotCockpitFeedHealth {
 /// One stage of the health strip. `role` is a colour vocabulary already used by
 /// the scene: "green" | "amber" | "red" | "grey".
 struct BotCockpitHealthStage {
-    QString id;      ///< "harvest" | "calibrate_threshold" | "calibrate_15m" | "decide" | "settle"
-    QString label;   ///< "HARVEST" / "THR" / "15M" ...
+    QString id;  ///< "harvest" | "calibrate_threshold" | "calibrate_15m" |
+                 ///< "calibrate_commodities15m" | "calibrate_commodities_hourly" |
+                 ///< "calibrate_commodities_daily" | "calibrate_kxbtc_daily" |
+                 ///< "decide" | "settle"
+    QString label;   ///< "HARVEST" / "THR" / "15M" / "COM" / "COM-H" / "COM-D" / "BTC-D" ...
     QString value;   ///< the one datum ("2s", "7/100", "trusted", "bidding", "32")
     QString role = QStringLiteral("grey");
 };
@@ -354,18 +404,23 @@ struct BotCockpitHealthStage {
 /// when the column has no family stamp — paint must not invent one.
 inline QString bot_cockpit_source_tag(const QString& signal_source) {
     if (signal_source == QLatin1String("kxbtc15m")) return QStringLiteral("15m");
+    if (signal_source == QLatin1String("kxbtc_daily")) return QStringLiteral("BTC-D");
     if (signal_source == QLatin1String("commodities15m")) return QStringLiteral("COM");
+    if (signal_source == QLatin1String("commodities_hourly")) return QStringLiteral("COM-H");
+    if (signal_source == QLatin1String("commodities_daily")) return QStringLiteral("COM-D");
     if (signal_source == QLatin1String("threshold")) return QStringLiteral("THR");
     return {};
 }
 
-/// Rain sort rank: strike/threshold books first (paper ambition), then BTC 15m,
-/// then commodities. Unknown sources sort last.
+/// Rain sort rank: threshold → BTC15m → COM15m → COM-H → COM-D → BTC-D.
 inline int bot_cockpit_rain_family_rank(const QString& signal_source) {
     if (signal_source == QLatin1String("threshold")) return 0;
     if (signal_source == QLatin1String("kxbtc15m")) return 1;
     if (signal_source == QLatin1String("commodities15m")) return 2;
-    return 3;
+    if (signal_source == QLatin1String("commodities_hourly")) return 3;
+    if (signal_source == QLatin1String("commodities_daily")) return 4;
+    if (signal_source == QLatin1String("kxbtc_daily")) return 5;
+    return 6;
 }
 
 /// Multi-line outside-info inspect body for a family report (ablations,
@@ -498,7 +553,7 @@ struct BotCockpitScene {
     /// The BOT tab suggests the cockpit exactly while the loop is running.
     bool suggest_cockpit = false;
 
-    // ── health-first strip (HARVEST -> THR -> 15M -> DECIDE -> SETTLE) ─────
+    // ── health-first strip (HARVEST -> THR -> 15M -> COM* -> BTC-D -> DECIDE -> SETTLE) ─
     // Additive: the mood/banner above answer "is the loop ticking"; these
     // answer "is the pipeline that feeds it healthy" — a dead feed or a stale
     // report must not hide behind a ticking paper loop. CALIBRATE is split so
@@ -923,7 +978,10 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                                            const QJsonObject& kxbtc15m_report = {},
                                            const QJsonObject& commodities_15m_report = {},
                                            const QJsonObject& postmortem_summary = {},
-                                           const QJsonObject& postmortem_historic = {}) {
+                                           const QJsonObject& postmortem_historic = {},
+                                           const QJsonObject& commodities_hourly_report = {},
+                                           const QJsonObject& commodities_daily_report = {},
+                                           const QJsonObject& kxbtc_daily_report = {}) {
     using namespace bot_cockpit_detail;
     BotCockpitScene scene;
     // Advisory strategy-grid line, read-only over the engine's verdict file.
@@ -989,8 +1047,9 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         stamp.generated_at_ms =
             static_cast<qint64>(source_report.value(QStringLiteral("generated_at_ms")).toDouble());
         if (stamp.generated_at_ms > 0) stamp.age_ms = now_ms - stamp.generated_at_ms;
-        stamp.frozen =
-            auto_cockpit_detail::timestamp_stale(stamp.generated_at_ms, now_ms, freeze_bound);
+        // Match KalshiBotDecision refuse: age_ms >= max_report_age_ms (not Auto's `>`).
+        stamp.frozen = stamp.generated_at_ms <= 0 || stamp.age_ms < 0 ||
+                       stamp.age_ms >= freeze_bound;
         stamp.freeze_reason =
             stamp.generated_at_ms <= 0
                 ? QStringLiteral("the %1 report carries no generation time").arg(source)
@@ -1006,6 +1065,12 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     const ReportStamp kxbtc15m_stamp = stamp_of(kxbtc15m_report, QStringLiteral("kxbtc15m"));
     const ReportStamp commodities_stamp =
         stamp_of(commodities_15m_report, QStringLiteral("commodities15m"));
+    const ReportStamp commodities_hourly_stamp =
+        stamp_of(commodities_hourly_report, QStringLiteral("commodities_hourly"));
+    const ReportStamp commodities_daily_stamp =
+        stamp_of(commodities_daily_report, QStringLiteral("commodities_daily"));
+    const ReportStamp kxbtc_daily_stamp =
+        stamp_of(kxbtc_daily_report, QStringLiteral("kxbtc_daily"));
 
     QJsonObject predictions;
     QHash<QString, ReportStamp> stamp_by_ticker;
@@ -1031,6 +1096,23 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                       .value(QStringLiteral("predictions"))
                       .toObject(),
                   commodities_stamp);
+    take_filtered(
+        services::prediction::kalshi_ns::KalshiBotDecision::filter_commodity_hourly_predictions(
+            commodities_hourly_report)
+            .value(QStringLiteral("predictions"))
+            .toObject(),
+        commodities_hourly_stamp);
+    take_filtered(
+        services::prediction::kalshi_ns::KalshiBotDecision::filter_commodity_daily_predictions(
+            commodities_daily_report)
+            .value(QStringLiteral("predictions"))
+            .toObject(),
+        commodities_daily_stamp);
+    take_filtered(services::prediction::kalshi_ns::KalshiBotDecision::filter_kxbtc_daily_predictions(
+                      kxbtc_daily_report)
+                      .value(QStringLiteral("predictions"))
+                      .toObject(),
+                  kxbtc_daily_stamp);
 
     scene.report_present = !predictions.isEmpty();
     // Newest contributing source age — the census/health stamp for "is any
@@ -1148,14 +1230,25 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     int threshold_count = 0;
     int kxbtc15m_count = 0;
     int commodities_count = 0;
+    int commodities_hourly_count = 0;
+    int commodities_daily_count = 0;
+    int kxbtc_daily_count = 0;
     for (auto it = stamp_by_ticker.constBegin(); it != stamp_by_ticker.constEnd(); ++it) {
         if (it.value().source == QLatin1String("kxbtc15m")) ++kxbtc15m_count;
         else if (it.value().source == QLatin1String("commodities15m")) ++commodities_count;
+        else if (it.value().source == QLatin1String("commodities_hourly"))
+            ++commodities_hourly_count;
+        else if (it.value().source == QLatin1String("commodities_daily"))
+            ++commodities_daily_count;
+        else if (it.value().source == QLatin1String("kxbtc_daily")) ++kxbtc_daily_count;
         else ++threshold_count;
     }
     pulse_report(threshold_stamp, QStringLiteral("CALIBRATOR"), threshold_count);
     pulse_report(kxbtc15m_stamp, QStringLiteral("KXBTC15M"), kxbtc15m_count);
     pulse_report(commodities_stamp, QStringLiteral("COMMOD15M"), commodities_count);
+    pulse_report(commodities_hourly_stamp, QStringLiteral("COM-H"), commodities_hourly_count);
+    pulse_report(commodities_daily_stamp, QStringLiteral("COM-D"), commodities_daily_count);
+    pulse_report(kxbtc_daily_stamp, QStringLiteral("BTC-D"), kxbtc_daily_count);
     if (!gate.isEmpty()) {
         const auto gate_ts = static_cast<qint64>(gate.value(QStringLiteral("ts_ms")).toDouble());
         const QString verdict =
@@ -1216,17 +1309,25 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     threshold_count = 0;
     kxbtc15m_count = 0;
     commodities_count = 0;
+    commodities_hourly_count = 0;
+    commodities_daily_count = 0;
+    kxbtc_daily_count = 0;
     for (const auto& column : columns) {
         if (column.signal_source == QLatin1String("kxbtc15m")) ++kxbtc15m_count;
         else if (column.signal_source == QLatin1String("commodities15m")) ++commodities_count;
+        else if (column.signal_source == QLatin1String("commodities_hourly"))
+            ++commodities_hourly_count;
+        else if (column.signal_source == QLatin1String("commodities_daily"))
+            ++commodities_daily_count;
+        else if (column.signal_source == QLatin1String("kxbtc_daily")) ++kxbtc_daily_count;
         else ++threshold_count;
     }
 
     // columns_total = open/watched only (closed 15m never count as FLOW).
     scene.columns_total = columns.size();
-    // Strike/threshold first (paper ambition), then BTC 15m, then commodities;
-    // within a family |edge| so a cap drops quiet books before open races.
-    // Unmeasured edges sort last; ticker breaks ties.
+    // Strike/threshold first (paper ambition), then BTC 15m, then commodities
+    // cadences, then BTC daily; within a family |edge| so a cap drops quiet
+    // books before open races. Unmeasured edges sort last; ticker breaks ties.
     std::stable_sort(columns.begin(), columns.end(),
                      [](const BotCockpitColumn& a, const BotCockpitColumn& b) {
                          const int ar = bot_cockpit_rain_family_rank(a.signal_source);
@@ -1241,35 +1342,35 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     for (const auto& column : std::as_const(scene.columns))
         if (column.frozen) ++scene.columns_frozen;
 
+    const auto census_tail = [&]() {
+        return QStringLiteral("%1 threshold · %2 kxbtc15m · %3 commodities15m · %4 "
+                              "commodities_hourly · %5 commodities_daily · %6 kxbtc_daily")
+            .arg(threshold_count)
+            .arg(kxbtc15m_count)
+            .arg(commodities_count)
+            .arg(commodities_hourly_count)
+            .arg(commodities_daily_count)
+            .arg(kxbtc_daily_count);
+    };
     if (!scene.report_present) {
-        scene.census = QStringLiteral("NO FLOW · no predictions in %1, %2, or %3 — nothing for this "
-                                      "cockpit to render")
-                           .arg(QString::fromLatin1(kKalshiCalibratorFile),
-                                QString::fromLatin1(kKalshiKxbtc15mCalibratorFile),
-                                QString::fromLatin1(kKalshiCommodities15mCalibratorFile));
+        scene.census = QStringLiteral("NO FLOW · no predictions across multi-cadence calibrators — "
+                                      "nothing for this cockpit to render");
     } else if (scene.columns.isEmpty()) {
-        // Report files exist, but every open contract was filtered (closed 15m)
-        // or the family has not published the next window yet.
         scene.census = QStringLiteral("NO FLOW · waiting for next open contract · L→R · ambition "
-                                      "KXBTCD · 0 threshold · 0 kxbtc15m · 0 commodities15m");
+                                      "KXBTCD · %1")
+                           .arg(census_tail());
     } else if (scene.columns_total > scene.columns.size()) {
         scene.census = QStringLiteral("%1 of %2 watched contracts · L→R · threshold first · ambition "
-                                      "KXBTCD · |edge| · %3 not drawn · %4 threshold · %5 kxbtc15m · "
-                                      "%6 commodities15m")
+                                      "KXBTCD · |edge| · %3 not drawn · %4")
                            .arg(scene.columns.size())
                            .arg(scene.columns_total)
                            .arg(scene.columns_total - scene.columns.size())
-                           .arg(threshold_count)
-                           .arg(kxbtc15m_count)
-                           .arg(commodities_count);
+                           .arg(census_tail());
     } else {
         scene.census = QStringLiteral("%1 watched contracts · all drawn · L→R · threshold first · "
-                                      "ambition KXBTCD · %2 threshold · %3 kxbtc15m · %4 "
-                                      "commodities15m")
+                                      "ambition KXBTCD · %2")
                            .arg(scene.columns_total)
-                           .arg(threshold_count)
-                           .arg(kxbtc15m_count)
-                           .arg(commodities_count);
+                           .arg(census_tail());
     }
     if (closed_15m_dropped > 0)
         scene.census += QStringLiteral(" · %1 closed 15m omitted").arg(closed_15m_dropped);
@@ -1339,36 +1440,50 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                  QStringLiteral("grey"), false);
     }
 
-    // KXBTC15M — the directional scoreboard. Own Brier, own floor, own trust;
-    // never borrowed from the threshold calibrator.
+    // KXBTC15M — directional scoreboard; BTC daily folds into detail (no 9th node).
     {
-        const QString line = kxbtc15m_scoreboard_line(kxbtc15m_report);
+        QString line = kxbtc15m_scoreboard_line(kxbtc15m_report);
+        line += QStringLiteral(" · D %1").arg(family_cadence_chip(kxbtc_daily_report));
         const bool known = !kxbtc15m_report.isEmpty() &&
                            kxbtc15m_report.value(QStringLiteral("brier_full")).isDouble() &&
                            kxbtc15m_report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
         const bool adds_value = KalshiBotDecision::signal_trusted(kxbtc15m_report);
+        QString detail = outside_info_inspect_detail(kxbtc15m_report);
+        if (!kxbtc_daily_report.isEmpty())
+            detail += QStringLiteral("\n── KXBTC daily ──\n") +
+                      outside_info_inspect_detail(kxbtc_daily_report);
         add_node(QStringLiteral("kxbtc15m"),
                  QStringLiteral("KXBTC15M — DIRECTIONAL SCOREBOARD · click"), line,
                  !known              ? QStringLiteral("grey")
                  : adds_value        ? QStringLiteral("green")
                                      : QStringLiteral("amber"),
-                 known, outside_info_inspect_detail(kxbtc15m_report));
+                 known, detail);
     }
 
-    // Commodities 15m — GOLD/SILVER/WTI races. Own file, own trust.
+    // Commodities 15m — GOLD/SILVER/WTI races; hourly/daily fold into detail.
     {
-        const QString line = commodities_15m_scoreboard_line(commodities_15m_report);
+        QString line = commodities_15m_scoreboard_line(commodities_15m_report);
+        line += QStringLiteral(" · H %1 · D %2")
+                    .arg(family_cadence_chip(commodities_hourly_report),
+                         family_cadence_chip(commodities_daily_report));
         const bool known = !commodities_15m_report.isEmpty() &&
                            commodities_15m_report.value(QStringLiteral("brier_full")).isDouble() &&
                            commodities_15m_report.value(QStringLiteral("brier_market_mid_raw"))
                                .isDouble();
         const bool adds_value = KalshiBotDecision::signal_trusted(commodities_15m_report);
+        QString detail = outside_info_inspect_detail(commodities_15m_report);
+        if (!commodities_hourly_report.isEmpty())
+            detail += QStringLiteral("\n── commodities hourly ──\n") +
+                      outside_info_inspect_detail(commodities_hourly_report);
+        if (!commodities_daily_report.isEmpty())
+            detail += QStringLiteral("\n── commodities daily ──\n") +
+                      outside_info_inspect_detail(commodities_daily_report);
         add_node(QStringLiteral("commodities15m"),
                  QStringLiteral("COMMODITIES 15M — DIRECTIONAL SCOREBOARD · click"), line,
                  !known       ? QStringLiteral("grey")
                  : adds_value ? QStringLiteral("green")
                               : QStringLiteral("amber"),
-                 known, outside_info_inspect_detail(commodities_15m_report));
+                 known, detail);
     }
 
     // MODEL vs BOT-SETTLED Brier — the split that decides whether paper may
@@ -1582,14 +1697,18 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         const bool known = !kxbtc15m_report.isEmpty() &&
                            kxbtc15m_report.value(QStringLiteral("brier_full")).isDouble() &&
                            kxbtc15m_report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
+        // Hero keeps 15m-only colour; KPI cell uses worst-of 15m|D.
         const bool adds_value = KalshiBotDecision::signal_trusted(kxbtc15m_report);
-        const QString role = !known       ? QStringLiteral("grey")
-                             : adds_value ? QStringLiteral("green")
-                                          : QStringLiteral("amber");
-        scene.kpi << QStringLiteral("KXBTC15M %1").arg(line);
+        const QString hero_role = !known       ? QStringLiteral("grey")
+                                  : adds_value ? QStringLiteral("green")
+                                               : QStringLiteral("amber");
+        const QString role =
+            fold_cadence_trust_role({kxbtc15m_report, kxbtc_daily_report});
+        scene.kpi << QStringLiteral("BTC 15M|D %1 · D %2")
+                         .arg(line, family_cadence_chip(kxbtc_daily_report));
         scene.kpi_roles << role;
         scene.kxbtc15m_hero_line = QStringLiteral("KXBTC15M · %1").arg(line);
-        scene.kxbtc15m_hero_role = role;
+        scene.kxbtc15m_hero_role = hero_role;
         scene.kxbtc15m_hero_scored =
             kxbtc15m_report.value(QStringLiteral("scored_contracts")).toInt();
         scene.kxbtc15m_hero_floor =
@@ -1597,18 +1716,14 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         scene.kxbtc15m_hero_known = known;
     }
 
-    // Commodities 15m pace on the strip (orbit node twin).
+    // Commodities multi-cadence pace on the strip (still one KPI cell).
     {
         const QString line = commodities_15m_scoreboard_line(commodities_15m_report);
-        const bool known =
-            !commodities_15m_report.isEmpty() &&
-            commodities_15m_report.value(QStringLiteral("brier_full")).isDouble() &&
-            commodities_15m_report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
-        const bool adds_value = KalshiBotDecision::signal_trusted(commodities_15m_report);
-        const QString role = !known       ? QStringLiteral("grey")
-                             : adds_value ? QStringLiteral("green")
-                                          : QStringLiteral("amber");
-        scene.kpi << QStringLiteral("COMMOD15M %1").arg(line);
+        const QString role = fold_cadence_trust_role(
+            {commodities_15m_report, commodities_hourly_report, commodities_daily_report});
+        scene.kpi << QStringLiteral("COM 15m|H|D %1 · H %2 · D %3")
+                         .arg(line, family_cadence_chip(commodities_hourly_report),
+                              family_cadence_chip(commodities_daily_report));
         scene.kpi_roles << role;
     }
 
@@ -1784,19 +1899,46 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
             harvest_reason = QStringLiteral("FEED LIVE");
         }
 
-        // Per-family CALIBRATE chips: THR and 15M. Idle (no columns from that
-        // source) is grey so a quiet family cannot redden the strip; the
-        // banner still alarms when *no* family is active.
-        const bool threshold_active = threshold_count > 0;
-        const bool kxbtc15m_active = kxbtc15m_count > 0;
-        const bool any_active = threshold_active || kxbtc15m_active;
+        // Per-family CALIBRATE chips: THR, BTC 15m, COM 15m/H/D, BTC-D.
+        // A family is "watched" when it has rain columns OR a present report
+        // (generated_at). Missing files stay grey idle; empty-but-present
+        // reports show progress/trust so a stale COM-H file cannot hide.
+        const auto family_watched = [](const QJsonObject& family_report, int column_count) {
+            if (column_count > 0) return true;
+            return !family_report.isEmpty() &&
+                   family_report.value(QStringLiteral("generated_at_ms")).toDouble() > 0;
+        };
+        const bool threshold_active = family_watched(report, threshold_count);
+        const bool kxbtc15m_active = family_watched(kxbtc15m_report, kxbtc15m_count);
+        const bool commodities_active = family_watched(commodities_15m_report, commodities_count);
+        const bool commodities_hourly_active =
+            family_watched(commodities_hourly_report, commodities_hourly_count);
+        const bool commodities_daily_active =
+            family_watched(commodities_daily_report, commodities_daily_count);
+        const bool kxbtc_daily_active = family_watched(kxbtc_daily_report, kxbtc_daily_count);
+        const bool any_active = threshold_active || kxbtc15m_active || commodities_active ||
+                                commodities_hourly_active || commodities_daily_active ||
+                                kxbtc_daily_active;
         const bool threshold_trusted = KalshiBotDecision::signal_trusted(report);
         const bool kxbtc15m_trusted = KalshiBotDecision::signal_trusted(kxbtc15m_report);
-        const int scored_15m = kxbtc15m_report.value(QStringLiteral("scored_contracts")).toInt();
-        const int floor_15m =
-            kxbtc15m_report.value(QStringLiteral("min_scored_contracts")).toInt(100);
-        const QString progress_15m =
-            QStringLiteral("%1/%2").arg(scored_15m).arg(floor_15m);
+        const bool commodities_trusted =
+            KalshiBotDecision::signal_trusted(commodities_15m_report);
+        const bool commodities_hourly_trusted =
+            KalshiBotDecision::signal_trusted(commodities_hourly_report);
+        const bool commodities_daily_trusted =
+            KalshiBotDecision::signal_trusted(commodities_daily_report);
+        const bool kxbtc_daily_trusted = KalshiBotDecision::signal_trusted(kxbtc_daily_report);
+        const auto progress_of = [](const QJsonObject& family_report) {
+            const int scored = family_report.value(QStringLiteral("scored_contracts")).toInt();
+            const int floor =
+                family_report.value(QStringLiteral("min_scored_contracts")).toInt(100);
+            return QStringLiteral("%1/%2").arg(scored).arg(floor);
+        };
+        const QString progress_15m = progress_of(kxbtc15m_report);
+        const QString progress_com = progress_of(commodities_15m_report);
+        const QString progress_com_h = progress_of(commodities_hourly_report);
+        const QString progress_com_d = progress_of(commodities_daily_report);
+        const QString progress_btc_d = progress_of(kxbtc_daily_report);
 
         const auto family_calibrate = [](const QString& id, const QString& label, bool active,
                                          const ReportStamp& stamp, bool trusted,
@@ -1831,12 +1973,35 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         const BotCockpitHealthStage m15_stage = family_calibrate(
             QStringLiteral("calibrate_15m"), QStringLiteral("15M"), kxbtc15m_active,
             kxbtc15m_stamp, kxbtc15m_trusted, progress_15m, progress_15m);
+        const BotCockpitHealthStage com_stage = family_calibrate(
+            QStringLiteral("calibrate_commodities15m"), QStringLiteral("COM"), commodities_active,
+            commodities_stamp, commodities_trusted, progress_com, progress_com);
+        const BotCockpitHealthStage com_h_stage = family_calibrate(
+            QStringLiteral("calibrate_commodities_hourly"), QStringLiteral("COM-H"),
+            commodities_hourly_active, commodities_hourly_stamp, commodities_hourly_trusted,
+            progress_com_h, progress_com_h);
+        const BotCockpitHealthStage com_d_stage = family_calibrate(
+            QStringLiteral("calibrate_commodities_daily"), QStringLiteral("COM-D"),
+            commodities_daily_active, commodities_daily_stamp, commodities_daily_trusted,
+            progress_com_d, progress_com_d);
+        const BotCockpitHealthStage btc_d_stage = family_calibrate(
+            QStringLiteral("calibrate_kxbtc_daily"), QStringLiteral("BTC-D"), kxbtc_daily_active,
+            kxbtc_daily_stamp, kxbtc_daily_trusted, progress_btc_d, progress_btc_d);
 
         QString calibrate_reason;
         const bool any_stale =
-            (threshold_active && threshold_stamp.frozen) || (kxbtc15m_active && kxbtc15m_stamp.frozen);
+            (threshold_active && threshold_stamp.frozen) ||
+            (kxbtc15m_active && kxbtc15m_stamp.frozen) ||
+            (commodities_active && commodities_stamp.frozen) ||
+            (commodities_hourly_active && commodities_hourly_stamp.frozen) ||
+            (commodities_daily_active && commodities_daily_stamp.frozen) ||
+            (kxbtc_daily_active && kxbtc_daily_stamp.frozen);
         const bool all_active_trusted =
-            (!threshold_active || threshold_trusted) && (!kxbtc15m_active || kxbtc15m_trusted);
+            (!threshold_active || threshold_trusted) && (!kxbtc15m_active || kxbtc15m_trusted) &&
+            (!commodities_active || commodities_trusted) &&
+            (!commodities_hourly_active || commodities_hourly_trusted) &&
+            (!commodities_daily_active || commodities_daily_trusted) &&
+            (!kxbtc_daily_active || kxbtc_daily_trusted);
         if (!any_active || generated_at_ms <= 0 || scene.report_age_ms < 0 || any_stale) {
             calibrate_reason = QStringLiteral("CALIBRATOR STALE");
         } else if (all_active_trusted) {
@@ -1847,9 +2012,14 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         }
         const bool calibrate_red =
             !any_active || thr_stage.role == QLatin1String("red") ||
-            m15_stage.role == QLatin1String("red");
+            m15_stage.role == QLatin1String("red") || com_stage.role == QLatin1String("red") ||
+            com_h_stage.role == QLatin1String("red") || com_d_stage.role == QLatin1String("red") ||
+            btc_d_stage.role == QLatin1String("red");
         const bool calibrate_amber =
-            thr_stage.role == QLatin1String("amber") || m15_stage.role == QLatin1String("amber");
+            thr_stage.role == QLatin1String("amber") || m15_stage.role == QLatin1String("amber") ||
+            com_stage.role == QLatin1String("amber") || com_h_stage.role == QLatin1String("amber") ||
+            com_d_stage.role == QLatin1String("amber") ||
+            btc_d_stage.role == QLatin1String("amber");
 
         BotCockpitHealthStage decide_stage;
         decide_stage.id = QStringLiteral("decide");
@@ -1904,7 +2074,8 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         settle_stage.role = settlement.isEmpty() ? QStringLiteral("grey") : QStringLiteral("green");
         settle_stage.value = QString::number(settlement.size());
 
-        scene.health_stages = {harvest_stage, thr_stage, m15_stage, decide_stage, settle_stage};
+        scene.health_stages = {harvest_stage, thr_stage,   m15_stage,  com_stage, com_h_stage,
+                               com_d_stage,   btc_d_stage, decide_stage, settle_stage};
 
         if (harvest_stage.role == QStringLiteral("red")) {
             scene.health_role = QStringLiteral("red");
@@ -1970,6 +2141,11 @@ inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qi
     const QJsonObject kxbtc15m_report = read_report(kalshi_kxbtc15m_calibrator_path());
     const QJsonObject commodities_15m_report =
         read_report(kalshi_commodities_15m_calibrator_path());
+    const QJsonObject commodities_hourly_report =
+        read_report(kalshi_commodities_hourly_calibrator_path());
+    const QJsonObject commodities_daily_report =
+        read_report(kalshi_commodities_daily_calibrator_path());
+    const QJsonObject kxbtc_daily_report = read_report(kalshi_kxbtc_daily_calibrator_path());
     // The advisory strategy-grid verdict, read-only; missing/garbage/stale is
     // handled inside present_bot_cockpit (fails closed to UNAVAILABLE/STALE).
     QByteArray grid_json;
@@ -1984,7 +2160,8 @@ inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qi
     return present_bot_cockpit(panel, report, gate, ledger, live_status, now_ms, grid_json,
                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed,
                                kxbtc15m_report, commodities_15m_report, postmortem_current,
-                               postmortem_historic);
+                               postmortem_historic, commodities_hourly_report,
+                               commodities_daily_report, kxbtc_daily_report);
 }
 
 } // namespace openmarketterminal::screens::kalshi

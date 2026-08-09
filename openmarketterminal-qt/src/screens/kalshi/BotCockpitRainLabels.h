@@ -15,6 +15,8 @@
 #include <QTime>
 #include <QTimeZone>
 
+#include <cmath>
+
 namespace openmarketterminal::screens::kalshi {
 
 namespace bot_cockpit_detail {
@@ -75,6 +77,15 @@ inline bool bot_cockpit_15m_still_open(const QString& ticker, qint64 now_ms) {
 
 } // namespace bot_cockpit_detail
 
+/// Compact strike for floor books: `$62.9k` when ≥1000, else `$64.25`.
+inline QString bot_cockpit_compact_strike(double strike) {
+    if (strike >= 1000.0)
+        return QStringLiteral("$%1k").arg(QString::number(strike / 1000.0, 'f', 1));
+    if (std::floor(strike) == strike)
+        return QStringLiteral("$%1").arg(QString::number(strike, 'f', 0));
+    return QStringLiteral("$%1").arg(QString::number(strike, 'f', 2));
+}
+
 /// The head of a rain column, human-readable rather than a raw ticker
 /// segment:
 ///  - a *15M race (KXBTC15M / KXGOLD15M / KXSILVER15M / KXWTI15M) shows its
@@ -82,6 +93,8 @@ inline bool bot_cockpit_15m_still_open(const QString& ticker, qint64 now_ms) {
 ///    (`26JUL311730` -> `17:30`);
 ///  - a KXBTCD threshold contract shows its strike compactly
 ///    (`T62899.99` -> `$62.9k`);
+///  - commodity / BTC daily floor books show underlier + strike
+///    (`KXGOLDD-…-T4497` -> `AU $4.5k`, `KXSILVERH-…-T64.25` -> `AG $64.25`);
 ///  - anything unrecognized falls back to the previous segment-based label,
 ///    so an unfamiliar ticker still identifies itself.
 inline QString bot_cockpit_column_head(const QString& ticker) {
@@ -108,13 +121,28 @@ inline QString bot_cockpit_column_head(const QString& ticker) {
                         return QStringLiteral("%1:%2").arg(hour, minute);
                 }
             }
-        } else if (family == QStringLiteral("KXBTCD")) {
+        } else if (family == QStringLiteral("KXBTCD") || family == QStringLiteral("KXBTC")) {
             const QString strike_segment = parts.last();
             if (strike_segment.startsWith(QLatin1Char('T'))) {
                 bool ok = false;
                 const double strike = strike_segment.mid(1).toDouble(&ok);
-                if (ok)
-                    return QStringLiteral("$%1k").arg(QString::number(strike / 1000.0, 'f', 1));
+                if (ok) return bot_cockpit_compact_strike(strike);
+            }
+        } else if (family.startsWith(QStringLiteral("KXGOLD")) ||
+                   family.startsWith(QStringLiteral("KXSILVER")) ||
+                   family.startsWith(QStringLiteral("KXWTI"))) {
+            const QString strike_segment = parts.last();
+            if (strike_segment.startsWith(QLatin1Char('T'))) {
+                bool ok = false;
+                const double strike = strike_segment.mid(1).toDouble(&ok);
+                if (ok) {
+                    const QString chip = family.startsWith(QStringLiteral("KXGOLD"))
+                                            ? QStringLiteral("AU")
+                                        : family.startsWith(QStringLiteral("KXSILVER"))
+                                            ? QStringLiteral("AG")
+                                            : QStringLiteral("CL");
+                    return QStringLiteral("%1 %2").arg(chip, bot_cockpit_compact_strike(strike));
+                }
             }
         }
     }

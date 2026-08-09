@@ -1425,6 +1425,27 @@ class TestKalshiBotDecision : public QObject {
                     .contains(QStringLiteral("KXBTCD-26AUG0712-T64000")));
     }
 
+    void multi_cadence_ticker_predicates_and_filters() {
+        QVERIFY(KalshiBotDecision::is_commodity_hourly_ticker(QStringLiteral("KXGOLDH-1")));
+        QVERIFY(KalshiBotDecision::is_commodity_daily_ticker(QStringLiteral("KXWTI-26AUG1114-T84.99")));
+        QVERIFY(KalshiBotDecision::is_kxbtc_daily_ticker(QStringLiteral("KXBTC-26AUG0916-T73799.99")));
+        QVERIFY(!KalshiBotDecision::is_kxbtc_daily_ticker(QStringLiteral("KXBTCD-26AUG0915-T73799.99")));
+        QVERIFY(!KalshiBotDecision::is_kxbtc_daily_ticker(QStringLiteral("KXBTC15M-26JUL241015-15")));
+
+        QJsonObject mixed = report(0.90, 0.70, 20.0, true);
+        QJsonObject preds;
+        preds.insert(QStringLiteral("KXBTCD-26AUG0712-T64000"), prediction(0.90, 0.70, 20.0));
+        preds.insert(QStringLiteral("KXBTC-SHOULD-DROP"), prediction(0.80, 0.60, 20.0));
+        preds.insert(QStringLiteral("KXGOLDD-SHOULD-DROP"), prediction(0.70, 0.50, 20.0));
+        mixed.insert(QStringLiteral("predictions"), preds);
+        const QJsonObject only_threshold =
+            KalshiBotDecision::filter_predictions_for_family(mixed, /*keep_kxbtc15m=*/false);
+        QCOMPARE(only_threshold.value(QStringLiteral("predictions")).toObject().size(), 1);
+        QVERIFY(only_threshold.value(QStringLiteral("predictions"))
+                    .toObject()
+                    .contains(QStringLiteral("KXBTCD-26AUG0712-T64000")));
+    }
+
     void merge_family_reports_takes_each_family_from_its_source() {
         QJsonObject threshold = report(0.90, 0.70, 20.0, true);
         QJsonObject preds;

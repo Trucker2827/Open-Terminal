@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  BTC daily/band floor calibrator — series KXBTC (not KXBTCD / KXBTC15M).
+  DOCUMENTED, NOT AUTO-LOADED — install by hand:
+
+      cp org.openterminal.kxbtc-daily-calibrator.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.kxbtc-daily-calibrator.plist
+
+  ADVISORY / PAPER PATH ONLY.
+-->
+<plist version="1.0"><dict>
+  <key>Label</key><string>org.openterminal.kxbtc-daily-calibrator</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/scripts/kalshi_advise/kxbtc_daily_calibrator.py</string>
+    <string>once</string>
+  </array>
+  <key>StartInterval</key><integer>60</integer>
+  <key>RunAtLoad</key><true/>
+  <key>WorkingDirectory</key><string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt</string>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/kxbtc-daily-calibrator.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/kxbtc-daily-calibrator.err.log</string>
+</dict></plist>

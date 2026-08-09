@@ -119,6 +119,9 @@ namespace auto_cockpit_detail {
 
 /// A timestamp is stale when it is missing, older than `bound`, or in the
 /// future. A future stamp is a broken clock, not freshness.
+/// Note: Kalshi BOT rain freeze uses `age >= bound` in
+/// `present_bot_cockpit` to match `KalshiBotDecision` report refusal; Auto
+/// keeps strict `>` here (stated Auto constants / tests).
 inline bool timestamp_stale(qint64 observed_at_ms, qint64 now_ms, qint64 bound_ms) {
     if (observed_at_ms <= 0) return true;
     const qint64 age = now_ms - observed_at_ms;

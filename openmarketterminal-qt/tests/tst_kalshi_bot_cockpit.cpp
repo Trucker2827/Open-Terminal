@@ -304,8 +304,7 @@ class KalshiBotCockpitTest : public QObject {
         // The absence is stated, not left as an empty scene the viewer must
         // interpret.
         QVERIFY(scene.census.contains(QStringLiteral("NO FLOW")));
-        QVERIFY(scene.census.contains(QStringLiteral("calibrator.json")));
-        QVERIFY(scene.census.contains(QStringLiteral("kxbtc15m-calibrator.json")));
+        QVERIFY(scene.census.contains(QStringLiteral("multi-cadence calibrators")));
         QVERIFY(!scene.report_present);
         QVERIFY(scene.envelope.contains(QStringLiteral("NO DECISION JOURNALED")));
     }
@@ -388,6 +387,8 @@ class KalshiBotCockpitTest : public QObject {
                 .frozen;
         };
         QVERIFY(!frozen_at(bound - 1'000));
+        // Exact refuse age must freeze — matches KalshiBotDecision age_ms >= bound.
+        QVERIFY(frozen_at(bound));
         QVERIFY(frozen_at(bound + 1'000));
     }
 
@@ -1124,7 +1125,7 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(node->value.contains(QStringLiteral("7/100 scored")));
         QCOMPARE(node->role, QStringLiteral("amber"));
         const QString strip = scene.kpi.join(QStringLiteral(" | "));
-        QVERIFY(strip.contains(QStringLiteral("KXBTC15M")));
+        QVERIFY(strip.contains(QStringLiteral("BTC 15M|D")));
         QVERIFY(strip.contains(QStringLiteral("7/100 scored")));
     }
 
@@ -1208,12 +1209,99 @@ class KalshiBotCockpitTest : public QObject {
             if (st.id == QStringLiteral("calibrate_15m"))
                 QCOMPARE(st.value, QStringLiteral("40/100"));
         }
+        QCOMPARE(scene.health_stages.size(), 9); // HARVEST THR 15M COM COM-H COM-D BTC-D DECIDE SETTLE
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_commodities_daily")),
+                 QStringLiteral("grey"));
+        QCOMPARE(stage_value(scene, QStringLiteral("calibrate_commodities_daily")),
+                 QStringLiteral("idle"));
         // Idle family when only threshold rain is present.
         const BotCockpitScene thr_only =
             present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
                                 kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed_live());
         QCOMPARE(stage_role(thr_only, QStringLiteral("calibrate_15m")), QStringLiteral("grey"));
         QCOMPARE(stage_value(thr_only, QStringLiteral("calibrate_15m")), QStringLiteral("idle"));
+    }
+
+    void commodities_daily_calibrate_chip_lights_when_rain_has_com_d() {
+        const QJsonObject threshold =
+            calibrator_report(kNow - 10'000, QJsonObject{{"KX-A", prediction(0.55, 0.42)}});
+        QJsonObject com_d =
+            calibrator_report(kNow - 8'000,
+                              QJsonObject{{"KXGOLDD-26AUG1017-T4497", prediction(0.55, 0.42)}},
+                              /*adds_value=*/false);
+        com_d.insert(QStringLiteral("event"), QStringLiteral("commodities_daily_calibrator"));
+        com_d.insert(QStringLiteral("scored_contracts"), 12);
+        com_d.insert(QStringLiteral("min_scored_contracts"), 100);
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene = present_bot_cockpit(
+            panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(), kBotCockpitMaxColumns,
+            kBotCockpitMaxPulses, feed_live(), {}, {}, {}, {}, {}, com_d);
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_commodities_daily")),
+                 QStringLiteral("amber"));
+        QCOMPARE(stage_value(scene, QStringLiteral("calibrate_commodities_daily")),
+                 QStringLiteral("12/100"));
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_commodities15m")),
+                 QStringLiteral("grey"));
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_commodities_hourly")),
+                 QStringLiteral("grey"));
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_kxbtc_daily")), QStringLiteral("grey"));
+    }
+
+    // Empty-but-present hourly report must not hide as idle — watch the file.
+    void empty_present_hourly_report_lights_com_h_chip_not_idle() {
+        const QJsonObject threshold =
+            calibrator_report(kNow - 10'000, QJsonObject{{"KX-A", prediction(0.55, 0.42)}});
+        QJsonObject com_h = calibrator_report(kNow - 8'000, {}, /*adds_value=*/false);
+        com_h.insert(QStringLiteral("event"), QStringLiteral("commodities_hourly_calibrator"));
+        com_h.insert(QStringLiteral("scored_contracts"), 0);
+        com_h.insert(QStringLiteral("min_scored_contracts"), 100);
+        com_h.insert(QStringLiteral("predictions"), QJsonObject{});
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene scene = present_bot_cockpit(
+            panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(), kBotCockpitMaxColumns,
+            kBotCockpitMaxPulses, feed_live(), {}, {}, {}, {}, com_h);
+        QCOMPARE(stage_role(scene, QStringLiteral("calibrate_commodities_hourly")),
+                 QStringLiteral("amber"));
+        QCOMPARE(stage_value(scene, QStringLiteral("calibrate_commodities_hourly")),
+                 QStringLiteral("0/100"));
+        // Stale empty report must redden the chip (not stay idle).
+        QJsonObject stale_h = com_h;
+        stale_h.insert(QStringLiteral("generated_at_ms"),
+                       double(kNow - bot_cockpit_freeze_bound_ms()));
+        const BotCockpitScene stale = present_bot_cockpit(
+            panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(), kBotCockpitMaxColumns,
+            kBotCockpitMaxPulses, feed_live(), {}, {}, {}, {}, stale_h);
+        QCOMPARE(stage_role(stale, QStringLiteral("calibrate_commodities_hourly")),
+                 QStringLiteral("red"));
+        QCOMPARE(stage_value(stale, QStringLiteral("calibrate_commodities_hourly")),
+                 QStringLiteral("stale"));
+    }
+
+    void com_kpi_role_is_worst_of_15m_hourly_and_daily() {
+        const QJsonObject threshold =
+            calibrator_report(kNow - 10'000, QJsonObject{{"KX-A", prediction(0.55, 0.42)}},
+                              /*adds_value=*/true);
+        QJsonObject com15 = calibrator_report(kNow - 8'000, {}, /*adds_value=*/true);
+        com15.insert(QStringLiteral("event"), QStringLiteral("commodities_15m_calibrator"));
+        com15.insert(QStringLiteral("brier_full"), 0.20);
+        com15.insert(QStringLiteral("brier_market_mid_raw"), 0.22);
+        QJsonObject com_d = calibrator_report(kNow - 8'000, {}, /*adds_value=*/false);
+        com_d.insert(QStringLiteral("event"), QStringLiteral("commodities_daily_calibrator"));
+        com_d.insert(QStringLiteral("brier_full"), 0.25);
+        com_d.insert(QStringLiteral("brier_market_mid_raw"), 0.22);
+        const BotCockpitScene scene = present_bot_cockpit(
+            panel_for(passing_ledger()), threshold, {}, passing_ledger(), {}, kNow, QByteArray(),
+            kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed_live(), {}, com15, {}, {}, {}, com_d);
+        QVERIFY(!scene.kpi.isEmpty());
+        int com_idx = -1;
+        for (int i = 0; i < scene.kpi.size(); ++i) {
+            if (scene.kpi.at(i).startsWith(QStringLiteral("COM 15m|H|D"))) {
+                com_idx = i;
+                break;
+            }
+        }
+        QVERIFY(com_idx >= 0);
+        QCOMPARE(scene.kpi_roles.at(com_idx), QStringLiteral("amber"));
     }
 
     void threshold_hero_pins_ambition_scoreboard_above_rain() {
@@ -1495,6 +1583,18 @@ class KalshiBotCockpitTest : public QObject {
                  QStringLiteral("$62.9k"));
     }
 
+    // Multi-cadence commodity / BTC floor books: underlier chip + strike.
+    void column_head_shows_commodity_and_btc_daily_strikes() {
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXGOLDD-26AUG1017-T4497")),
+                 QStringLiteral("AU $4.5k"));
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXSILVERH-26AUG0915-T64.25")),
+                 QStringLiteral("AG $64.25"));
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXWTI-26AUG1017-T72.5")),
+                 QStringLiteral("CL $72.50"));
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXBTC-26AUG0917-T65000")),
+                 QStringLiteral("$65.0k"));
+    }
+
     // An unrecognized ticker family falls back to the previous behavior
     // rather than mislabeling itself.
     void column_head_falls_back_for_an_unrecognized_family() {
@@ -1637,7 +1737,8 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(baseline.columns_total, 1);
         QCOMPARE(baseline.census,
                  QStringLiteral("1 watched contracts · all drawn · L→R · threshold first · ambition "
-                                "KXBTCD · 1 threshold · 0 kxbtc15m · 0 commodities15m"));
+                                "KXBTCD · 1 threshold · 0 kxbtc15m · 0 commodities15m · 0 "
+                                "commodities_hourly · 0 commodities_daily · 0 kxbtc_daily"));
         QCOMPARE(baseline.nodes.size(), 8);
         QVERIFY(!baseline.node(QStringLiteral("kxbtc15m"))->detail.isEmpty());
         QVERIFY(!baseline.node(QStringLiteral("commodities15m"))->detail.isEmpty());
@@ -1655,10 +1756,10 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(baseline.lessons.size(), 1);
         QVERIFY(baseline.lessons.first().contains(QStringLiteral("UNAVAILABLE")));
         QVERIFY(!baseline.kpi_available);
-        // Decision-rate + KXBTC15M + COMMOD15M + model|bot Brier + postmortem.
+        // Decision-rate + BTC 15M|D + COM 15m|H|D + model|bot Brier + postmortem.
         QCOMPARE(baseline.kpi.size(), 6);
-        QVERIFY(baseline.kpi.at(baseline.kpi.size() - 4).startsWith(QStringLiteral("KXBTC15M")));
-        QVERIFY(baseline.kpi.at(baseline.kpi.size() - 3).startsWith(QStringLiteral("COMMOD15M")));
+        QVERIFY(baseline.kpi.at(baseline.kpi.size() - 4).startsWith(QStringLiteral("BTC 15M|D")));
+        QVERIFY(baseline.kpi.at(baseline.kpi.size() - 3).startsWith(QStringLiteral("COM 15m|H|D")));
         QVERIFY(baseline.kpi.at(baseline.kpi.size() - 2).startsWith(QStringLiteral("BRIER model")));
         QVERIFY(baseline.kpi.last().startsWith(QStringLiteral("PM ")));
         // PM KPI inspect body is always present (even UNAVAILABLE) — no 9th node.
