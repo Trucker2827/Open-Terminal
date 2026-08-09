@@ -2,8 +2,6 @@
 
 #include "core/config/ProfileManager.h"
 #include "mcp/tools/SettingsGate.h"
-#include "services/edge_radar/EdgeProofStats.h"
-#include "storage/sqlite/Database.h"
 #include "ui/theme/Theme.h"
 
 #include <QAbstractItemView>
@@ -13,14 +11,11 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
-#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QLabel>
 #include <QListWidget>
-#include <QMap>
 #include <QPushButton>
-#include <QSqlQuery>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -29,29 +24,7 @@ namespace openmarketterminal::screens::crypto {
 namespace {
 
 using namespace openmarketterminal::ui;
-namespace proof = openmarketterminal::services::edge_radar;
 namespace mcp = openmarketterminal::mcp;
-
-constexpr int kProofWindowHours = 48;
-constexpr double kProofAmountUsd = 100.0;
-constexpr int kProofRowLimit = 5000;
-constexpr int kProofRefreshMs = 30000;
-
-QString proof_pct(double rate) {
-    return QString::number(rate * 100.0, 'f', 1) + QStringLiteral("%");
-}
-
-QString proof_money(double usd) {
-    return QStringLiteral("$%1").arg(QString::number(usd, 'f', 4));
-}
-
-QString proof_verdict_color(const QString& verdict) {
-    if (verdict.contains(QLatin1String("PROVING")) || verdict == QLatin1String("NO-TRADE EDGE"))
-        return colors::POSITIVE();
-    if (verdict.contains(QLatin1String("WEAK"))) return colors::NEGATIVE();
-    if (verdict == QLatin1String("WARMUP")) return colors::TEXT_SECONDARY();
-    return colors::WARNING();
-}
 
 QString role_color(const QString& role) {
     if (role == QLatin1String("green")) return colors::POSITIVE();
@@ -194,10 +167,11 @@ CryptoAutomationCockpit::CryptoAutomationCockpit(QWidget* parent) : QWidget(pare
     proof_grid->setContentsMargins(10, 7, 10, 7);
     proof_grid->setHorizontalSpacing(18);
     proof_grid->setVerticalSpacing(3);
-    proof_grid->addWidget(text_label("cryptoCockpitSection", tr("PAPER PROOF — CUMULATIVE SCOREBOARD")),
-                          0, 0, 1, 6);
-    const QStringList proof_headers{tr("SCOPE"), tr("VERDICT"), tr("SAMPLE"),
-                                    tr("P&L AFTER COST"), tr("BUY WIN"), tr("NO-TRADE OK")};
+    proof_grid->addWidget(
+        text_label("cryptoCockpitSection", tr("SCALP SHADOW PROOF — crypto-scalp-qualification-v1")),
+        0, 0, 1, 6);
+    const QStringList proof_headers{tr("SCOPE"), tr("STATE"), tr("SAMPLE"), tr("MEAN NET"),
+                                    tr("WIN RATE"), tr("COVERAGE / CI")};
     for (int column = 0; column < proof_headers.size(); ++column) {
         proof_grid->addWidget(text_label("cryptoCockpitField", proof_headers[column]), 1, column);
         proof_grid->setColumnStretch(column, 1);
@@ -258,12 +232,7 @@ CryptoAutomationCockpit::CryptoAutomationCockpit(QWidget* parent) : QWidget(pare
     refresh_timer_->setInterval(1000);
     connect(refresh_timer_, &QTimer::timeout, this, &CryptoAutomationCockpit::refresh);
     refresh_timer_->start();
-    proof_timer_ = new QTimer(this);
-    proof_timer_->setInterval(kProofRefreshMs);
-    connect(proof_timer_, &QTimer::timeout, this, &CryptoAutomationCockpit::refresh_proof);
-    proof_timer_->start();
     refresh();
-    refresh_proof();
 }
 
 void CryptoAutomationCockpit::set_exchange_context(const QString& exchange_id, bool is_paper) {
@@ -370,16 +339,15 @@ void CryptoAutomationCockpit::bind_scene(const CryptoCockpitScene& scene) {
     qualification_value_->setStyleSheet(
         QStringLiteral("color:%1;").arg(role_color(scene.qualification_role)));
     qualification_detail_->setText(scene.qualification_detail);
+
+    render_proof_row(proof_symbol_row_, scene.proof_symbol);
+    render_proof_row(proof_all_row_, scene.proof_all);
+    proof_status_->setText(scene.proof_status);
 }
 
 void CryptoAutomationCockpit::refresh() {
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-    const CryptoCockpitScene scene = present_crypto_cockpit(build_inputs(now_ms));
-    bind_scene(scene);
-    if (scene.decide_symbol != active_symbol_) {
-        active_symbol_ = scene.decide_symbol;
-        refresh_proof();
-    }
+    bind_scene(present_crypto_cockpit(build_inputs(now_ms)));
 }
 
 CryptoAutomationCockpit::ProofRow CryptoAutomationCockpit::make_proof_row(QGridLayout* grid,
@@ -392,124 +360,28 @@ CryptoAutomationCockpit::ProofRow CryptoAutomationCockpit::make_proof_row(QGridL
     cell(0, row.scope);
     cell(1, row.verdict);
     cell(2, row.sample);
-    cell(3, row.pnl);
-    cell(4, row.buy_rate);
-    cell(5, row.no_trade_rate);
+    cell(3, row.mean_net);
+    cell(4, row.win_rate);
+    cell(5, row.coverage);
     return row;
 }
 
-void CryptoAutomationCockpit::clear_proof_row(ProofRow& row, const QString& scope,
-                                              const QString& note) {
-    row.scope->setText(scope);
-    row.verdict->setText(note);
-    row.verdict->setStyleSheet(QStringLiteral("color:%1;").arg(colors::TEXT_SECONDARY()));
-    for (QLabel* label : {row.sample, row.pnl, row.buy_rate, row.no_trade_rate})
-        label->setText(QStringLiteral("--"));
-}
-
-void CryptoAutomationCockpit::render_proof_row(ProofRow& row, const QString& scope,
-                                               const proof::EdgeProofStats& s) {
-    row.scope->setText(scope);
-    const QString verdict = proof::edge_proof_verdict(s);
-    row.verdict->setText(verdict);
-    row.verdict->setStyleSheet(QStringLiteral("color:%1;").arg(proof_verdict_color(verdict)));
-    row.sample->setText(QStringLiteral("%1/%2 · %3")
-                            .arg(s.resolved)
-                            .arg(s.signal_count)
-                            .arg(proof::edge_proof_sample_status(s.resolved)));
-    if (s.buy_resolved > 0) {
-        row.pnl->setText(proof_money(s.paper_pnl));
-        row.pnl->setStyleSheet(QStringLiteral("color:%1;").arg(
-            s.paper_pnl > 0.0 ? colors::POSITIVE() : colors::NEGATIVE()));
-        row.buy_rate->setText(proof_pct(proof::edge_proof_rate(s.buy_wins, s.buy_resolved)));
+void CryptoAutomationCockpit::render_proof_row(ProofRow& row, const CryptoCockpitProofRow& proof) {
+    row.scope->setText(proof.scope);
+    row.verdict->setText(proof.verdict);
+    row.verdict->setStyleSheet(QStringLiteral("color:%1;").arg(role_color(proof.verdict_role)));
+    row.sample->setText(proof.sample);
+    row.mean_net->setText(proof.mean_net);
+    if (proof.has_metrics && proof.mean_net != QLatin1String("--")) {
+        row.mean_net->setStyleSheet(QStringLiteral("color:%1;")
+                                        .arg(proof.mean_net.startsWith(QLatin1Char('-'))
+                                                 ? colors::NEGATIVE()
+                                                 : colors::POSITIVE()));
     } else {
-        row.pnl->setText(QStringLiteral("--"));
-        row.pnl->setStyleSheet({});
-        row.buy_rate->setText(QStringLiteral("--"));
+        row.mean_net->setStyleSheet({});
     }
-    row.no_trade_rate->setText(
-        s.no_trade_resolved > 0
-            ? proof_pct(proof::edge_proof_rate(s.no_trade_correct, s.no_trade_resolved))
-            : QStringLiteral("--"));
-}
-
-void CryptoAutomationCockpit::refresh_proof() {
-    const QString all_scope = tr("ALL SYMBOLS");
-    const QString symbol_scope = active_symbol_.isEmpty() ? tr("ACTIVE SYMBOL") : active_symbol_;
-    const qint64 min_ts =
-        QDateTime::currentMSecsSinceEpoch() - static_cast<qint64>(kProofWindowHours) * 3600000LL;
-    // Include both recommend and auto-scalp journal sources so the scoreboard
-    // matches the running daemon (crypto-auto-scalp-v1) and the older proof loop.
-    auto r = Database::instance().execute(
-        QStringLiteral(
-            "SELECT symbol, side, call, spread_cost, fee_cost, outcome, reasons"
-            " FROM edge_decision_journal"
-            " WHERE source IN ('edge crypto-recommend','crypto-auto-scalp-v1') AND created_at>=?"
-            " ORDER BY created_at DESC LIMIT %1")
-            .arg(kProofRowLimit),
-        {min_ts});
-    if (r.is_err()) {
-        clear_proof_row(proof_symbol_row_, symbol_scope, tr("JOURNAL UNAVAILABLE"));
-        clear_proof_row(proof_all_row_, all_scope, tr("JOURNAL UNAVAILABLE"));
-        proof_status_->setText(
-            tr("Decision journal could not be read: %1").arg(QString::fromStdString(r.error())));
-        return;
-    }
-
-    proof::EdgeProofStats aggregate;
-    QMap<QString, proof::EdgeProofStats> by_symbol;
-    int unpriced = 0;
-    auto& q = r.value();
-    while (q.next()) {
-        const QString row_symbol = q.value(0).toString();
-        const bool buy_call =
-            proof::edge_proof_is_buy_call(q.value(2).toString(), q.value(1).toString());
-        proof::EdgeProofRowOutcome row;
-        const int outcome = q.value(5).toInt();
-        if (outcome >= 0) {
-            double move = 0.0;
-            if (!proof::edge_proof_parse_scored_move(q.value(6).toString(), &move)) {
-                ++unpriced;
-                continue;
-            }
-            row = proof::EdgeProofRowOutcome{
-                true, outcome, move, std::max(0.0, q.value(3).toDouble() + q.value(4).toDouble())};
-        }
-        auto sym_stats = by_symbol.value(row_symbol);
-        proof::edge_proof_accumulate(aggregate, buy_call, row, kProofAmountUsd);
-        proof::edge_proof_accumulate(sym_stats, buy_call, row, kProofAmountUsd);
-        by_symbol.insert(row_symbol, sym_stats);
-    }
-
-    if (aggregate.signal_count == 0) {
-        clear_proof_row(proof_symbol_row_, symbol_scope, tr("NO RESOLVED SIGNALS YET"));
-        clear_proof_row(proof_all_row_, all_scope, tr("NO RESOLVED SIGNALS YET"));
-        proof_status_->setText(
-            tr("No `edge crypto-recommend` / `crypto-auto-scalp-v1` signals in the last %1h — the "
-               "proof loop has nothing to score yet.")
-                .arg(kProofWindowHours));
-        return;
-    }
-
-    if (active_symbol_.isEmpty() || !by_symbol.contains(active_symbol_))
-        clear_proof_row(proof_symbol_row_, symbol_scope,
-                        active_symbol_.isEmpty() ? tr("NO ACTIVE ENGINE SYMBOL")
-                                                 : tr("NO SIGNALS IN WINDOW"));
-    else
-        render_proof_row(proof_symbol_row_, symbol_scope, by_symbol.value(active_symbol_));
-    render_proof_row(proof_all_row_, all_scope, aggregate);
-
-    QString status =
-        tr("Resolved/signals over the last %1h at $%2 paper per signal, newest %3 rows — "
-           "SQLite sources: edge crypto-recommend + crypto-auto-scalp-v1. "
-           "Daemon opportunity tape is scalp_state/decisions (jsonl), not this scoreboard. "
-           "Read-only.")
-            .arg(kProofWindowHours)
-            .arg(QString::number(kProofAmountUsd, 'f', 0))
-            .arg(kProofRowLimit);
-    if (unpriced > 0)
-        status += tr(" %1 resolved row(s) lack a persisted score and are excluded.").arg(unpriced);
-    proof_status_->setText(status);
+    row.win_rate->setText(proof.win_rate);
+    row.coverage->setText(proof.coverage);
 }
 
 } // namespace openmarketterminal::screens::crypto

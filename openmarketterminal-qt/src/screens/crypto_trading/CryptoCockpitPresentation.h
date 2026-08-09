@@ -55,6 +55,18 @@ struct CryptoCockpitTapeRow {
     QStringList blockers;
 };
 
+/// Shadow proof row bound to crypto-scalp-qualification-v1 (not SQLite recommend).
+struct CryptoCockpitProofRow {
+    QString scope;
+    QString verdict;      ///< QUALIFIED / SHADOW / AWAITING / NO DATA / …
+    QString verdict_role; ///< green | red | amber | grey
+    QString sample;       ///< "resolved/candidates · …"
+    QString mean_net;     ///< bps text
+    QString win_rate;     ///< percent text
+    QString coverage;     ///< coverage or CI summary
+    bool has_metrics = false;
+};
+
 struct CryptoCockpitScene {
     // Mood / authority (read-only)
     QString mood;              ///< "PAPER SCALP" | "CANARY ON"
@@ -98,6 +110,11 @@ struct CryptoCockpitScene {
     QString qualification_state; ///< "QUALIFIED" | "FAIL" | "UNAVAILABLE" | "STALE"
     QString qualification_role;
     QString qualification_detail;
+
+    // SCALP SHADOW PROOF — same report authority as qualification (jsonl)
+    CryptoCockpitProofRow proof_all;
+    CryptoCockpitProofRow proof_symbol;
+    QString proof_status;
 };
 
 inline QString crypto_cockpit_venue_title(const QString& id) {
@@ -205,6 +222,125 @@ inline QString crypto_cockpit_selected_venue_of(const QJsonObject& decision) {
     return decision.value(QStringLiteral("selected_venue"))
         .toString(decision.value(QStringLiteral("venue")).toString())
         .toLower();
+}
+
+inline QString crypto_cockpit_pct_text(double rate) {
+    return QString::number(rate * 100.0, 'f', 1) + QStringLiteral("%");
+}
+
+inline void crypto_cockpit_proof_row_empty(CryptoCockpitProofRow* row, const QString& scope,
+                                           const QString& note, const QString& role) {
+    row->scope = scope;
+    row->verdict = note;
+    row->verdict_role = role;
+    row->sample = QStringLiteral("--");
+    row->mean_net = QStringLiteral("--");
+    row->win_rate = QStringLiteral("--");
+    row->coverage = QStringLiteral("--");
+    row->has_metrics = false;
+}
+
+/// Fill aggregate + optional per-symbol proof from scalp_qualification_v1.json.
+inline void crypto_cockpit_fill_proof(const QJsonObject& qualification,
+                                      const QString& active_symbol,
+                                      const QString& qualification_state,
+                                      CryptoCockpitProofRow* proof_all,
+                                      CryptoCockpitProofRow* proof_symbol,
+                                      QString* proof_status) {
+    const QString all_scope = QStringLiteral("ALL SYMBOLS");
+    const QString symbol_scope =
+        active_symbol.isEmpty() ? QStringLiteral("ACTIVE SYMBOL") : active_symbol;
+    const QString version = qualification.value(QStringLiteral("report_version")).toString();
+    if (qualification.isEmpty() || version != QLatin1String("crypto-scalp-qualification-v1")) {
+        crypto_cockpit_proof_row_empty(proof_all, all_scope, QStringLiteral("NO DATA"),
+                                       QStringLiteral("grey"));
+        crypto_cockpit_proof_row_empty(proof_symbol, symbol_scope, QStringLiteral("NO DATA"),
+                                       QStringLiteral("grey"));
+        *proof_status = QStringLiteral(
+            "SCALP SHADOW PROOF reads scalp_qualification_v1.json "
+            "(crypto-scalp-qualification-v1 over scalp_decisions.jsonl). "
+            "No report yet — not the edge crypto-recommend SQLite scoreboard.");
+        return;
+    }
+
+    const int resolved = qualification.value(QStringLiteral("resolved_count")).toInt();
+    const int candidates = qualification.value(QStringLiteral("candidate_count")).toInt();
+    const int required = qualification.value(QStringLiteral("required_resolved")).toInt(200);
+    const double coverage = qualification.value(QStringLiteral("coverage")).toDouble();
+    const double mean_net = qualification.value(QStringLiteral("mean_net_bps")).toDouble();
+    const double win_rate = qualification.value(QStringLiteral("win_rate")).toDouble();
+    const QJsonArray ci = qualification.value(QStringLiteral("mean_net_ci95")).toArray();
+    const double ci_low = ci.size() > 0 ? ci.at(0).toDouble() : 0.0;
+    const double ci_high = ci.size() > 1 ? ci.at(1).toDouble() : 0.0;
+    const QString raw_state = qualification.value(QStringLiteral("state")).toString();
+
+    proof_all->scope = all_scope;
+    proof_all->has_metrics = true;
+    if (qualification_state == QLatin1String("QUALIFIED")) {
+        proof_all->verdict = QStringLiteral("QUALIFIED");
+        proof_all->verdict_role = QStringLiteral("green");
+    } else if (resolved <= 0) {
+        proof_all->verdict = QStringLiteral("AWAITING");
+        proof_all->verdict_role = QStringLiteral("amber");
+    } else {
+        proof_all->verdict = raw_state.isEmpty() ? QStringLiteral("SHADOW") : raw_state;
+        proof_all->verdict_role = QStringLiteral("red");
+    }
+    proof_all->sample = QStringLiteral("%1/%2 · need %3")
+                            .arg(resolved)
+                            .arg(candidates)
+                            .arg(required);
+    proof_all->mean_net = resolved > 0 ? crypto_cockpit_bps_text(mean_net) : QStringLiteral("--");
+    proof_all->win_rate = resolved > 0 ? crypto_cockpit_pct_text(win_rate) : QStringLiteral("--");
+    proof_all->coverage =
+        resolved > 0
+            ? QStringLiteral("cov %1 · CI [%2, %3]")
+                  .arg(crypto_cockpit_pct_text(coverage), crypto_cockpit_bps_text(ci_low),
+                       crypto_cockpit_bps_text(ci_high))
+            : QStringLiteral("cov %1 · awaiting horizon").arg(crypto_cockpit_pct_text(coverage));
+
+    // Per-symbol rollup from report.resolved[] when present.
+    int sym_resolved = 0;
+    int sym_wins = 0;
+    double sym_net_sum = 0.0;
+    const QString want = active_symbol.trimmed().toUpper();
+    for (const auto& value : qualification.value(QStringLiteral("resolved")).toArray()) {
+        const QJsonObject row = value.toObject();
+        const QString sym = row.value(QStringLiteral("symbol")).toString().trimmed().toUpper();
+        if (want.isEmpty() || sym != want) continue;
+        ++sym_resolved;
+        sym_net_sum += row.value(QStringLiteral("net_bps")).toDouble();
+        if (row.value(QStringLiteral("won")).toBool()) ++sym_wins;
+    }
+
+    if (want.isEmpty()) {
+        crypto_cockpit_proof_row_empty(proof_symbol, symbol_scope,
+                                       QStringLiteral("NO ACTIVE ENGINE SYMBOL"),
+                                       QStringLiteral("grey"));
+    } else if (sym_resolved <= 0) {
+        crypto_cockpit_proof_row_empty(
+            proof_symbol, symbol_scope,
+            resolved <= 0 ? QStringLiteral("AWAITING") : QStringLiteral("NO SYMBOL RESOLVES"),
+            QStringLiteral("amber"));
+        proof_symbol->sample = QStringLiteral("0 resolved on %1").arg(want);
+    } else {
+        const double sym_mean = sym_net_sum / static_cast<double>(sym_resolved);
+        const double sym_wr = static_cast<double>(sym_wins) / static_cast<double>(sym_resolved);
+        proof_symbol->scope = want;
+        proof_symbol->has_metrics = true;
+        proof_symbol->verdict = sym_mean > 0.0 ? QStringLiteral("NET+") : QStringLiteral("NET-");
+        proof_symbol->verdict_role = sym_mean > 0.0 ? QStringLiteral("green") : QStringLiteral("red");
+        proof_symbol->sample =
+            QStringLiteral("%1 resolved · of report %2").arg(sym_resolved).arg(resolved);
+        proof_symbol->mean_net = crypto_cockpit_bps_text(sym_mean);
+        proof_symbol->win_rate = crypto_cockpit_pct_text(sym_wr);
+        proof_symbol->coverage = QStringLiteral("symbol slice of shadow report");
+    }
+
+    *proof_status = QStringLiteral(
+        "SCALP SHADOW PROOF from crypto-scalp-qualification-v1 "
+        "(scalp_decisions.jsonl + ticks). Same authority as QUALIFICATION. "
+        "Not edge crypto-recommend SQLite. Read-only.");
 }
 
 inline CryptoCockpitTapeRow crypto_cockpit_tape_row_of(const QJsonObject& decision) {
@@ -325,6 +461,8 @@ inline CryptoCockpitScene present_crypto_cockpit(const CryptoCockpitInputs& inpu
     crypto_cockpit_qualification_of(inputs.qualification, inputs.qualification_age_ms,
                                     &scene.qualification_state, &scene.qualification_role,
                                     &scene.qualification_detail);
+    crypto_cockpit_fill_proof(inputs.qualification, scene.decide_symbol, scene.qualification_state,
+                              &scene.proof_all, &scene.proof_symbol, &scene.proof_status);
     return scene;
 }
 

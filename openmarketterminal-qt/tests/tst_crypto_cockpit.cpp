@@ -176,6 +176,77 @@ class CryptoCockpitTest final : public QObject {
         QCOMPARE(scene.decide_net, QStringLiteral("12.5 bps"));
         QVERIFY(!scene.mood.contains(QStringLiteral("LIVE ARMED")));
     }
+
+    void shadow_proof_awaits_when_qualification_unresolved() {
+        CryptoCockpitInputs inputs;
+        inputs.now_ms = 1'000'000;
+        inputs.scalp_state = running_state(
+            {decision(QStringLiteral("BTC-USD"), QStringLiteral("WAIT"), QStringLiteral("flat"),
+                      -1.0)});
+        inputs.qualification = QJsonObject{
+            {QStringLiteral("report_version"), QStringLiteral("crypto-scalp-qualification-v1")},
+            {QStringLiteral("state"), QStringLiteral("SHADOW")},
+            {QStringLiteral("execution_eligible"), false},
+            {QStringLiteral("candidate_count"), 614},
+            {QStringLiteral("resolved_count"), 0},
+            {QStringLiteral("required_resolved"), 200},
+            {QStringLiteral("coverage"), 0.0},
+            {QStringLiteral("mean_net_bps"), 0.0},
+            {QStringLiteral("mean_net_ci95"), QJsonArray{0.0, 0.0}},
+            {QStringLiteral("win_rate"), 0.0},
+            {QStringLiteral("resolved"), QJsonArray{}}};
+        inputs.qualification_age_ms = 1'000;
+        const auto scene = present_crypto_cockpit(inputs);
+        QCOMPARE(scene.qualification_state, QStringLiteral("FAIL"));
+        QVERIFY(scene.qualification_detail.contains(QStringLiteral("SHADOW")));
+        QCOMPARE(scene.proof_all.verdict, QStringLiteral("AWAITING"));
+        QCOMPARE(scene.proof_all.sample, QStringLiteral("0/614 · need 200"));
+        QVERIFY(scene.proof_status.contains(QStringLiteral("scalp_decisions.jsonl")));
+        QVERIFY(scene.proof_status.contains(QStringLiteral("Not edge crypto-recommend")));
+        QVERIFY(!scene.proof_status.contains(QStringLiteral("SQLite sources")));
+    }
+
+    void shadow_proof_matches_qualified_report_metrics() {
+        CryptoCockpitInputs inputs;
+        inputs.now_ms = 1'000'000;
+        inputs.scalp_state = running_state(
+            {decision(QStringLiteral("BTC-USD"), QStringLiteral("PAPER TRADE CANDIDATE"),
+                      QStringLiteral("up"), 8.0)});
+        inputs.qualification = QJsonObject{
+            {QStringLiteral("report_version"), QStringLiteral("crypto-scalp-qualification-v1")},
+            {QStringLiteral("state"), QStringLiteral("QUALIFIED")},
+            {QStringLiteral("execution_eligible"), true},
+            {QStringLiteral("candidate_count"), 250},
+            {QStringLiteral("resolved_count"), 210},
+            {QStringLiteral("required_resolved"), 200},
+            {QStringLiteral("coverage"), 0.84},
+            {QStringLiteral("mean_net_bps"), 3.5},
+            {QStringLiteral("mean_net_ci95"), QJsonArray{1.2, 5.8}},
+            {QStringLiteral("win_rate"), 0.55},
+            {QStringLiteral("resolved"),
+             QJsonArray{QJsonObject{{QStringLiteral("symbol"), QStringLiteral("BTC-USD")},
+                                    {QStringLiteral("net_bps"), 4.0},
+                                    {QStringLiteral("won"), true}},
+                        QJsonObject{{QStringLiteral("symbol"), QStringLiteral("BTC-USD")},
+                                    {QStringLiteral("net_bps"), 2.0},
+                                    {QStringLiteral("won"), false}},
+                        QJsonObject{{QStringLiteral("symbol"), QStringLiteral("ETH-USD")},
+                                    {QStringLiteral("net_bps"), -1.0},
+                                    {QStringLiteral("won"), false}}}}};
+        inputs.qualification_age_ms = 1'000;
+        const auto scene = present_crypto_cockpit(inputs);
+        QCOMPARE(scene.qualification_state, QStringLiteral("QUALIFIED"));
+        QCOMPARE(scene.proof_all.verdict, QStringLiteral("QUALIFIED"));
+        QCOMPARE(scene.proof_all.sample, QStringLiteral("210/250 · need 200"));
+        QCOMPARE(scene.proof_all.mean_net, QStringLiteral("3.5 bps"));
+        QCOMPARE(scene.proof_all.win_rate, QStringLiteral("55.0%"));
+        QVERIFY(scene.proof_all.coverage.contains(QStringLiteral("84.0%")));
+        QCOMPARE(scene.proof_symbol.scope, QStringLiteral("BTC-USD"));
+        QCOMPARE(scene.proof_symbol.mean_net, QStringLiteral("3.0 bps"));
+        QCOMPARE(scene.proof_symbol.win_rate, QStringLiteral("50.0%"));
+        QVERIFY(scene.proof_status.contains(QStringLiteral("crypto-scalp-qualification-v1")));
+        QVERIFY(scene.proof_status.contains(QStringLiteral("Not edge crypto-recommend")));
+    }
 };
 
 QTEST_MAIN(CryptoCockpitTest)

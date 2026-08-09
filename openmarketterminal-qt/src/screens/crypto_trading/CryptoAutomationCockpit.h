@@ -9,10 +9,6 @@ class QLabel;
 class QTimer;
 class QListWidget;
 
-namespace openmarketterminal::services::edge_radar {
-struct EdgeProofStats;
-}
-
 namespace openmarketterminal::screens::crypto {
 
 /// Read-only operational view of the selected crypto venue plus the local
@@ -31,16 +27,15 @@ class CryptoAutomationCockpit : public QWidget {
 
   private slots:
     void refresh();
-    void refresh_proof();
 
   private:
     struct ProofRow {
         QLabel* scope = nullptr;
         QLabel* verdict = nullptr;
         QLabel* sample = nullptr;
-        QLabel* pnl = nullptr;
-        QLabel* buy_rate = nullptr;
-        QLabel* no_trade_rate = nullptr;
+        QLabel* mean_net = nullptr;
+        QLabel* win_rate = nullptr;
+        QLabel* coverage = nullptr;
     };
 
     static QJsonObject read_json(const QString& path);
@@ -49,9 +44,7 @@ class CryptoAutomationCockpit : public QWidget {
     void bind_scene(const CryptoCockpitScene& scene);
     void set_metric(QLabel* value, QLabel* caption, const QString& text, const QString& color);
     ProofRow make_proof_row(class QGridLayout* grid, int grid_row);
-    void clear_proof_row(ProofRow& row, const QString& scope, const QString& note);
-    void render_proof_row(ProofRow& row, const QString& scope,
-                          const services::edge_radar::EdgeProofStats& stats);
+    void render_proof_row(ProofRow& row, const CryptoCockpitProofRow& proof);
 
     QLabel* mood_value_ = nullptr;
     QLabel* mood_detail_ = nullptr;
@@ -82,9 +75,7 @@ class CryptoAutomationCockpit : public QWidget {
     ProofRow proof_all_row_;
     QLabel* proof_status_ = nullptr;
     QTimer* refresh_timer_ = nullptr;
-    QTimer* proof_timer_ = nullptr;
     QString exchange_id_ = QStringLiteral("coinbase");
-    QString active_symbol_;
     bool is_paper_ = true;
 };
 

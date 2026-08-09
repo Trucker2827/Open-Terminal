@@ -9,6 +9,7 @@
 #include <QMutexLocker>
 #include <QPainter>
 #include <QShowEvent>
+#include <QSizePolicy>
 #include <QStyle>
 #include <QVBoxLayout>
 
@@ -117,7 +118,9 @@ CryptoOrderBook::CryptoOrderBook(QWidget* parent) : QWidget(parent) {
     // The rest is custom-painted
     layout->addStretch(1);
 
-    setMinimumHeight(200);
+    // Keep the book usable but never so tall that the ticket below vanishes.
+    setMinimumHeight(160);
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
 
     // Coalesce repaint: max 20fps instead of per-message
     repaint_timer_ = new QTimer(this);
