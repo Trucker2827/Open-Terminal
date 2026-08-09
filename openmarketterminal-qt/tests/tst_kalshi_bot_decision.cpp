@@ -449,6 +449,28 @@ class TestKalshiBotDecision : public QObject {
                  0.72);
     }
 
+    /// Paper KXBTCD rest-first: allow_cross=false rests even when net EV would
+    /// clear the cross margin, and journals REST_FIRST_POLICY (not BELOW_COST).
+    void allow_cross_false_forces_rest_first_policy() {
+        KalshiBotDecision::Config config;
+        config.allow_cross = false;
+        config.rest_premium_usd = 0.0;  // isolate the style reason
+        const QJsonArray rows = KalshiBotDecision::decide(
+            with_book(report(0.95, 0.83, 10.0), {{QStringLiteral("market_yes_bid"), 0.82},
+                                                 {QStringLiteral("market_yes_ask"), 0.84}}),
+            {}, {}, kNow, config);
+        const QJsonObject row = only_row(rows);
+        QCOMPARE(action(rows), QStringLiteral("bid"));
+        QCOMPARE(row.value(QStringLiteral("quote_style")).toString(), QStringLiteral("rest"));
+        QCOMPARE(row.value(QStringLiteral("quote_style_reason")).toString(),
+                 QStringLiteral("REST_FIRST_POLICY"));
+        QCOMPARE(row.value(QStringLiteral("price")).toDouble(), 0.83);  // mid rest
+        // Arithmetic of the refused cross stays on the row for the ledger.
+        QCOMPARE(row.value(QStringLiteral("net_ev_usd")).toDouble(), 0.10);
+        QVERIFY(row.value(QStringLiteral("net_ev_usd")).toDouble() >
+                row.value(QStringLiteral("cross_margin_usd")).toDouble());
+    }
+
     /// Postmortem lesson: crossing a favourite ask needs extra surviving EV.
     void favourite_cross_requires_extra_margin_else_rests() {
         KalshiBotDecision::Config config;

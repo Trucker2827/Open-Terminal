@@ -377,8 +377,15 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
                 cross_price + 1e-9 >= config.favourite_cross_price)
                 effective_cross_margin =
                     config.cross_margin_usd + config.favourite_cross_extra_margin_usd;
-            cross = net_ev > effective_cross_margin + 1e-9;
-            style_reason = cross ? kCrossEdgeClearsCost : kRestEdgeBelowCost;
+            if (!config.allow_cross) {
+                // Rest-first policy: journal the EV that *would* have crossed
+                // so the ledger still shows why a fill at ask was refused.
+                cross = false;
+                style_reason = kRestFirstPolicy;
+            } else {
+                cross = net_ev > effective_cross_margin + 1e-9;
+                style_reason = cross ? kCrossEdgeClearsCost : kRestEdgeBelowCost;
+            }
         }
 
         const double price = cross ? cross_price : rest_price;

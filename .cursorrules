@@ -1,14 +1,16 @@
 # Open-Terminal — Cursor scratchpad & lessons
 
-## Scratchpad — Cockpit ambition on KXBTCD (2026-08-09)
+## Scratchpad — Paper KXBTCD rest-first + eligible autopsy (2026-08-09)
 
-Task: Paper ambition on strike/threshold (KXBTCD), not 15m lottery.
-Bot already runs both families with separate trust. Cockpit should pin
-THRESHOLD hero, rain-sort threshold first, keep 15m as scoreboard/KPI.
+Task: Prefer rest on paper threshold (no ask crosses); add calibrator
+eligible-loss autopsy (≠ bid postmortem) so we can see when model loses
+to mid near money before trust flips.
 
-[X] threshold_scoreboard_line + threshold_hero_* on scene
-[X] Rain rank threshold→15m→commodities; census “threshold first · ambition KXBTCD”
-[X] View paints threshold hero; tests (72) + rebuild/relaunch
+[X] Config allow_cross + threshold_rest_first; REST_FIRST_POLICY
+[X] Paper CLI default rest-first; --allow-threshold-cross opt-out; live off
+[X] eligible_loss_autopsy.py + kalshi bot eligible-autopsy + tests
+[X] Rebuild CLI; kick paper bot; run eligible-autopsy once
+[X] Commit / PR / merge
 
 ---
 
@@ -27,10 +29,11 @@ THRESHOLD hero, rain-sort threshold first, keep 15m as scoreboard/KPI.
 - **Charter carve-out:** Deterministic Kalshi bot may bid only when human-armed, hard caps ($2/$3), promotion gate PASS on paper, kill switch, GUI parity. AI cannot arm live.
 - **KXBTC15M vs spot_calibrator:** Hourly threshold calibrator must not own 15m race trust. Separate `kxbtc15m-calibrator.json`; `KalshiBotDecision::filter_predictions_for_family` + dual `decide` so trust cannot leak across families.
 - **Cockpit additive pins:** Dual-source rain changes census (`· N threshold · M kxbtc15m`), adds `kxbtc15m` orbit node, and always appends a KXBTC15M KPI line — update `health_fields_are_additive_*` pins when those land. Commodities 15m adds `commodities15m` node + COMMOD15M KPI. Postmortem adds a 6th KPI (`PM …` / `PM UNAVAILABLE`) — baseline pin is **8 nodes / 6 KPI**. Outside-info detail rides on those lines — do not add nodes without updating the pin. Commodities rain adds census `· K commodities15m` and a `COM` source tag — update rain/census pins when that lands; still prefer no 9th orbit node. Bid postmortem inspect opens from the **PM KPI** (or BOT VIEW), not a new node. Always reserve the PM cell in the KPI strip so narrow widths cannot bury it under `… N more`.
-- **Cockpit ambition = KXBTCD:** Rain sorts threshold first; census says `threshold first · ambition KXBTCD`. Pinned hero is `threshold_hero_*` (falls back to KXBTC15M only when strike report absent). Do not add a 7th KPI for KXBTCD — hero + CALIBRATOR node carry it. Bot already runs both families with separate trust; UI priority ≠ disabling 15m.
 - **Postmortem ≠ W/L:** Join settlements to bids by `position_id`; classify loss modes; never invent late-flip/gamma without path replay. `settle_paper` copies bid snapshot + optional `market_mid_at_settle`. Paper cashout closes with `early_exit` / `won:null`. Paper ticks attach `mid_path` when sampled. Always write **historic** + **current-rules** summaries when markers exist; cockpit/status PM judges CURRENT, not lifetime. Sealed gate still uses historic. Early exits are cashouts, not family L. GUI: Predictions BOT card + cockpit PM KPI inspect.
+- **Eligible autopsy ≠ bid postmortem:** `eligible_loss_autopsy` walk-forwards threshold `resolved_record` on `|model−mid|≥edge` and reports when model Brier loses to mid (edge/runway/thesis buckets). It does not join fills. Use for trust/feature work; use `bot_bid_postmortem` for ledger PnL.
 - **Paper cashout:** Sell-to-close at floor(held-side bid) only (`LOCK_WIN` / `CUT_EDGE_REVERSED` via AutoEngine). Mid is never a sell proxy. Default ON for paper; `--no-paper-cashout` disables. Hold-to-settle when HOLD or bid missing.
 - **Postmortem → decide:** `FADE_YES_NEAR_CLOSE` lifts on venue-lead confirm-down **or** BRTI avg60 below open (p_brti < 0.5 when present); missing confirm → ban stands. Favourite cross asks ≥0.65 need +0.03 margin.
+- **Paper KXBTCD rest-first:** Paper `threshold_rest_first` → threshold decide with `allow_cross=false` → `REST_FIRST_POLICY` even if net EV clears. 15m families unchanged. Opt out `--allow-threshold-cross`. Live leaves flag off.
 - **Directional feature key:** Use `open_price` (not `signed_distance_bps`) to tell KXBTC15M from threshold — both families write signed distance. Commodities 15m races also carry `open_price` and fall the `open` glyph.
 - **Paper pause ≠ kill switch:** Current-gen `DRAWDOWN_CAP` auto-rotates and resumes; kill switch stops the whole tick. Lifetime gate FAIL must not deadlock paper.
 - **GUI rebuild ≠ CLI:** Paper LaunchAgent runs `build/openterminalcli`; rebuild CLI + kickstart (now POST_BUILD) or pause/rotate never loads.
@@ -45,7 +48,9 @@ THRESHOLD hero, rain-sort threshold first, keep 15m as scoreboard/KPI.
 - **15m rollover empty FLOW:** Daemon universe must subscribe *still-open* cohorts (not just-closed); keep ≥4 close cohorts. When WS has no open KXBTC15M snapshot, `kxbtc15m_calibrator` fills from Kalshi REST + BRTI. Stuck `universe_timeouts` → kick `org.openterminal.cli.daemon.default`.
 - **Cockpit inspect is not arming:** Click on scoreboard nodes opens a read-only ablation/parity overlay; Esc/outside closes. PM KPI opens bid postmortem detail the same way. Never place/arm from the cockpit.
 - **Cockpit motion is L→R:** Contract lanes are horizontal; glyphs travel left→right toward DECIDE then LEDGER. Frozen = parked (no travel). Census says `NO FLOW` / `L→R`.
+- **Cockpit ambition is KXBTCD:** Rain sorts threshold first; census `threshold first · ambition KXBTCD`; pinned hero is threshold report (`KXBTCD · …`). No 7th KPI. Fallback to KXBTC15M only if strike report absent.
 - **Predictions idle:** `KalshiScreen` must stop clock/evidence/dom/spot/market timers (+ spot WS reconnect) in `hideEvent`, and unsubscribe ladder market WS (resubscribe on show). Polymarket must `unsubscribe_current()` on hide. Weather `bot_timer_` must stop on hide. Lazy-construct Polymarket in `PredictionMarketsScreen`.
 - **Calibrator auto-refresh:** Bot ticks kickstart LaunchAgents (or `python once`) when any family report ages past 2/3 of `max_report_age` — threshold included. Default ON; `--no-auto-refresh-calibrators` opts out. Throttle 45s/script. Does not replace LaunchAgents; prevents overnight `REPORT_STALE` stuck loops.
 - **Cockpit settlements ≠ sealed gate:** SETTLEMENTS / SETTLED / NET prefer current-rules postmortem (`CUR`); SEALED GATE + HIST DD stay lifetime for live promotion. Do not paint pre-gate −$35 as the new-rules scorecard.
+- **Bet-eligible trust:** `adds_value_on_bet_eligible` needs ≥100 contracts with `|model−mid|≥0.10` and better eligible Brier than mid. Population `adds_value_over_market` alone is not enough to bid.
 - **Qt JSON ints:** Prefer type-exclude `is_number` over `isDouble()` alone — Qt 6.9 may classify whole numbers outside Double; `isInteger()` may be unavailable on some Homebrew builds.
