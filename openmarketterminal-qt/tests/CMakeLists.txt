@@ -564,6 +564,14 @@ target_include_directories(tst_crypto_ladder_model PRIVATE ${CMAKE_SOURCE_DIR}/s
 target_link_libraries(tst_crypto_ladder_model PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_ladder_model COMMAND tst_crypto_ladder_model)
 
+# Crypto SPOT/SCALP cockpit pure scene (present_crypto_cockpit): mood never
+# says CANARY when the guard is disarmed, security blockers fail closed,
+# qualification QUALIFIED/FAIL/STALE/UNAVAILABLE, tape + DECIDE from state.
+add_executable(tst_crypto_cockpit tst_crypto_cockpit.cpp)
+target_include_directories(tst_crypto_cockpit PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_cockpit PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_cockpit COMMAND tst_crypto_cockpit)
+
 # Portfolio Account Sync Task 4 — pure mirror-reconcile diff
 # (services/portfolio/AccountSyncTypes::reconcile_mirror): current portfolio
 # assets vs freshly fetched broker/exchange holdings -> add/update/remove

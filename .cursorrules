@@ -1,15 +1,15 @@
 # Open-Terminal — Cursor scratchpad & lessons
 
-## Scratchpad — Cockpit slim FLOW lanes (2026-08-09)
+## Scratchpad — Scalp shadow proof bind (2026-08-09)
 
-Task: FLOW contract lanes were stretching to fill the body when few books
-were open — slim to fixed height so COM-H/D and other cadences can share.
+Task: Bind SPOT/SCALP cockpit PAPER PROOF to crypto-scalp-qualification-v1
+(jsonl), remove edge crypto-recommend SQLite from this tab.
 
-[X] Cap lane paint at kLaneHeight=24 (no stretch-to-fill)
-[X] Tint COM-H/COM-D/BTC-D with existing green/amber family colors
-[X] Rebuild GUI; kill stale OpenTerminal (was still on 14:31 binary) + relaunch
-[X] Eyeball OK — slim FLOW + COM-D AU/AG visible (15m/hourly empty until open)
-[X] Health strip chips: COM / COM-H / COM-D / BTC-D (idle grey)
+[X] Scene proof fields from qualification
+[X] Cockpit bind + drop SQLite SELECT; SCALP SHADOW PROOF label
+[X] tst_crypto_cockpit pins + rebuild
+
+Prior (merged): #215 multi-cadence Kalshi families; crypto cockpit scene + right-rail polish.
 
 ---
 
@@ -17,6 +17,8 @@ were open — slim to fixed height so COM-H/D and other cadences can share.
 
 - **Cockpit FLOW lanes must not stretch:** `lane_height = flow_body / drawn` made 3–4 books look like fat cards and wasted space for COM-H/D. Paint at fixed `kLaneHeight` (24); `drawable` still uses that height for scroll capacity.
 - **Bot freeze == bot refuse:** Rain freeze must use `age >= max_report_age_ms` like `KalshiBotDecision`; Auto cockpit keeps `timestamp_stale` as `age > bound`. Tick `signal_trusted` must OR all six family reports. Health chips watch present reports (not only rain columns) so empty COM-H/BTC-D cannot hide as idle; folded KPI colour is worst-of cadences.
+- **Crypto scalp journal split:** Daemon `crypto-auto-scalp-v1` appends opportunity rows to `decisions.jsonl` / `scalp_state.decisions`. SPOT/SCALP cockpit proof must bind `scalp_qualification_v1.json`, not SQLite `edge crypto-recommend` (dual-source SQL still finds zero auto-scalp rows). Tape/DECIDE read state JSON.
+- **Crypto right rail:** Never stack two primary green BUY CTAs (maker + full ticket) in ~290px with no scroll. One primary ticket; maker is a collapsed disclosure + outline submit; form scrolls under the book; rail ~340px. Order entry needs a hard `minimumHeight` (~360) or the book stretch swallows the ticket entirely.
 - **Staged ≠ working tree:** After partial reverts / edits, always check `git diff --cached` *and* `git diff HEAD`. Inverse staged/unstaged diffs mean a commit would ship the broken index, not the good tree.
 - **`translate_action` arity:** Signature is 4-arg `(choice, net_qty, edge_direction, params)`. A 3-arg call with `ActionParams{}` as 3rd arg fails to compile against current `TypedAction.h`.
 - **Direction is env-owned, not LLM-owned:** `edge_direction_of` → assess/floor/`side_direction`; model only picks verb + conviction.
@@ -26,6 +28,7 @@ were open — slim to fixed height so COM-H/D and other cadences can share.
 - **Paper arming:** `ai run strategy` / `ai handler run` refuse live; `StrategyRunner` submits `mode:paper`; handlers created disabled. Do not weaken these in UI work.
 - **Strategies ≠ Kalshi live:** Strategies header PAPER ONLY must not host Kalshi live ARM. Arm Kalshi live only from Predictions (Kalshi). Strategies = measure/paper proof; Crypto = spot; Predictions = bet/race + live arm. Global Strategies Risk kill is separate — do not claim all kill lives only in Predictions.
 - **Spot/scalp canary ≠ Kalshi arm:** Profile + Crypto cockpit arm Coinbase/Kraken canary only. Labels must say CANARY / PAPER SCALP, not LIVE ARMED / PAPER ONLY (Kalshi/Strategies vocabulary).
+- **Crypto cockpit ≠ Kalshi rain:** Evolve SPOT/SCALP tab with pure `present_crypto_cockpit`; opportunity tape + DECIDE, never contract rain / COM-H. Inspect-only; arm stays Profile; kill/CLI/FAST/venues from SettingsGate.
 - **Kalshi edge autopsy (2026-07-27):** Losing is often "no informational edge vs mid + fees", not bad tuning. Quote lag (~+2¢/15s after 3σ) ≈ fee after half-spread. Recalibration cannot beat raw mid. `KXBTC15M` directional tickers without strikes get dropped from outcome joins — prefer strike/threshold series (`KXBTCD`) when measuring from ticker alone; daemon snapshots still expose open as `reference_strike`/`floor_strike`.
 - **Charter carve-out:** Deterministic Kalshi bot may bid only when human-armed, hard caps ($2/$3), promotion gate PASS on paper, kill switch, GUI parity. AI cannot arm live.
 - **KXBTC15M vs spot_calibrator:** Hourly threshold calibrator must not own 15m race trust. Separate `kxbtc15m-calibrator.json`; `KalshiBotDecision::filter_predictions_for_family` + dual `decide` so trust cannot leak across families.
