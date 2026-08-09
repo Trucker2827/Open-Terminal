@@ -3430,13 +3430,33 @@ if(APPLE)
     target_sources(openterminalcli PRIVATE src/services/stt/AppleSpeechProvider.mm)
     target_link_libraries(openterminalcli PRIVATE
         "-framework Speech" "-framework AVFoundation" "-framework Foundation")
-    # Paper bot LaunchAgent points at build/openterminalcli — kick it after every
-    # CLI rebuild so pause/rotate fixes take effect without a manual reset.
-    add_custom_command(TARGET openterminalcli POST_BUILD
-        COMMAND "${CMAKE_SOURCE_DIR}/scripts/deploy/restart-kalshi-bot.sh"
-                "$<TARGET_FILE:openterminalcli>"
-        COMMENT "Kickstarting org.openterminal.kalshi-bot (best-effort)..."
-        VERBATIM)
+    # Optionally kick the paper bot LaunchAgent after a CLI rebuild so pause/
+    # rotate fixes take effect without a manual reset.
+    #
+    # OFF by default, deliberately. This restarts a LIVE TRADING JOB as a side
+    # effect of compiling -- from whatever branch and whatever tree happens to be
+    # building. It fired twice in one session, once from a throwaway /tmp
+    # worktree, taking a half-reviewed gate change live ahead of any deliberate
+    # deploy. Building code and deploying it are different acts and should be
+    # spelled differently.
+    #
+    # Turn it on per checkout if you want the convenience:
+    #   cmake -S . -B build -DOPENTERMINAL_RESTART_BOT_ON_BUILD=ON
+    # The script refuses to repoint an agent that runs a different binary even
+    # when enabled (scripts/deploy/restart-kalshi-bot.sh, pinned by
+    # tests/test_restart_kalshi_bot.sh), so the worst case is a no-op message.
+    #
+    # To refresh the bot without rebuilding, just run the script:
+    #   scripts/deploy/restart-kalshi-bot.sh build/openterminalcli
+    option(OPENTERMINAL_RESTART_BOT_ON_BUILD
+           "POST_BUILD, kickstart the kalshi paper-bot LaunchAgent after openterminalcli links" OFF)
+    if(OPENTERMINAL_RESTART_BOT_ON_BUILD)
+        add_custom_command(TARGET openterminalcli POST_BUILD
+            COMMAND "${CMAKE_SOURCE_DIR}/scripts/deploy/restart-kalshi-bot.sh"
+                    "$<TARGET_FILE:openterminalcli>"
+            COMMENT "Kickstarting org.openterminal.kalshi-bot (best-effort)..."
+            VERBATIM)
+    endif()
 endif()
 
 option(OPENTERMINALCLI_INSTALL_OT_ALIAS "Install 'ot' symlink alias for openterminalcli on Unix" ON)
