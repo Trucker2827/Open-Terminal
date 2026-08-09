@@ -53,6 +53,9 @@ add_test(NAME test_outside_info_features
 add_test(NAME test_bot_bid_postmortem
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_bot_bid_postmortem.py -v)
+add_test(NAME test_eligible_loss_autopsy
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_eligible_loss_autopsy.py -v)
 add_test(NAME test_btc_event_impact
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_btc_event_impact.py -v)

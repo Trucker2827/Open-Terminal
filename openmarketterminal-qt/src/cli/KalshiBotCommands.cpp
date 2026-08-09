@@ -273,15 +273,20 @@ QJsonArray decide_family_reports(const QJsonObject& threshold_report,
                                          stop, exposure);
 
     QJsonArray rows;
-    const auto append_filtered = [&](const QJsonObject& filtered) {
+    const auto append_filtered = [&](const QJsonObject& filtered, bool force_rest = false) {
         if (filtered.value(QStringLiteral("generated_at_ms")).toDouble() <= 0.0) return;
         if (filtered.value(QStringLiteral("predictions")).toObject().isEmpty()) return;
+        KalshiBotDecision::Config family_config = config;
+        if (force_rest) family_config.allow_cross = false;
         const QJsonArray part = KalshiBotDecision::decide(
-            filtered, open_positions, settled_positions, now_ms, config, stop, exposure);
+            filtered, open_positions, settled_positions, now_ms, family_config, stop, exposure);
         for (const auto& value : part) rows.append(value);
     };
+    // Paper KXBTCD rest-first: threshold never pays the ask; 15m families keep
+    // their own cross path (still gated by family trust).
     append_filtered(
-        KalshiBotDecision::filter_predictions_for_family(threshold_report, /*keep_kxbtc15m=*/false));
+        KalshiBotDecision::filter_predictions_for_family(threshold_report, /*keep_kxbtc15m=*/false),
+        config.threshold_rest_first);
     append_filtered(
         KalshiBotDecision::filter_predictions_for_family(kxbtc15m_report, /*keep_kxbtc15m=*/true));
     append_filtered(KalshiBotDecision::filter_commodity_15m_predictions(commodities_15m_report));
@@ -296,9 +301,11 @@ QJsonArray decide_family_reports(const QJsonObject& threshold_report,
         return KalshiBotDecision::decide(
             KalshiBotDecision::filter_predictions_for_family(kxbtc15m_report, /*keep_kxbtc15m=*/true),
             open_positions, settled_positions, now_ms, config, stop, exposure);
+    KalshiBotDecision::Config threshold_config = config;
+    if (config.threshold_rest_first) threshold_config.allow_cross = false;
     return KalshiBotDecision::decide(
         KalshiBotDecision::filter_predictions_for_family(threshold_report, /*keep_kxbtc15m=*/false),
-        open_positions, settled_positions, now_ms, config, stop, exposure);
+        open_positions, settled_positions, now_ms, threshold_config, stop, exposure);
 }
 
 /// The published gate verdict (rung 2's kalshi-bot-gate.json), read exactly as
@@ -542,6 +549,8 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     // risk) instead. Live keeps the budget (run_live_tick, default true).
     KalshiBotDecision::Config paper_config = config;
     paper_config.enforce_session_budget = false;
+    // threshold_rest_first is owned by the caller (paper CLI defaults it on;
+    // `--allow-threshold-cross` leaves it off; live never sets it).
 
     // The switch short-circuits the whole tick: no settlement pass, no order
     // lifecycle pass, no report read, no bid — only the journaled refusal.
@@ -1058,6 +1067,7 @@ void bot_usage() {
                  "                          [--max-exposure X] [--session-budget X]\n"
                  "                          [--cross-margin X] [--rest-premium X]\n"
                  "                          [--no-paper-cashout]  (paper: disable sell-to-close)\n"
+                 "                          [--allow-threshold-cross]  (paper: allow KXBTCD ask crosses)\n"
                  "                          [--no-auto-refresh-calibrators]  (disable stale kicks)\n"
                  "       kalshi bot run [--interval N] [--iterations N]\n"
                  "       kalshi bot gate [--json]\n"
@@ -1071,6 +1081,7 @@ void bot_usage() {
                  "       kalshi bot lessons [--refresh]     what the record teaches (issue #174)\n"
                  "       kalshi bot postmortem [--json] [--post-gate|--since-ms N]\n"
                  "                                          per-settlement bid autopsy (esp. losses)\n"
+                 "       kalshi bot eligible-autopsy [--json]  where model loses mid on bet-eligible\n"
                  "\n"
                  "`scoreboard` prints every paper calibrator report the bot reads (no GUI).\n"
                  "`calibrate` runs the same Python publishers launchd/kickstart use.\n"
@@ -1079,8 +1090,13 @@ void bot_usage() {
                  "Always writes HISTORIC (learning/gate) + CURRENT RULES (new-trading scorecard)\n"
                  "when mid_path / fade markers exist. Cockpit PM judges CURRENT, not lifetime.\n"
                  "`--post-gate` requires markers (exit 3 if none); `--since-ms` overrides window.\n"
+                 "`eligible-autopsy` is NOT bid postmortem: walk-forward on threshold\n"
+                 "resolved_record where |model−mid|≥edge — when model Brier loses to mid.\n"
                  "Paper cashout (default ON): sell-to-close at held-side bid on LOCK_WIN /\n"
                  "CUT_EDGE_REVERSED; hold-to-settle otherwise. `--no-paper-cashout` disables.\n"
+                 "Paper KXBTCD rest-first (default ON): threshold family never crosses the\n"
+                 "ask (`REST_FIRST_POLICY`); 15m families unchanged. Opt out with\n"
+                 "`--allow-threshold-cross`. Live never enables rest-first.\n"
                  "Auto-refresh calibrators (default ON): each tick kickstarts LaunchAgents\n"
                  "(or runs `once`) when a report ages past 2/3 of --max-report-age-sec, so\n"
                  "REPORT_STALE does not stick without human intervention. Opt out with\n"
@@ -1924,6 +1940,26 @@ int bot_postmortem_command(const GlobalOpts& opts, QStringList& args) {
     return run_calibrator_script(QStringLiteral("bot_bid_postmortem.py"), script_args);
 }
 
+int bot_eligible_autopsy_command(const GlobalOpts& opts, QStringList& args) {
+    QStringList script_args;
+    if (opts.json) script_args << QStringLiteral("--json");
+    while (!args.isEmpty()) {
+        const QString arg = args.takeFirst();
+        if (arg == QLatin1String("--json")) {
+            script_args << arg;
+            continue;
+        }
+        std::fprintf(stderr,
+                     "kalshi bot eligible-autopsy: unknown option '%s'\n"
+                     "usage: kalshi bot eligible-autopsy [--json]\n"
+                     "(JSON may also be the global flag: `openterminalcli --json kalshi bot "
+                     "eligible-autopsy`)\n",
+                     qUtf8Printable(arg));
+        return 2;
+    }
+    return run_calibrator_script(QStringLiteral("eligible_loss_autopsy.py"), script_args);
+}
+
 int bot_calibrate_command(const GlobalOpts& /*opts*/, QStringList& args) {
     const QString action = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
     if (action != QStringLiteral("once") && action != QStringLiteral("report") &&
@@ -2006,11 +2042,17 @@ int bot_calibrate_command(const GlobalOpts& /*opts*/, QStringList& args) {
 
 int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
-    static const QStringList kSubcommands{QStringLiteral("once"),       QStringLiteral("run"),
-                                          QStringLiteral("gate"),       QStringLiteral("status"),
-                                          QStringLiteral("stop"),       QStringLiteral("resume"),
-                                          QStringLiteral("lessons"),    QStringLiteral("scoreboard"),
-                                          QStringLiteral("calibrate"),  QStringLiteral("postmortem")};
+    static const QStringList kSubcommands{QStringLiteral("once"),
+                                          QStringLiteral("run"),
+                                          QStringLiteral("gate"),
+                                          QStringLiteral("status"),
+                                          QStringLiteral("stop"),
+                                          QStringLiteral("resume"),
+                                          QStringLiteral("lessons"),
+                                          QStringLiteral("scoreboard"),
+                                          QStringLiteral("calibrate"),
+                                          QStringLiteral("postmortem"),
+                                          QStringLiteral("eligible-autopsy")};
     if (opts.help || sub.isEmpty() || !kSubcommands.contains(sub)) {
         bot_usage();
         return opts.help ? 0 : 2;
@@ -2028,6 +2070,7 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     if (sub == QStringLiteral("scoreboard")) return bot_scoreboard_command(opts, args);
     if (sub == QStringLiteral("calibrate")) return bot_calibrate_command(opts, args);
     if (sub == QStringLiteral("postmortem")) return bot_postmortem_command(opts, args);
+    if (sub == QStringLiteral("eligible-autopsy")) return bot_eligible_autopsy_command(opts, args);
 
     // PAPER is the default, and stays the default: `--mode` has to be given
     // explicitly, and the only other value it accepts is `live`.
@@ -2067,6 +2110,10 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
         config.max_report_age_ms = static_cast<qint64>(max_age_sec) * 1000;
     if (take_bool_flag(args, QStringLiteral("--no-paper-cashout")))
         config.enable_paper_cashout = false;
+    const bool allow_threshold_cross =
+        take_bool_flag(args, QStringLiteral("--allow-threshold-cross"));
+    // Paper default: KXBTCD/threshold rest-first. Live never enables it.
+    if (!live) config.threshold_rest_first = !allow_threshold_cross;
     // Default ON: unattended safety net against REPORT_STALE when LaunchAgents lag.
     const bool auto_refresh_calibrators =
         !take_bool_flag(args, QStringLiteral("--no-auto-refresh-calibrators"));

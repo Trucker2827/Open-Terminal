@@ -230,6 +230,12 @@ class KalshiBotDecision {
     /// EDGE_BELOW_THRESHOLD (that one never reached pricing at all).
     static constexpr auto kRestEdgeBelowPremium = "REST_EDGE_BELOW_PREMIUM";
 
+    /// Policy forbade crossing even though the book was priced and net EV
+    /// would have cleared the cross margin (`allow_cross == false`). Distinct
+    /// from REST_EDGE_BELOW_COST: the arithmetic may favour a cross; the
+    /// operator (paper KXBTCD rest-first) refuses to pay the ask.
+    static constexpr auto kRestFirstPolicy = "REST_FIRST_POLICY";
+
     /// Paper sizing/pricing policy. Defaults are deliberately conservative and
     /// mirror the charter's live ceilings ($2 stake, $3 all-in) so rung 1's
     /// paper record is measured under the same size discipline a later live
@@ -317,6 +323,17 @@ class KalshiBotDecision {
         /// average losses at ~50% win rate. Extra 0 disables the surcharge.
         double favourite_cross_price = 0.65;
         double favourite_cross_extra_margin_usd = 0.03;
+
+        /// When false, never cross — rest at floor(mid) (or pass on rest
+        /// premium). Used by paper threshold/KXBTCD rest-first: historic
+        /// crosses dominated losses. Default true so unit tests and live keep
+        /// the EV cross path; `decide_family_reports` clears this for the
+        /// threshold family when `threshold_rest_first` is set.
+        bool allow_cross = true;
+        /// Paper ambition: force rest on KXBTCD/threshold decide only (15m
+        /// families keep allow_cross). `run_tick` sets this true; live leaves
+        /// false. Opt out with `--allow-threshold-cross`.
+        bool threshold_rest_first = false;
     };
 
     /// Per-ticker streak for CUT_EDGE_REVERSED hysteresis across ticks.
