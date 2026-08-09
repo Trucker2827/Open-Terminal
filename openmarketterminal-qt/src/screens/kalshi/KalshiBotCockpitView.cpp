@@ -48,7 +48,8 @@ constexpr int kHealthStripGap = 6;
 constexpr int kHealthStripHeight = kHealthHeadlineHeight + kHealthStageRowHeight;
 constexpr int kBannerHeight = 46;
 constexpr int kCensusHeight = 20;
-// Pinned KXBTC15M scoreboard above the flow — progress bar + scoreboard line.
+// Pinned KXBTCD (threshold) scoreboard above the flow — paper ambition family.
+// Falls back to KXBTC15M only when the strike report is absent.
 constexpr int kHeroHeight = 26;
 constexpr int kHeroGap = 6;
 constexpr int kNodeRowHeight = 104;
@@ -632,18 +633,28 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
         }
     }
 
-    // ── KXBTC15M scoreboard hero (pinned above the flow) ───────────────────
-    // Progress to the trust floor + the same scoreboard sentence as the orbit
-    // node / KPI. Lives here so the strip cannot elide the climb to 100.
+    // ── KXBTCD / threshold scoreboard hero (pinned above the flow) ─────────
+    // Paper ambition: strike books lead. Progress to the trust floor + the same
+    // sentence as the CALIBRATOR orbit node. Falls back to KXBTC15M only when
+    // calibrator.json is absent so the pin is never empty for no reason.
     int upper_bottom = census.bottom();
     if (!scene_.grid_line.isEmpty()) upper_bottom = grid_rect.bottom();
     if (lessons_lines > 0) upper_bottom = lessons_rect.bottom();
     const int content_after_upper = upper_bottom + 6;
-    const bool show_hero = !scene_.kxbtc15m_hero_line.isEmpty();
+    const bool use_threshold_hero = !scene_.threshold_hero_line.isEmpty();
+    const QString hero_line =
+        use_threshold_hero ? scene_.threshold_hero_line : scene_.kxbtc15m_hero_line;
+    const QString hero_role =
+        use_threshold_hero ? scene_.threshold_hero_role : scene_.kxbtc15m_hero_role;
+    const int hero_scored =
+        use_threshold_hero ? scene_.threshold_hero_scored : scene_.kxbtc15m_hero_scored;
+    const int hero_floor =
+        use_threshold_hero ? scene_.threshold_hero_floor : scene_.kxbtc15m_hero_floor;
+    const bool show_hero = !hero_line.isEmpty();
     const QRect hero_rect(kMargin, content_after_upper, width() - (2 * kMargin),
                           show_hero ? kHeroHeight : 0);
     if (show_hero) {
-        const QColor ink = role_color(scene_.kxbtc15m_hero_role);
+        const QColor ink = role_color(hero_role);
         painter.fillRect(hero_rect, with_alpha(QColor(colors::BG_RAISED()), dormant ? 70 : 130));
         painter.setPen(QPen(with_alpha(ink, 160), 1));
         painter.drawRect(hero_rect);
@@ -653,9 +664,9 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
         const int bar_height = hero_rect.height() - 16;
         const QRect track(bar_left, bar_top, bar_width, bar_height);
         painter.fillRect(track, with_alpha(QColor(colors::BG_BASE()), 180));
-        const double floor = qMax(1, scene_.kxbtc15m_hero_floor);
+        const double floor = qMax(1, hero_floor);
         const double fill =
-            qBound(0.0, static_cast<double>(scene_.kxbtc15m_hero_scored) / floor, 1.0);
+            qBound(0.0, static_cast<double>(hero_scored) / floor, 1.0);
         painter.fillRect(QRect(track.left(), track.top(),
                                static_cast<int>(track.width() * fill), track.height()),
                          with_alpha(ink, dormant ? 90 : 180));
@@ -664,7 +675,7 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
         const QRect text_rect(track.right() + 10, hero_rect.top(),
                               hero_rect.right() - track.right() - 18, hero_rect.height());
         painter.drawText(text_rect, Qt::AlignVCenter | Qt::AlignLeft,
-                         elide(small_metrics, scene_.kxbtc15m_hero_line, text_rect.width()));
+                         elide(small_metrics, hero_line, text_rect.width()));
     }
 
     // ── layout of the lower furniture ──────────────────────────────────────

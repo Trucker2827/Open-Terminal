@@ -929,7 +929,11 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(scene.census.contains(QStringLiteral("1 threshold")));
         QVERIFY(scene.census.contains(QStringLiteral("1 kxbtc15m")));
         QVERIFY(scene.census.contains(QStringLiteral("0 commodities15m")));
-        QVERIFY(scene.census.contains(QStringLiteral("15m first")));
+        QVERIFY(scene.census.contains(QStringLiteral("threshold first")));
+        QVERIFY(scene.census.contains(QStringLiteral("ambition KXBTCD")));
+        // Paper ambition: strike books lead FLOW even when 15m is present.
+        QCOMPARE(scene.columns.at(0).signal_source, QStringLiteral("threshold"));
+        QCOMPARE(scene.columns.at(1).signal_source, QStringLiteral("kxbtc15m"));
     }
 
     void commodities_rain_tags_columns_and_falls_open_bps() {
@@ -953,15 +957,16 @@ class KalshiBotCockpitTest : public QObject {
             present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
                                 kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, dir15, commod);
         QCOMPARE(scene.columns.size(), 4);
-        QCOMPARE(scene.columns.at(0).signal_source, QStringLiteral("kxbtc15m"));
-        QCOMPARE(scene.columns.at(1).signal_source, QStringLiteral("commodities15m"));
+        QCOMPARE(scene.columns.at(0).signal_source, QStringLiteral("threshold"));
+        QCOMPARE(scene.columns.at(1).signal_source, QStringLiteral("kxbtc15m"));
         QCOMPARE(scene.columns.at(2).signal_source, QStringLiteral("commodities15m"));
-        QCOMPARE(scene.columns.at(3).signal_source, QStringLiteral("threshold"));
+        QCOMPARE(scene.columns.at(3).signal_source, QStringLiteral("commodities15m"));
         QCOMPARE(bot_cockpit_source_tag(QStringLiteral("commodities15m")), QStringLiteral("COM"));
         QVERIFY(scene.census.contains(QStringLiteral("2 commodities15m")));
+        QVERIFY(scene.census.contains(QStringLiteral("threshold first")));
         // Commodities races use the open glyph (same directional features as BTC 15m).
         QStringList labels;
-        for (const auto& glyph : scene.columns.at(1).glyphs) labels << glyph.label;
+        for (const auto& glyph : scene.columns.at(2).glyphs) labels << glyph.label;
         QVERIFY(labels.contains(QStringLiteral("open")));
         QVERIFY(!labels.contains(QStringLiteral("sigma")));
         // Inspect detail rides on the commodities orbit node (click target).
@@ -997,9 +1002,10 @@ class KalshiBotCockpitTest : public QObject {
                  QStringLiteral("NO REPORT — this family has not published here yet"));
     }
 
-    void rain_sorts_15m_before_threshold_then_by_edge() {
-        // Threshold edges are deliberately wider than the 15m edge — if sort
-        // were |edge|-only, the threshold book would lead. 15m must still win.
+    void rain_sorts_threshold_before_15m_then_by_edge() {
+        // 15m edges are deliberately wider than the narrow threshold book —
+        // if sort were |edge|-only, 15m would lead. Threshold (ambition) must
+        // still win the family rank, then |edge| within the family.
         const QJsonObject threshold = calibrator_report(
             kNow - 10'000,
             QJsonObject{{"KXBTCD-WIDE", prediction(0.80, 0.40)},   // |edge| 0.40
@@ -1013,14 +1019,14 @@ class KalshiBotCockpitTest : public QObject {
             present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
                                 kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, dir15);
         QCOMPARE(scene.columns.size(), 4);
-        QCOMPARE(scene.columns.at(0).signal_source, QStringLiteral("kxbtc15m"));
-        QCOMPARE(scene.columns.at(1).signal_source, QStringLiteral("kxbtc15m"));
-        QCOMPARE(scene.columns.at(2).signal_source, QStringLiteral("threshold"));
-        QCOMPARE(scene.columns.at(3).signal_source, QStringLiteral("threshold"));
-        QCOMPARE(scene.columns.at(0).ticker, QStringLiteral("KXBTC15M-26AUG071230-30"));
-        QCOMPARE(scene.columns.at(1).ticker, QStringLiteral("KXBTC15M-26AUG071245-00"));
-        QCOMPARE(scene.columns.at(2).ticker, QStringLiteral("KXBTCD-WIDE"));
-        QCOMPARE(scene.columns.at(3).ticker, QStringLiteral("KXBTCD-NARROW"));
+        QCOMPARE(scene.columns.at(0).signal_source, QStringLiteral("threshold"));
+        QCOMPARE(scene.columns.at(1).signal_source, QStringLiteral("threshold"));
+        QCOMPARE(scene.columns.at(2).signal_source, QStringLiteral("kxbtc15m"));
+        QCOMPARE(scene.columns.at(3).signal_source, QStringLiteral("kxbtc15m"));
+        QCOMPARE(scene.columns.at(0).ticker, QStringLiteral("KXBTCD-WIDE"));
+        QCOMPARE(scene.columns.at(1).ticker, QStringLiteral("KXBTCD-NARROW"));
+        QCOMPARE(scene.columns.at(2).ticker, QStringLiteral("KXBTC15M-26AUG071230-30"));
+        QCOMPARE(scene.columns.at(3).ticker, QStringLiteral("KXBTC15M-26AUG071245-00"));
     }
 
     void prefer_open_kxbtc15m_keeps_current_when_still_open() {
@@ -1210,13 +1216,33 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(stage_value(thr_only, QStringLiteral("calibrate_15m")), QStringLiteral("idle"));
     }
 
-    void kxbtc15m_hero_pins_scoreboard_above_rain() {
+    void threshold_hero_pins_ambition_scoreboard_above_rain() {
+        const QJsonObject threshold =
+            calibrator_report(kNow - 5'000, {}, /*adds_value=*/true);
+        const QJsonObject dir15 =
+            kxbtc15m_calibrator_report(kNow - 5'000, {}, /*adds_value=*/false, 7);
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(passing_ledger()), threshold, {}, passing_ledger(), {},
+                                kNow, QByteArray(), kBotCockpitMaxColumns, kBotCockpitMaxPulses,
+                                feed_live(), dir15);
+        QVERIFY(scene.threshold_hero_line.startsWith(QStringLiteral("KXBTCD ·")));
+        QVERIFY(scene.threshold_hero_line.contains(QStringLiteral("318/")));
+        QCOMPARE(scene.threshold_hero_scored, 318);
+        QCOMPARE(scene.threshold_hero_role, QStringLiteral("green"));
+        QVERIFY(scene.threshold_hero_known);
+        // 15m remains on the strip / fallback fields, not the ambition pin.
+        QVERIFY(scene.kxbtc15m_hero_line.startsWith(QStringLiteral("KXBTC15M ·")));
+        QVERIFY(scene.kxbtc15m_hero_line.contains(QStringLiteral("7/100 scored")));
+    }
+
+    void kxbtc15m_hero_fills_when_threshold_report_missing() {
         const QJsonObject dir15 =
             kxbtc15m_calibrator_report(kNow - 5'000, {}, /*adds_value=*/false, 7);
         const BotCockpitScene scene =
             present_bot_cockpit(panel_for(passing_ledger()), {}, {}, passing_ledger(), {}, kNow,
                                 QByteArray(), kBotCockpitMaxColumns, kBotCockpitMaxPulses,
                                 feed_live(), dir15);
+        QVERIFY(scene.threshold_hero_line.isEmpty());
         QVERIFY(scene.kxbtc15m_hero_line.startsWith(QStringLiteral("KXBTC15M ·")));
         QVERIFY(scene.kxbtc15m_hero_line.contains(QStringLiteral("7/100 scored")));
         QCOMPARE(scene.kxbtc15m_hero_scored, 7);
@@ -1610,8 +1636,8 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(!baseline.columns.first().frozen);
         QCOMPARE(baseline.columns_total, 1);
         QCOMPARE(baseline.census,
-                 QStringLiteral("1 watched contracts · all drawn · L→R · 15m first · 1 threshold · 0 "
-                                "kxbtc15m · 0 commodities15m"));
+                 QStringLiteral("1 watched contracts · all drawn · L→R · threshold first · ambition "
+                                "KXBTCD · 1 threshold · 0 kxbtc15m · 0 commodities15m"));
         QCOMPARE(baseline.nodes.size(), 8);
         QVERIFY(!baseline.node(QStringLiteral("kxbtc15m"))->detail.isEmpty());
         QVERIFY(!baseline.node(QStringLiteral("commodities15m"))->detail.isEmpty());
