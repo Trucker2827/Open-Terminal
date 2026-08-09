@@ -93,6 +93,10 @@ def walk_eligible(
         mean_mid = _mean(elig_mids) or 0.0
         thesis = "YES" if mean_p >= mean_mid else "NO"
         thesis_correct = (thesis == "YES" and outcome) or (thesis == "NO" and not outcome)
+        # What a ZERO-information thesis scores if the mid is calibrated: siding
+        # YES on a contract the market prices at 0.70 is right 70% of the time.
+        # Without this, the hit rate alone reads as skill when it is base rate.
+        thesis_baseline = mean_mid if thesis == "YES" else (1.0 - mean_mid)
         mean_edge = _mean(edges) or 0.0
         mean_minutes = _mean(minutes) or 0.0
         rows.append(
@@ -108,6 +112,7 @@ def walk_eligible(
                 "mean_minutes_left": mean_minutes,
                 "thesis": thesis,
                 "thesis_correct": thesis_correct,
+                "thesis_baseline": thesis_baseline,
                 "edge_bucket": _edge_bucket(mean_edge),
                 "minutes_bucket": _minutes_bucket(mean_minutes),
             }
@@ -124,13 +129,14 @@ def summarize(eligible_rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     by_minutes: Dict[str, Dict[str, int]] = collections.defaultdict(
         lambda: {"eligible": 0, "model_loses": 0}
     )
-    by_thesis: Dict[str, Dict[str, int]] = collections.defaultdict(
-        lambda: {"eligible": 0, "model_loses": 0, "thesis_wrong": 0}
+    by_thesis: Dict[str, Dict[str, Any]] = collections.defaultdict(
+        lambda: {"eligible": 0, "model_loses": 0, "thesis_wrong": 0, "baseline_sum": 0.0}
     )
     for r in eligible_rows:
         by_edge[r["edge_bucket"]]["eligible"] += 1
         by_minutes[r["minutes_bucket"]]["eligible"] += 1
         by_thesis[r["thesis"]]["eligible"] += 1
+        by_thesis[r["thesis"]]["baseline_sum"] += float(r.get("thesis_baseline") or 0.0)
         if r["model_loses"]:
             by_edge[r["edge_bucket"]]["model_loses"] += 1
             by_minutes[r["minutes_bucket"]]["model_loses"] += 1
@@ -138,9 +144,25 @@ def summarize(eligible_rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         if not r["thesis_correct"]:
             by_thesis[r["thesis"]]["thesis_wrong"] += 1
 
+    # Thesis skill is the hit rate MINUS what riding the base rate already pays.
+    n_rows = len(eligible_rows)
+    thesis_correct_n = sum(1 for r in eligible_rows if r["thesis_correct"])
+    baseline_sum = sum(float(r.get("thesis_baseline") or 0.0) for r in eligible_rows)
+    correct_rate = (thesis_correct_n / n_rows) if n_rows else None
+    baseline_rate = (baseline_sum / n_rows) if n_rows else None
+    excess_rate = (
+        correct_rate - baseline_rate
+        if correct_rate is not None and baseline_rate is not None
+        else None
+    )
+
     return {
         "resolved_contracts_replayed": None,  # filled by caller
         "eligible_contracts": len(eligible_rows),
+        "thesis_correct_n": thesis_correct_n,
+        "thesis_correct_rate": correct_rate,
+        "thesis_baseline_rate": baseline_rate,
+        "thesis_excess_rate": excess_rate,
         "min_eligible_for_trust": ce.MIN_ELIGIBLE_CONTRACTS,
         "model_loses_n": len(losses),
         "model_beats_n": len(wins),
@@ -185,6 +207,12 @@ def _fmt(x: Optional[float], digits: int = 4) -> str:
     return f"{x:.{digits}f}"
 
 
+def _pct(x: Optional[float], signed: bool = False) -> str:
+    if x is None:
+        return "n/a"
+    return f"{x:+.1%}" if signed else f"{x:.1%}"
+
+
 def print_human(summary: Dict[str, Any]) -> None:
     print("ELIGIBLE-LOSS AUTOPSY (threshold / KXBTCD — not bid postmortem)")
     print(
@@ -208,11 +236,22 @@ def print_human(summary: Dict[str, Any]) -> None:
     print("  by runway:")
     for bucket, counts in summary["by_minutes_bucket"].items():
         print(f"    {bucket}: lose {counts['model_loses']}/{counts['eligible']}")
+    print(
+        f"  thesis correct {summary['thesis_correct_n']}/{summary['eligible_contracts']} "
+        f"= {_pct(summary['thesis_correct_rate'])} vs "
+        f"zero-skill baseline {_pct(summary['thesis_baseline_rate'])} · "
+        f"excess {_pct(summary['thesis_excess_rate'], signed=True)}"
+    )
     print("  by thesis side:")
     for side, counts in summary["by_thesis"].items():
+        eligible = counts["eligible"]
+        side_baseline = (counts["baseline_sum"] / eligible) if eligible else None
+        side_correct = eligible - counts["thesis_wrong"]
+        side_rate = (side_correct / eligible) if eligible else None
         print(
-            f"    {side}: lose {counts['model_loses']}/{counts['eligible']} · "
-            f"thesis wrong {counts['thesis_wrong']}"
+            f"    {side}: lose {counts['model_loses']}/{eligible} · "
+            f"thesis wrong {counts['thesis_wrong']} · "
+            f"correct {_pct(side_rate)} vs baseline {_pct(side_baseline)}"
         )
     print(f"  {summary['note']}")
 
