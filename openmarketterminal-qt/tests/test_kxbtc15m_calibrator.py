@@ -227,6 +227,81 @@ class PerContractScoringTest(unittest.TestCase):
         self.assertLess(report["scored_contracts"], cal.MIN_SCORED_CONTRACTS)
         self.assertFalse(report["adds_value_over_market"])
 
+    @staticmethod
+    def _obs(p_model, yes_mid):
+        """A pending observation shaped like _record_live_prediction's, with
+        every ablation set equal to p_model -- this drives the settle-loop
+        GLUE (eligible_rows/rows + ce.eligible_pairs call sites), not the
+        ablation math (covered elsewhere), so every variant is eligible
+        under the same simple edge-vs-mid rule as physics."""
+        return {
+            "p_model": p_model,
+            "p_ablations": {
+                "physics": p_model,
+                "physics_veto_on_conflict": p_model,
+                "physics_confirm_only": p_model,
+                "physics_brti_avg60": p_model,
+                "physics_vol_regime_confirm": p_model,
+            },
+            "yes_mid": yes_mid,
+            "features": {},
+            "ts_ms": 0,
+        }
+
+    def settle_with_obs(self, state, ticker, obs_list, outcome, close_at=0):
+        """Like settle_one, but with directly-shaped observations so a
+        contract's observations can straddle the eligibility edge (settle_one
+        replays one identical snapshot n times and so can never do that)."""
+        state["pending"][ticker] = {
+            "close_ms": close_at, "open_price": 64000.0, "obs": obs_list,
+        }
+        cal.settle_cycle(state, close_at + 121_000, resolver=lambda t, o: outcome)
+
+    def test_settle_cycle_pairs_each_eligible_variant_with_its_own_mid(self):
+        """Drives settle_cycle itself over a contract with a MIX of eligible
+        and ineligible observations -- every other BetEligibleTrustTest case
+        hand-builds the final state and never exercises the settle-loop glue
+        (kxbtc15m_calibrator.py's eligible_rows/rows comprehensions and the
+        ce.eligible_pairs call sites), which is exactly where the original
+        population-mismatch bug lived."""
+        state = cal.default_state()
+        eligible_ticker = "KXBTC15M-26AUG071200-00"
+        self.settle_with_obs(
+            state, eligible_ticker,
+            [
+                self._obs(p_model=0.70, yes_mid=0.50),  # edge 0.20 -- eligible
+                self._obs(p_model=0.70, yes_mid=0.68),  # edge 0.02 -- ineligible
+            ],
+            outcome=True, close_at=0)
+
+        self.assertEqual(len(state["contract_scores_eligible_full"]), 1)
+        self.assertEqual(len(state["contract_scores_eligible_market_mid_raw"]), 1)
+        for key in ("physics_veto_on_conflict", "physics_confirm_only",
+                    "physics_brti_avg60", "physics_vol_regime_confirm"):
+            model_list = state[f"contract_scores_eligible_{key}"]
+            mid_list = state[f"contract_scores_eligible_mid_{key}"]
+            self.assertEqual(len(model_list), 1, key)
+            self.assertEqual(len(mid_list), 1, key)
+            self.assertEqual(len(model_list), len(mid_list), key)
+
+        # A second contract with NO eligible observation must append nothing
+        # anywhere -- lengths must stay exactly where they were, not grow.
+        ineligible_ticker = "KXBTC15M-26AUG071230-30"
+        self.settle_with_obs(
+            state, ineligible_ticker,
+            [
+                self._obs(p_model=0.55, yes_mid=0.50),  # edge 0.05 -- ineligible
+                self._obs(p_model=0.52, yes_mid=0.50),  # edge 0.02 -- ineligible
+            ],
+            outcome=True, close_at=10_000_000)
+
+        self.assertEqual(len(state["contract_scores_eligible_full"]), 1)
+        self.assertEqual(len(state["contract_scores_eligible_market_mid_raw"]), 1)
+        for key in ("physics_veto_on_conflict", "physics_confirm_only",
+                    "physics_brti_avg60", "physics_vol_regime_confirm"):
+            self.assertEqual(len(state[f"contract_scores_eligible_{key}"]), 1, key)
+            self.assertEqual(len(state[f"contract_scores_eligible_mid_{key}"]), 1, key)
+
 
 class TrustGateTest(unittest.TestCase):
     def scored_state(self, full, mid, contracts):
