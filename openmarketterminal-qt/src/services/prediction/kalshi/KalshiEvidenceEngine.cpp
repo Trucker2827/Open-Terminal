@@ -1,5 +1,7 @@
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 
+#include "services/prediction/kalshi/KalshiBotDecision.h"
+
 // For the generation naming scheme. Writer and readers must agree on it byte
 // for byte, so it is defined once, beside the readers (issue #152).
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
@@ -230,7 +232,7 @@ QJsonObject KalshiEvidenceEngine::calibrator_readout(const QJsonObject& report,
     const int scored = report.value(QStringLiteral("scored_contracts")).toInt();
     const QJsonValue brier_full = report.value(QStringLiteral("brier_full"));
     const QJsonValue brier_mid_raw = report.value(QStringLiteral("brier_market_mid_raw"));
-    const bool trusted = report.value(QStringLiteral("adds_value_over_market")).toBool();
+    const bool trusted = KalshiBotDecision::signal_trusted(report);
     const QString record = !brier_full.isDouble() || !brier_mid_raw.isDouble()
         ? QStringLiteral("TRACK RECORD · %1 resolved · 0 scored · Brier unavailable — opinion, not signal")
               .arg(resolved)

@@ -65,6 +65,15 @@ QJsonObject track_record(const QJsonObject& report) {
     const QJsonValue brier_mid_raw = report.value(QStringLiteral("brier_market_mid_raw"));
     const QJsonValue brier_logit = report.value(QStringLiteral("brier_market_trained_logit"));
     const bool brier_available = brier_full.isDouble() && brier_mid_raw.isDouble();
+    // Same presence-guard discipline as the full-population Briers above: the
+    // eligible-subset claim and the eligible-subset measurement it is a claim
+    // about, so an auditor reading a SIGNAL_UNTRUSTED row can see WHICH
+    // conjunct refused it rather than only that one did.
+    const QJsonValue brier_eligible_full = report.value(QStringLiteral("brier_eligible_full"));
+    const QJsonValue brier_eligible_mid_raw =
+        report.value(QStringLiteral("brier_eligible_market_mid_raw"));
+    const bool brier_eligible_available =
+        brier_eligible_full.isDouble() && brier_eligible_mid_raw.isDouble();
     QJsonObject record{
         {QStringLiteral("resolved_contracts"), report.value(QStringLiteral("resolved_contracts")).toInt()},
         {QStringLiteral("scored_contracts"), report.value(QStringLiteral("scored_contracts")).toInt()},
@@ -73,6 +82,9 @@ QJsonObject track_record(const QJsonObject& report) {
         {QStringLiteral("adds_value_over_market"),
          report.value(QStringLiteral("adds_value_over_market")).toBool()},
         {QStringLiteral("brier_available"), brier_available},
+        {QStringLiteral("adds_value_on_bet_eligible"),
+         report.value(QStringLiteral("adds_value_on_bet_eligible")).toBool()},
+        {QStringLiteral("brier_eligible_available"), brier_eligible_available},
         {QStringLiteral("generated_at_ms"), report.value(QStringLiteral("generated_at_ms"))}};
     if (brier_available) {
         record.insert(QStringLiteral("brier_full"), brier_full.toDouble());
@@ -80,31 +92,19 @@ QJsonObject track_record(const QJsonObject& report) {
     }
     if (brier_logit.isDouble())
         record.insert(QStringLiteral("brier_market_trained_logit"), brier_logit.toDouble());
+    if (brier_eligible_available) {
+        record.insert(QStringLiteral("brier_eligible_full"), brier_eligible_full.toDouble());
+        record.insert(QStringLiteral("brier_eligible_market_mid_raw"), brier_eligible_mid_raw.toDouble());
+    }
     return record;
 }
 
 } // namespace
 
-bool KalshiBotDecision::signal_trusted(const QJsonObject& report) {
-    // The claim, and the measurement it is a claim about. `track_record()`
-    // already calls a report without both Briers unavailable; a report that
-    // asserts value over a track record it does not carry is contradicting
-    // itself, and this fails closed on it rather than believing the flag.
-    //
-    // `adds_value_over_market` is measured over EVERY resolved contract, a
-    // population dominated by far-from-strike contracts where both the model
-    // and the market are nearly always right. The bot does not bet that
-    // population -- it bets where its edge over the mid clears
-    // `edge_threshold`, and there the market has been winning. So trust
-    // additionally requires the model to beat the mid on the BET-ELIGIBLE
-    // subset. A report predating that field cannot confer trust.
-    return report.value(QStringLiteral("adds_value_over_market")).toBool() &&
-           report.value(QStringLiteral("brier_full")).isDouble() &&
-           report.value(QStringLiteral("brier_market_mid_raw")).isDouble() &&
-           report.value(QStringLiteral("adds_value_on_bet_eligible")).toBool() &&
-           report.value(QStringLiteral("brier_eligible_full")).isDouble() &&
-           report.value(QStringLiteral("brier_eligible_market_mid_raw")).isDouble();
-}
+// signal_trusted() is now defined inline in KalshiBotDecision.h (same
+// reasoning as is_kxbtc15m_ticker there): header-only presentation code
+// (BotCockpitPresentation.h) needs to call the exact same promotion rule
+// without linking this .cpp into fast, header-only test targets.
 
 QJsonObject KalshiBotDecision::merge_family_reports(const QJsonObject& threshold_report,
                                                     const QJsonObject& kxbtc15m_report,

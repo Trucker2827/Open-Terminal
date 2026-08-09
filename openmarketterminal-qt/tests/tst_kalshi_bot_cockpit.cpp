@@ -101,6 +101,9 @@ QJsonObject calibrator_report(qint64 generated_at_ms, const QJsonObject& predict
                        {"brier_market_mid_raw", 0.0729},
                        {"brier_market_trained_logit", 0.0741},
                        {"adds_value_over_market", adds_value},
+                       {"adds_value_on_bet_eligible", adds_value},
+                       {"brier_eligible_full", adds_value ? 0.2130 : 0.2576},
+                       {"brier_eligible_market_mid_raw", adds_value ? 0.2576 : 0.2130},
                        {"predictions", predictions}};
 }
 
@@ -121,6 +124,9 @@ QJsonObject kxbtc15m_calibrator_report(qint64 generated_at_ms, const QJsonObject
                     {"brier_full", brier_full},
                     {"brier_market_mid_raw", brier_mid},
                     {"adds_value_over_market", adds_value},
+                    {"adds_value_on_bet_eligible", adds_value},
+                    {"brier_eligible_full", adds_value ? 0.2130 : 0.2576},
+                    {"brier_eligible_market_mid_raw", adds_value ? 0.2576 : 0.2130},
                     {"predictions", predictions}};
     if (!trusted_variant.isEmpty())
         out.insert(QStringLiteral("trusted_variant"), trusted_variant);
@@ -773,6 +779,51 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(!bare.node(QStringLiteral("calibrator"))->known);
         QVERIFY(bare.node(QStringLiteral("calibrator"))
                     ->value.contains(QStringLiteral("NOT SCORED")));
+    }
+
+    // Fix round 1, Finding 2: the panel and the bot must never disagree about
+    // promotion (KalshiBotCommands.cpp: "one scorer, many readers"). A report
+    // that beats the mid over the full population but loses where the bot
+    // actually bets is UNTRUSTED to the bot (SIGNAL_UNTRUSTED, no bid) — this
+    // scene must render the same verdict, not a green "ADDS VALUE" the bot
+    // itself does not honour. This is the live shape on this deployment:
+    // adds_value_over_market=true, adds_value_on_bet_eligible=false.
+    void the_calibrator_node_is_not_promoted_when_it_loses_where_it_bets() {
+        const QJsonArray ledger{decision_row(kNow - 5'000, QStringLiteral("KX-A"),
+                                             QStringLiteral("SIGNAL_UNTRUSTED"))};
+        QJsonObject report =
+            calibrator_report(kNow - 10'000, QJsonObject{{"KX-A", prediction(0.55, 0.42)}});
+        report.insert(QStringLiteral("adds_value_on_bet_eligible"), false);
+        report.insert(QStringLiteral("brier_eligible_full"), 0.2843);
+        report.insert(QStringLiteral("brier_eligible_market_mid_raw"), 0.2659);
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow);
+        const BotCockpitNode* node = scene.node(QStringLiteral("calibrator"));
+        QVERIFY(node != nullptr);
+        // The full-population Brier is still known/present -- this is not
+        // "unscored", it is scored and specifically NOT promoted.
+        QVERIFY(node->known);
+        QVERIFY(!node->value.contains(QStringLiteral("ADDS VALUE")));
+        QVERIFY(node->value.contains(QStringLiteral("NO EDGE YET")));
+        QCOMPARE(node->role, QStringLiteral("amber"));
+
+        // Same rule, same evidence, for the KXBTC15M scoreboard line and its
+        // orbit/KPI node coloring -- not just the threshold calibrator.
+        QJsonObject kxbtc15m = kxbtc15m_calibrator_report(
+            kNow - 10'000, QJsonObject{{"KXBTC15M-A", directional_prediction(0.7, 0.5)}},
+            /*adds_value=*/true, /*scored=*/150);
+        kxbtc15m.insert(QStringLiteral("adds_value_on_bet_eligible"), false);
+        kxbtc15m.insert(QStringLiteral("brier_eligible_full"), 0.2843);
+        kxbtc15m.insert(QStringLiteral("brier_eligible_market_mid_raw"), 0.2659);
+        const QString line = kxbtc15m_scoreboard_line(kxbtc15m);
+        QVERIFY(!line.contains(QStringLiteral("ADDS VALUE")));
+        QVERIFY(line.contains(QStringLiteral("NO EDGE YET")));
+        const BotCockpitScene scene_15m =
+            present_bot_cockpit(panel_for(ledger), {}, {}, ledger, {}, kNow, QByteArray(), 0, 0,
+                               {}, kxbtc15m);
+        const BotCockpitNode* node_15m = scene_15m.node(QStringLiteral("kxbtc15m"));
+        QVERIFY(node_15m != nullptr);
+        QCOMPARE(node_15m->role, QStringLiteral("amber"));
     }
 
     // ── missing numbers read missing, never zero ───────────────────────────

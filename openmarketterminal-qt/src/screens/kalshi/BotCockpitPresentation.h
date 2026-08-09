@@ -63,6 +63,8 @@
 
 namespace openmarketterminal::screens::kalshi {
 
+using openmarketterminal::services::prediction::kalshi_ns::KalshiBotDecision;
+
 // The reports the rain falls from. Resolved through the one path module every
 // consumer uses, exactly as the ledger and gate are.
 inline constexpr auto kKalshiCalibratorFile = "calibrator.json";
@@ -169,7 +171,7 @@ inline QString kxbtc15m_scoreboard_line(const QJsonObject& report) {
     const int floor = report.value(QStringLiteral("min_scored_contracts")).toInt(100);
     const QJsonValue brier_full = report.value(QStringLiteral("brier_full"));
     const QJsonValue brier_mid = report.value(QStringLiteral("brier_market_mid_raw"));
-    const bool trusted = report.value(QStringLiteral("adds_value_over_market")).toBool();
+    const bool trusted = KalshiBotDecision::signal_trusted(report);
     const QString variant = report.value(QStringLiteral("trusted_variant")).toString();
     if (!brier_full.isDouble() || !brier_mid.isDouble()) {
         QString line = QStringLiteral("%1/%2 scored · Brier unavailable · NO EDGE YET")
@@ -358,7 +360,7 @@ inline QString outside_info_inspect_detail(const QJsonObject& report) {
     QStringList lines;
     const int scored = report.value(QStringLiteral("scored_contracts")).toInt();
     const int floor = report.value(QStringLiteral("min_scored_contracts")).toInt(100);
-    const bool trusted = report.value(QStringLiteral("adds_value_over_market")).toBool();
+    const bool trusted = KalshiBotDecision::signal_trusted(report);
     const QString variant = report.value(QStringLiteral("trusted_variant")).toString();
     lines << QStringLiteral("scored %1/%2 · trust %3 · trusted_variant %4")
                  .arg(scored)
@@ -1273,7 +1275,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     const QJsonValue brier_full = report.value(QStringLiteral("brier_full"));
     const QJsonValue brier_mid_raw = report.value(QStringLiteral("brier_market_mid_raw"));
     if (is_number(brier_full) && is_number(brier_mid_raw)) {
-        const bool adds_value = report.value(QStringLiteral("adds_value_over_market")).toBool();
+        const bool adds_value = KalshiBotDecision::signal_trusted(report);
         add_node(QStringLiteral("calibrator"),
                  QStringLiteral("CALIBRATOR — THRESHOLD TRACK RECORD"),
                  QStringLiteral("Brier %1 vs raw mid %2 on %3 scored contracts · %4")
@@ -1298,8 +1300,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         const bool known = !kxbtc15m_report.isEmpty() &&
                            kxbtc15m_report.value(QStringLiteral("brier_full")).isDouble() &&
                            kxbtc15m_report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
-        const bool adds_value =
-            kxbtc15m_report.value(QStringLiteral("adds_value_over_market")).toBool();
+        const bool adds_value = KalshiBotDecision::signal_trusted(kxbtc15m_report);
         add_node(QStringLiteral("kxbtc15m"),
                  QStringLiteral("KXBTC15M — DIRECTIONAL SCOREBOARD · click"), line,
                  !known              ? QStringLiteral("grey")
@@ -1315,8 +1316,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                            commodities_15m_report.value(QStringLiteral("brier_full")).isDouble() &&
                            commodities_15m_report.value(QStringLiteral("brier_market_mid_raw"))
                                .isDouble();
-        const bool adds_value =
-            commodities_15m_report.value(QStringLiteral("adds_value_over_market")).toBool();
+        const bool adds_value = KalshiBotDecision::signal_trusted(commodities_15m_report);
         add_node(QStringLiteral("commodities15m"),
                  QStringLiteral("COMMODITIES 15M — DIRECTIONAL SCOREBOARD · click"), line,
                  !known       ? QStringLiteral("grey")
@@ -1516,8 +1516,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         const bool known = !kxbtc15m_report.isEmpty() &&
                            kxbtc15m_report.value(QStringLiteral("brier_full")).isDouble() &&
                            kxbtc15m_report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
-        const bool adds_value =
-            kxbtc15m_report.value(QStringLiteral("adds_value_over_market")).toBool();
+        const bool adds_value = KalshiBotDecision::signal_trusted(kxbtc15m_report);
         const QString role = !known       ? QStringLiteral("grey")
                              : adds_value ? QStringLiteral("green")
                                           : QStringLiteral("amber");
@@ -1539,8 +1538,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
             !commodities_15m_report.isEmpty() &&
             commodities_15m_report.value(QStringLiteral("brier_full")).isDouble() &&
             commodities_15m_report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
-        const bool adds_value =
-            commodities_15m_report.value(QStringLiteral("adds_value_over_market")).toBool();
+        const bool adds_value = KalshiBotDecision::signal_trusted(commodities_15m_report);
         const QString role = !known       ? QStringLiteral("grey")
                              : adds_value ? QStringLiteral("green")
                                           : QStringLiteral("amber");
@@ -1726,10 +1724,8 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         const bool threshold_active = threshold_count > 0;
         const bool kxbtc15m_active = kxbtc15m_count > 0;
         const bool any_active = threshold_active || kxbtc15m_active;
-        const bool threshold_trusted =
-            report.value(QStringLiteral("adds_value_over_market")).toBool();
-        const bool kxbtc15m_trusted =
-            kxbtc15m_report.value(QStringLiteral("adds_value_over_market")).toBool();
+        const bool threshold_trusted = KalshiBotDecision::signal_trusted(report);
+        const bool kxbtc15m_trusted = KalshiBotDecision::signal_trusted(kxbtc15m_report);
         const int scored_15m = kxbtc15m_report.value(QStringLiteral("scored_contracts")).toInt();
         const int floor_15m =
             kxbtc15m_report.value(QStringLiteral("min_scored_contracts")).toInt(100);

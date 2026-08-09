@@ -43,12 +43,11 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 ///      true once its per-contract Brier beats the RAW MARKET MID over its
 ///      ≥100-CONTRACT gate (`spot_calibrator.MIN_SCORED_CONTRACTS`, issue
 ///      #171), AND requires the track record that claim is
-///      made of to actually be present.
-///      AND once that same comparison holds on the BET-ELIGIBLE subset — the
-///      contracts whose model-vs-mid edge reached `edge_threshold`, which is
-///      the population a bid is actually drawn from. The full-population flag
-///      alone was measured where the bot does not bet.
-///      When the signal fails that rule the
+///      made of to actually be present, AND requires that same comparison to
+///      hold on the BET-ELIGIBLE subset — the contracts whose model-vs-mid
+///      edge reached `edge_threshold`, which is the population a bid is
+///      actually drawn from. The full-population flag alone was measured
+///      where the bot does not bet. When the signal fails that rule the
 ///      tick is a journaled PASS with `reason_code=SIGNAL_UNTRUSTED` — no
 ///      order, paper or otherwise. Rung 1 papered those bids and labelled them;
 ///      24 hours of rung 6 showed what that buys (42% of bids placed on a
@@ -426,7 +425,27 @@ class KalshiBotDecision {
     /// process rewrites every cycle, and a report asserting value while
     /// carrying no Brier at all is contradicting itself. Unmeasured is not
     /// trusted, the same way an unknown spread is not a free one.
-    static bool signal_trusted(const QJsonObject& report);
+    ///
+    /// `adds_value_over_market` is measured over EVERY resolved contract, a
+    /// population dominated by far-from-strike contracts where both the model
+    /// and the market are nearly always right. The bot does not bet that
+    /// population -- it bets where its edge over the mid clears
+    /// `edge_threshold`, and there the market has been winning. So trust
+    /// additionally requires the model to beat the mid on the BET-ELIGIBLE
+    /// subset. A report predating that field cannot confer trust.
+    ///
+    /// Inline for the same reason `is_kxbtc15m_ticker` is: one scorer, many
+    /// readers (KalshiBotCommands.cpp), so the BOT cockpit presenter and the
+    /// scoreboard CLI can share the exact same promotion rule as `kalshi bot`
+    /// without linking this .cpp into header-only tests.
+    static bool signal_trusted(const QJsonObject& report) {
+        return report.value(QStringLiteral("adds_value_over_market")).toBool() &&
+               report.value(QStringLiteral("brier_full")).isDouble() &&
+               report.value(QStringLiteral("brier_market_mid_raw")).isDouble() &&
+               report.value(QStringLiteral("adds_value_on_bet_eligible")).toBool() &&
+               report.value(QStringLiteral("brier_eligible_full")).isDouble() &&
+               report.value(QStringLiteral("brier_eligible_market_mid_raw")).isDouble();
+    }
 
     /// KXBTC15M family — ticker prefix before the first '-'. The directional
     /// 15-minute race uses its own calibrator report; threshold books do not.
