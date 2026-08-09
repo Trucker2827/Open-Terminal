@@ -326,6 +326,7 @@ class BetEligibleTrustTest(unittest.TestCase):
                     "physics_brti_avg60", "physics_vol_regime_confirm"):
             state[f"contract_scores_{key}"] = [0.05] * n
             state[f"contract_scores_eligible_{key}"] = [eligible_model] * n
+            state[f"contract_scores_eligible_mid_{key}"] = [eligible_mid] * n
         state["contract_scores_eligible_full"] = [eligible_model] * n
         state["contract_scores_eligible_market_mid_raw"] = [eligible_mid] * n
         return state
