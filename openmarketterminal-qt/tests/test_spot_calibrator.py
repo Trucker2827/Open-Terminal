@@ -862,5 +862,64 @@ class MissingFeatureNeutralTest(unittest.TestCase):
         self.assertEqual(state["resolved"], 1)
 
 
+class BetEligibleTrustTest(unittest.TestCase):
+    """The trust flag must be measured where the bot would actually have bet."""
+
+    def _report(self, eligible_model, eligible_mid, n):
+        state = cal.default_state()
+        state["contract_scores_full"] = [0.05] * n
+        state["contract_scores_market_mid_raw"] = [0.06] * n
+        state["contract_scores_market_trained_logit"] = [0.07] * n
+        state["contract_scores_eligible_full"] = [eligible_model] * n
+        state["contract_scores_eligible_market_mid_raw"] = [eligible_mid] * n
+        return cal.build_report(state, {}, 1_700_000_000_000)
+
+    def test_publishes_the_eligible_numbers(self):
+        r = self._report(0.20, 0.30, 100)
+        self.assertEqual(r["eligible_scored_contracts"], 100)
+        self.assertAlmostEqual(r["brier_eligible_full"], 0.20)
+        self.assertAlmostEqual(r["brier_eligible_market_mid_raw"], 0.30)
+        self.assertEqual(r["min_eligible_contracts"], 100)
+
+    def test_trusted_on_the_full_population_but_losing_where_it_bets(self):
+        # The live shape: model wins the easy far-from-strike population and
+        # loses the near-money one it actually bets.
+        r = self._report(0.2576, 0.2130, 100)
+        self.assertTrue(r["adds_value_over_market"])
+        self.assertFalse(r["adds_value_on_bet_eligible"])
+
+    def test_winning_where_it_bets_at_the_floor(self):
+        r = self._report(0.2130, 0.2576, 100)
+        self.assertTrue(r["adds_value_on_bet_eligible"])
+
+    def test_below_the_eligible_floor_is_false_even_when_winning(self):
+        r = self._report(0.2130, 0.2576, 99)
+        self.assertFalse(r["adds_value_on_bet_eligible"])
+
+    def test_settle_cycle_scores_only_eligible_observations(self):
+        # Two observations: one where the model is far from the mid (eligible)
+        # and one where it hugs the mid (not). Only the first may be scored.
+        state = cal.default_state()
+        rows = [(0.95, 0.60), (0.61, 0.60)]
+        model_pairs, mid_pairs = cal.ce.eligible_pairs(rows, True)
+        self.assertEqual(len(model_pairs), 1)
+        self.assertEqual(model_pairs[0][0], 0.95)
+        self.assertEqual(mid_pairs[0][0], 0.60)
+
+    def test_settle_cycle_backfills_missing_eligible_keys(self):
+        # A state file written by an already-schema-2 calibrator (before this
+        # change) has no contract_scores_eligible_* keys at all -- migrate_state
+        # only backfills schema-1 files. settle_cycle must not KeyError the
+        # first time a contract resolves under the old state shape.
+        state = cal.default_state()
+        del state["contract_scores_eligible_full"]
+        del state["contract_scores_eligible_market_mid_raw"]
+        state["pending"]["KXBTC-OLD"] = {
+            "close_ms": 1_000, "obs": [{"yes_mid": 0.1}]}
+        cal.settle_cycle(state, now_ms=1_000 + 200_000, resolver=lambda ticker, **k: True)
+        self.assertNotIn("KXBTC-OLD", state["pending"])  # settled, no crash
+        self.assertEqual(state["resolved"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
