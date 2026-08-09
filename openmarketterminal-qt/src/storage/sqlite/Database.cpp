@@ -1,4 +1,5 @@
 #include "storage/sqlite/Database.h"
+#include "storage/sqlite/SqlErrorContext.h"
 
 #include "core/logging/Logger.h"
 #include "storage/sqlite/migrations/MigrationRunner.h"
@@ -145,7 +146,10 @@ Result<QSqlQuery> Database::execute(const QString& sql, const QVariantList& para
         query.bindValue(i, params[i]);
     }
     if (!query.exec()) {
-        return Result<QSqlQuery>::err(query.lastError().text().toStdString());
+        // Carry the statement: "database is locked" alone cannot be acted on
+        // when several jobs hit it thousands of times a day.
+        return Result<QSqlQuery>::err(
+            storage::sqlite::sql_error_with_context(query.lastError().text(), sql).toStdString());
     }
     return Result<QSqlQuery>::ok(std::move(query));
 }
@@ -157,7 +161,8 @@ Result<void> Database::exec(const QString& sql) {
     }
     QSqlQuery query(conn);
     if (!query.exec(sql)) {
-        return Result<void>::err(query.lastError().text().toStdString());
+        return Result<void>::err(
+            storage::sqlite::sql_error_with_context(query.lastError().text(), sql).toStdString());
     }
     return Result<void>::ok();
 }
