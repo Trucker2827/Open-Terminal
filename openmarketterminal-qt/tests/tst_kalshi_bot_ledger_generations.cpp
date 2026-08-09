@@ -71,6 +71,9 @@ QJsonObject one(double p_full, double market_mid, qint64 generated_ms = kNow) {
         {QStringLiteral("brier_market_mid_raw"), 0.1083},
         {QStringLiteral("brier_market_trained_logit"), 0.1101},
         {QStringLiteral("adds_value_over_market"), true},
+        {QStringLiteral("adds_value_on_bet_eligible"), true},
+        {QStringLiteral("brier_eligible_full"), 0.2130},
+        {QStringLiteral("brier_eligible_market_mid_raw"), 0.2576},
         {QStringLiteral("predictions"),
          QJsonObject{
              {QString::fromLatin1(kTicker),

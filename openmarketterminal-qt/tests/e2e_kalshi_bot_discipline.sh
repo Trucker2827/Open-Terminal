@@ -83,6 +83,9 @@ json.dump({
     "brier_market_mid_raw": 0.1083,
     "brier_market_trained_logit": 0.1101,
     "adds_value_over_market": trusted == "True",
+    "adds_value_on_bet_eligible": trusted == "True",
+    "brier_eligible_full": 0.2130 if trusted == "True" else 0.2576,
+    "brier_eligible_market_mid_raw": 0.2576 if trusted == "True" else 0.2130,
     "predictions": {thin: contract(False), tight: contract(True)},
 }, open(path, "w"))
 PY

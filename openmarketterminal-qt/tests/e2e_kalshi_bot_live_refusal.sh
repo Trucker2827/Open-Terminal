@@ -55,6 +55,9 @@ json.dump({
     "brier_market_mid_raw": 0.1083,
     "brier_market_trained_logit": 0.1101,
     "adds_value_over_market": True,
+    "adds_value_on_bet_eligible": True,
+    "brier_eligible_full": 0.2130,
+    "brier_eligible_market_mid_raw": 0.2576,
     "predictions": {
         "KXBTC15M-E2ELIVE-15": {
             "p_yes_full": 0.98,
