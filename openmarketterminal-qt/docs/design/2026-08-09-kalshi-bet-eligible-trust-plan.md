@@ -634,6 +634,8 @@ In `new_state()`, beside the existing `contract_scores_*` keys:
         "contract_scores_eligible_market_mid_raw": [],
         "contract_scores_eligible_physics_tape_confirm_near_close": [],
         "contract_scores_eligible_physics_vol_regime_confirm": [],
+        "contract_scores_eligible_mid_physics_tape_confirm_near_close": [],
+        "contract_scores_eligible_mid_physics_vol_regime_confirm": [],
 ```
 
 And the matching `setdefault` calls beside the existing ones, so a state file
@@ -644,6 +646,8 @@ written before this change loads without a `KeyError`:
     state.setdefault("contract_scores_eligible_market_mid_raw", [])
     state.setdefault("contract_scores_eligible_physics_tape_confirm_near_close", [])
     state.setdefault("contract_scores_eligible_physics_vol_regime_confirm", [])
+    state.setdefault("contract_scores_eligible_mid_physics_tape_confirm_near_close", [])
+    state.setdefault("contract_scores_eligible_mid_physics_vol_regime_confirm", [])
 ```
 
 - [ ] **Step 4: Add the eligible scoreboard and a separate selector**
@@ -652,18 +656,33 @@ Beside the existing `ablation_scoreboard`:
 
 ```python
 def eligible_ablation_scoreboard(state):
-    """Per-variant Brier vs mid over the BET-ELIGIBLE observations only."""
-    return oif.paired_ablation_scoreboard(
-        {
-            "physics": state.get("contract_scores_eligible_full") or [],
-            "physics_tape_confirm_near_close":
-                state.get("contract_scores_eligible_physics_tape_confirm_near_close") or [],
-            "physics_vol_regime_confirm":
-                state.get("contract_scores_eligible_physics_vol_regime_confirm") or [],
-        },
-        state.get("contract_scores_eligible_market_mid_raw") or [],
-        ce.MIN_ELIGIBLE_CONTRACTS,
-    )
+    """Per-variant Brier vs mid over the BET-ELIGIBLE observations only.
+
+    Each variant is scored against ITS OWN eligible mid list, because
+    eligibility is per-predictor and the variants' eligible contract sets do not
+    coincide. paired_ablation_scoreboard takes a single mid list, so it is
+    called once per variant and the rows merged, keeping the row shape
+    oif.select_best_trusted expects.
+    """
+    pairs = {
+        "physics": (state.get("contract_scores_eligible_full") or [],
+                    state.get("contract_scores_eligible_market_mid_raw") or []),
+        "physics_tape_confirm_near_close": (
+            state.get("contract_scores_eligible_physics_tape_confirm_near_close") or [],
+            state.get("contract_scores_eligible_mid_physics_tape_confirm_near_close") or []),
+        "physics_vol_regime_confirm": (
+            state.get("contract_scores_eligible_physics_vol_regime_confirm") or [],
+            state.get("contract_scores_eligible_mid_physics_vol_regime_confirm") or []),
+    }
+    board = {}
+    b_mid = None
+    for name, (scores, mids) in pairs.items():
+        row, row_mid = oif.paired_ablation_scoreboard(
+            {name: scores}, mids, ce.MIN_ELIGIBLE_CONTRACTS)
+        board.update(row)
+        if name == "physics":
+            b_mid = row_mid
+    return board, b_mid
 
 
 def select_trusted_variant_eligible(state):
@@ -692,12 +711,21 @@ In the scoring loop, after the existing per-variant `.append(brier(...))` calls:
         for key in ("physics_tape_confirm_near_close", "physics_vol_regime_confirm"):
             rows = [((obs.get("p_ablations") or {}).get(key, obs["p_model"]), obs["yes_mid"])
                     for obs in observations]
-            v_model, _v_mid = ce.eligible_pairs(rows, outcome)
+            v_model, v_mid = ce.eligible_pairs(rows, outcome)
             if v_model:
                 state[f"contract_scores_eligible_{key}"].append(brier(v_model))
+                state[f"contract_scores_eligible_mid_{key}"].append(brier(v_mid))
 ```
 
-Add all four new keys to the window-trim tuple beside the existing ones.
+**Each variant must be paired with its OWN eligible mid, never with physics'.**
+Eligibility is per-predictor, so a variant's eligible contracts are not the same
+set as physics'. Scoring a variant against a mid baseline measured on *other*
+contracts is precisely the defect this whole change exists to remove. Do not
+discard `v_mid`.
+
+Add all six new keys — the two variant score lists, the two variant mid lists,
+and the two physics lists — to the state constructor, the `setdefault` block,
+AND the window-trim tuple.
 
 - [ ] **Step 6: Publish the fields in build_report**
 
