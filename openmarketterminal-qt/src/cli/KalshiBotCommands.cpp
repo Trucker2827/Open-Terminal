@@ -249,26 +249,41 @@ QJsonObject read_commodities_15m_calibrator_report() {
     return read_evidence_json(QStringLiteral("commodities-15m-calibrator.json"));
 }
 
-/// Decide once per family report so trust cannot leak across families: an
-/// untrusted 15m scoreboard must not block a trusted threshold bid, and
-/// directional families are stripped from the threshold report (each owns
-/// its own calibrator).
+QJsonObject read_commodities_hourly_calibrator_report() {
+    return read_evidence_json(QStringLiteral("commodities-hourly-calibrator.json"));
+}
+
+QJsonObject read_commodities_daily_calibrator_report() {
+    return read_evidence_json(QStringLiteral("commodities-daily-calibrator.json"));
+}
+
+QJsonObject read_kxbtc_daily_calibrator_report() {
+    return read_evidence_json(QStringLiteral("kxbtc-daily-calibrator.json"));
+}
+
+/// Decide once per family report so trust cannot leak across families.
 QJsonArray decide_family_reports(const QJsonObject& threshold_report,
                                  const QJsonObject& kxbtc15m_report,
                                  const QJsonObject& commodities_15m_report,
+                                 const QJsonObject& commodities_hourly_report,
+                                 const QJsonObject& commodities_daily_report,
+                                 const QJsonObject& kxbtc_daily_report,
                                  const QJsonArray& open_positions,
                                  const QJsonArray& settled_positions,
                                  qint64 now_ms,
                                  const KalshiBotDecision::Config& config,
                                  const KalshiBotStopFile& stop,
                                  const KalshiBotDecision::Exposure& exposure) {
-    const bool has_threshold =
-        threshold_report.value(QStringLiteral("generated_at_ms")).toDouble() > 0.0;
-    const bool has_15m =
-        kxbtc15m_report.value(QStringLiteral("generated_at_ms")).toDouble() > 0.0;
-    const bool has_commodities =
-        commodities_15m_report.value(QStringLiteral("generated_at_ms")).toDouble() > 0.0;
-    if (!has_threshold && !has_15m && !has_commodities)
+    const auto has_gen = [](const QJsonObject& report) {
+        return report.value(QStringLiteral("generated_at_ms")).toDouble() > 0.0;
+    };
+    const bool has_threshold = has_gen(threshold_report);
+    const bool has_15m = has_gen(kxbtc15m_report);
+    const bool has_com15 = has_gen(commodities_15m_report);
+    const bool has_com_h = has_gen(commodities_hourly_report);
+    const bool has_com_d = has_gen(commodities_daily_report);
+    const bool has_btc_d = has_gen(kxbtc_daily_report);
+    if (!has_threshold && !has_15m && !has_com15 && !has_com_h && !has_com_d && !has_btc_d)
         return KalshiBotDecision::decide({}, open_positions, settled_positions, now_ms, config,
                                          stop, exposure);
 
@@ -282,30 +297,43 @@ QJsonArray decide_family_reports(const QJsonObject& threshold_report,
             filtered, open_positions, settled_positions, now_ms, family_config, stop, exposure);
         for (const auto& value : part) rows.append(value);
     };
-    // Paper KXBTCD rest-first: threshold never pays the ask; 15m families keep
-    // their own cross path (still gated by family trust).
+    // Paper rest-first on KXBTCD + KXBTC daily; race families keep cross path.
     append_filtered(
         KalshiBotDecision::filter_predictions_for_family(threshold_report, /*keep_kxbtc15m=*/false),
         config.threshold_rest_first);
     append_filtered(
         KalshiBotDecision::filter_predictions_for_family(kxbtc15m_report, /*keep_kxbtc15m=*/true));
     append_filtered(KalshiBotDecision::filter_commodity_15m_predictions(commodities_15m_report));
+    append_filtered(KalshiBotDecision::filter_commodity_hourly_predictions(commodities_hourly_report));
+    append_filtered(KalshiBotDecision::filter_commodity_daily_predictions(commodities_daily_report));
+    append_filtered(KalshiBotDecision::filter_kxbtc_daily_predictions(kxbtc_daily_report),
+                    config.threshold_rest_first);
     if (!rows.isEmpty()) return rows;
     // Source file(s) exist but no family has a live prediction — one honest
     // row from a present source, never a false REPORT_MISSING.
-    if (has_commodities)
-        return KalshiBotDecision::decide(
-            KalshiBotDecision::filter_commodity_15m_predictions(commodities_15m_report),
-            open_positions, settled_positions, now_ms, config, stop, exposure);
+    const auto decide_one = [&](const QJsonObject& filtered, bool force_rest = false) {
+        KalshiBotDecision::Config cfg = config;
+        if (force_rest) cfg.allow_cross = false;
+        return KalshiBotDecision::decide(filtered, open_positions, settled_positions, now_ms, cfg,
+                                         stop, exposure);
+    };
+    if (has_com15)
+        return decide_one(KalshiBotDecision::filter_commodity_15m_predictions(commodities_15m_report));
+    if (has_com_h)
+        return decide_one(
+            KalshiBotDecision::filter_commodity_hourly_predictions(commodities_hourly_report));
+    if (has_com_d)
+        return decide_one(
+            KalshiBotDecision::filter_commodity_daily_predictions(commodities_daily_report));
     if (has_15m)
-        return KalshiBotDecision::decide(
-            KalshiBotDecision::filter_predictions_for_family(kxbtc15m_report, /*keep_kxbtc15m=*/true),
-            open_positions, settled_positions, now_ms, config, stop, exposure);
-    KalshiBotDecision::Config threshold_config = config;
-    if (config.threshold_rest_first) threshold_config.allow_cross = false;
-    return KalshiBotDecision::decide(
+        return decide_one(
+            KalshiBotDecision::filter_predictions_for_family(kxbtc15m_report, /*keep_kxbtc15m=*/true));
+    if (has_btc_d)
+        return decide_one(KalshiBotDecision::filter_kxbtc_daily_predictions(kxbtc_daily_report),
+                          config.threshold_rest_first);
+    return decide_one(
         KalshiBotDecision::filter_predictions_for_family(threshold_report, /*keep_kxbtc15m=*/false),
-        open_positions, settled_positions, now_ms, threshold_config, stop, exposure);
+        config.threshold_rest_first);
 }
 
 /// The published gate verdict (rung 2's kalshi-bot-gate.json), read exactly as
@@ -421,7 +449,10 @@ void maybe_kick_calibrator(const QJsonObject& report, qint64 now_ms, qint64 max_
 /// this is the unattended safety net (overnight / App Nap / missed interval).
 void refresh_stale_calibrators(const QJsonObject& threshold_report,
                                const QJsonObject& kxbtc15m_report,
-                               const QJsonObject& commodities_15m_report, qint64 now_ms,
+                               const QJsonObject& commodities_15m_report,
+                               const QJsonObject& commodities_hourly_report,
+                               const QJsonObject& commodities_daily_report,
+                               const QJsonObject& kxbtc_daily_report, qint64 now_ms,
                                qint64 max_age_ms) {
     maybe_kick_calibrator(threshold_report, now_ms, max_age_ms,
                           QStringLiteral("spot_calibrator.py"),
@@ -432,6 +463,15 @@ void refresh_stale_calibrators(const QJsonObject& threshold_report,
     maybe_kick_calibrator(commodities_15m_report, now_ms, max_age_ms,
                           QStringLiteral("commodities_15m_calibrator.py"),
                           QStringLiteral("org.openterminal.commodities-15m-calibrator"));
+    maybe_kick_calibrator(commodities_hourly_report, now_ms, max_age_ms,
+                          QStringLiteral("commodities_hourly_calibrator.py"),
+                          QStringLiteral("org.openterminal.commodities-hourly-calibrator"));
+    maybe_kick_calibrator(commodities_daily_report, now_ms, max_age_ms,
+                          QStringLiteral("commodities_daily_calibrator.py"),
+                          QStringLiteral("org.openterminal.commodities-daily-calibrator"));
+    maybe_kick_calibrator(kxbtc_daily_report, now_ms, max_age_ms,
+                          QStringLiteral("kxbtc_daily_calibrator.py"),
+                          QStringLiteral("org.openterminal.kxbtc-daily-calibrator"));
 }
 
 /// Evaluates the sealed promotion gate and publishes the verdict — the ONE
@@ -629,18 +669,26 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     QJsonObject threshold_report = read_calibrator_report();
     QJsonObject kxbtc15m_report = read_kxbtc15m_calibrator_report();
     QJsonObject commodities_15m_report = read_commodities_15m_calibrator_report();
+    QJsonObject commodities_hourly_report = read_commodities_hourly_calibrator_report();
+    QJsonObject commodities_daily_report = read_commodities_daily_calibrator_report();
+    QJsonObject kxbtc_daily_report = read_kxbtc_daily_calibrator_report();
     // Unattended refresh before decide/settle: LaunchAgents are primary; this
     // kicks when a report ages toward max_report_age (avoids REPORT_STALE).
     if (auto_refresh_calibrators) {
         refresh_stale_calibrators(threshold_report, kxbtc15m_report, commodities_15m_report,
-                                  now_ms, paper_config.max_report_age_ms);
+                                  commodities_hourly_report, commodities_daily_report,
+                                  kxbtc_daily_report, now_ms, paper_config.max_report_age_ms);
         // Re-read once after kicks so a fast publisher can still serve this tick.
         threshold_report = read_calibrator_report();
         kxbtc15m_report = read_kxbtc15m_calibrator_report();
         commodities_15m_report = read_commodities_15m_calibrator_report();
+        commodities_hourly_report = read_commodities_hourly_calibrator_report();
+        commodities_daily_report = read_commodities_daily_calibrator_report();
+        kxbtc_daily_report = read_kxbtc_daily_calibrator_report();
     }
     const QJsonObject report = KalshiBotDecision::merge_family_reports(
-        threshold_report, kxbtc15m_report, now_ms, paper_config, commodities_15m_report);
+        threshold_report, kxbtc15m_report, now_ms, paper_config, commodities_15m_report,
+        commodities_hourly_report, commodities_daily_report, kxbtc_daily_report);
     QHash<QString, double> market_mid_by_ticker;
     const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
     for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it) {
@@ -803,8 +851,9 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     // Per-family decide: each calibrator owns its trust. Untrusted families
     // still journal SIGNAL_UNTRUSTED and never bid.
     const QJsonArray rows = decide_family_reports(
-        threshold_report, kxbtc15m_report, commodities_15m_report, book.positions, book.settled,
-        now_ms, paper_config, stop, exposure);
+        threshold_report, kxbtc15m_report, commodities_15m_report, commodities_hourly_report,
+        commodities_daily_report, kxbtc_daily_report, book.positions, book.settled, now_ms,
+        paper_config, stop, exposure);
     for (const auto& value : rows) {
         const QJsonObject row = value.toObject();
         journal(row);
@@ -891,12 +940,19 @@ TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config
     QJsonObject threshold_report = read_calibrator_report();
     QJsonObject kxbtc15m_report = read_kxbtc15m_calibrator_report();
     QJsonObject commodities_15m_report = read_commodities_15m_calibrator_report();
+    QJsonObject commodities_hourly_report = read_commodities_hourly_calibrator_report();
+    QJsonObject commodities_daily_report = read_commodities_daily_calibrator_report();
+    QJsonObject kxbtc_daily_report = read_kxbtc_daily_calibrator_report();
     if (auto_refresh_calibrators) {
-        refresh_stale_calibrators(threshold_report, kxbtc15m_report, commodities_15m_report, now_ms,
-                                  config.max_report_age_ms);
+        refresh_stale_calibrators(threshold_report, kxbtc15m_report, commodities_15m_report,
+                                  commodities_hourly_report, commodities_daily_report,
+                                  kxbtc_daily_report, now_ms, config.max_report_age_ms);
         threshold_report = read_calibrator_report();
         kxbtc15m_report = read_kxbtc15m_calibrator_report();
         commodities_15m_report = read_commodities_15m_calibrator_report();
+        commodities_hourly_report = read_commodities_hourly_calibrator_report();
+        commodities_daily_report = read_commodities_daily_calibrator_report();
+        kxbtc_daily_report = read_kxbtc_daily_calibrator_report();
     }
     // No book of any kind is replayed here. A live order's fills and lifecycle
     // live at the venue, and the paper model would invent them; and the bot's
@@ -905,9 +961,9 @@ TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config
     // per-contract duplicate guard, against the immutable drafts (#141). A
     // re-bid therefore reaches submit_order and is refused there, before the
     // adapter, and the refusal is journaled like any other.
-    const QJsonArray rows =
-        decide_family_reports(threshold_report, kxbtc15m_report, commodities_15m_report, {}, {},
-                              now_ms, config, stop, {});
+    const QJsonArray rows = decide_family_reports(
+        threshold_report, kxbtc15m_report, commodities_15m_report, commodities_hourly_report,
+        commodities_daily_report, kxbtc_daily_report, {}, {}, now_ms, config, stop, {});
     for (const auto& value : rows) {
         const QJsonObject row = value.toObject();
         if (row.value(QStringLiteral("action")).toString() != QStringLiteral("bid")) {
@@ -1075,8 +1131,10 @@ void bot_usage() {
                  "       kalshi bot stop [--reason \"why\"]   throw the kill switch\n"
                  "       kalshi bot resume                  clear it\n"
                  "       kalshi bot status                  what the GUI BOT chip shows\n"
-                 "       kalshi bot scoreboard [--json]     threshold + BTC15m + commodities15m + gate\n"
-                 "       kalshi bot calibrate once|report|run [--family all|threshold|kxbtc15m|commodities15m]\n"
+                 "       kalshi bot scoreboard [--json]     all family calibrators + gate\n"
+                 "       kalshi bot calibrate once|report|run [--family all|threshold|kxbtc15m|\n"
+                 "                                            commodities15m|commodities_hourly|\n"
+                 "                                            commodities_daily|kxbtc_daily]\n"
                  "                                            [--interval N]\n"
                  "       kalshi bot lessons [--refresh]     what the record teaches (issue #174)\n"
                  "       kalshi bot postmortem [--json] [--post-gate|--since-ms N]\n"
@@ -1865,6 +1923,9 @@ int bot_scoreboard_command(const GlobalOpts& opts, QStringList& args) {
     const QJsonObject threshold = read_calibrator_report();
     const QJsonObject kxbtc15m = read_kxbtc15m_calibrator_report();
     const QJsonObject commodities = read_commodities_15m_calibrator_report();
+    const QJsonObject commodities_h = read_commodities_hourly_calibrator_report();
+    const QJsonObject commodities_d = read_commodities_daily_calibrator_report();
+    const QJsonObject kxbtc_d = read_kxbtc_daily_calibrator_report();
     const QJsonObject gate = read_gate_verdict();
     const QJsonObject out{
         {QStringLiteral("event"), QStringLiteral("kalshi_bot_scoreboard")},
@@ -1877,6 +1938,15 @@ int bot_scoreboard_command(const GlobalOpts& opts, QStringList& args) {
         {QStringLiteral("commodities15m"),
          scoreboard_family_summary(commodities, QStringLiteral("commodities15m"),
                                    QStringLiteral("commodities-15m-calibrator.json"))},
+        {QStringLiteral("commodities_hourly"),
+         scoreboard_family_summary(commodities_h, QStringLiteral("commodities_hourly"),
+                                   QStringLiteral("commodities-hourly-calibrator.json"))},
+        {QStringLiteral("commodities_daily"),
+         scoreboard_family_summary(commodities_d, QStringLiteral("commodities_daily"),
+                                   QStringLiteral("commodities-daily-calibrator.json"))},
+        {QStringLiteral("kxbtc_daily"),
+         scoreboard_family_summary(kxbtc_d, QStringLiteral("kxbtc_daily"),
+                                   QStringLiteral("kxbtc-daily-calibrator.json"))},
         {QStringLiteral("gate"),
          QJsonObject{{QStringLiteral("verdict"), gate.value(QStringLiteral("verdict"))},
                      {QStringLiteral("evaluated"), gate.value(QStringLiteral("evaluated"))},
@@ -1898,6 +1968,9 @@ int bot_scoreboard_command(const GlobalOpts& opts, QStringList& args) {
     print_scoreboard_family_human(out.value(QStringLiteral("threshold")).toObject());
     print_scoreboard_family_human(out.value(QStringLiteral("kxbtc15m")).toObject());
     print_scoreboard_family_human(out.value(QStringLiteral("commodities15m")).toObject());
+    print_scoreboard_family_human(out.value(QStringLiteral("commodities_hourly")).toObject());
+    print_scoreboard_family_human(out.value(QStringLiteral("commodities_daily")).toObject());
+    print_scoreboard_family_human(out.value(QStringLiteral("kxbtc_daily")).toObject());
     const QJsonObject g = out.value(QStringLiteral("gate")).toObject();
     std::printf("gate  verdict=%s  settled=%s  drawdown=%s  net_pnl=%s\n",
                 qUtf8Printable(g.value(QStringLiteral("verdict")).toString(QStringLiteral("?"))),
@@ -1966,7 +2039,8 @@ int bot_calibrate_command(const GlobalOpts& /*opts*/, QStringList& args) {
         action != QStringLiteral("run")) {
         std::fprintf(stderr,
                      "usage: kalshi bot calibrate once|report|run "
-                     "[--family all|threshold|kxbtc15m|commodities15m] [--interval N]\n");
+                     "[--family all|threshold|kxbtc15m|commodities15m|commodities_hourly|"
+                     "commodities_daily|kxbtc_daily] [--interval N]\n");
         return 2;
     }
     QString family = QStringLiteral("all");
@@ -2008,10 +2082,22 @@ int bot_calibrate_command(const GlobalOpts& /*opts*/, QStringList& args) {
         family == QStringLiteral("commodities"))
         jobs.append(
             {QStringLiteral("commodities15m"), QStringLiteral("commodities_15m_calibrator.py")});
+    if (family == QStringLiteral("all") || family == QStringLiteral("commodities_hourly") ||
+        family == QStringLiteral("commoditieshourly"))
+        jobs.append({QStringLiteral("commodities_hourly"),
+                     QStringLiteral("commodities_hourly_calibrator.py")});
+    if (family == QStringLiteral("all") || family == QStringLiteral("commodities_daily") ||
+        family == QStringLiteral("commoditiesdaily"))
+        jobs.append(
+            {QStringLiteral("commodities_daily"), QStringLiteral("commodities_daily_calibrator.py")});
+    if (family == QStringLiteral("all") || family == QStringLiteral("kxbtc_daily") ||
+        family == QStringLiteral("btcdaily"))
+        jobs.append({QStringLiteral("kxbtc_daily"), QStringLiteral("kxbtc_daily_calibrator.py")});
     if (jobs.isEmpty()) {
         std::fprintf(stderr,
                      "kalshi bot calibrate: unknown --family '%s' "
-                     "(all|threshold|kxbtc15m|commodities15m)\n",
+                     "(all|threshold|kxbtc15m|commodities15m|commodities_hourly|"
+                     "commodities_daily|kxbtc_daily)\n",
                      qUtf8Printable(family));
         return 2;
     }

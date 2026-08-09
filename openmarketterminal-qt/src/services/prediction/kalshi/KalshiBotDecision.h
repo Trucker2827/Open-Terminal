@@ -330,9 +330,9 @@ class KalshiBotDecision {
         /// the EV cross path; `decide_family_reports` clears this for the
         /// threshold family when `threshold_rest_first` is set.
         bool allow_cross = true;
-        /// Paper ambition: force rest on KXBTCD/threshold decide only (15m
-        /// families keep allow_cross). `run_tick` sets this true; live leaves
-        /// false. Opt out with `--allow-threshold-cross`.
+        /// Paper ambition: force rest on KXBTCD/threshold and KXBTC daily
+        /// decide (race families keep allow_cross). Paper CLI sets this true;
+        /// live leaves false. Opt out with `--allow-threshold-cross`.
         bool threshold_rest_first = false;
     };
 
@@ -540,18 +540,50 @@ class KalshiBotDecision {
                family == QLatin1String("KXWTI15M");
     }
 
+    /// Commodities hourly strike books (KXGOLDH / KXSILVERH / KXWTIH).
+    static bool is_commodity_hourly_ticker(const QString& ticker) {
+        const int dash = ticker.indexOf(QLatin1Char('-'));
+        const QString family = dash < 0 ? ticker : ticker.left(dash);
+        return family == QLatin1String("KXGOLDH") || family == QLatin1String("KXSILVERH") ||
+               family == QLatin1String("KXWTIH");
+    }
+
+    /// Commodities daily strike books. WTI daily series ticker is KXWTI.
+    static bool is_commodity_daily_ticker(const QString& ticker) {
+        const int dash = ticker.indexOf(QLatin1Char('-'));
+        const QString family = dash < 0 ? ticker : ticker.left(dash);
+        return family == QLatin1String("KXGOLDD") || family == QLatin1String("KXSILVERD") ||
+               family == QLatin1String("KXWTI");
+    }
+
+    /// BTC daily/band floor series `KXBTC` — not KXBTC15M and not KXBTCD.
+    static bool is_kxbtc_daily_ticker(const QString& ticker) {
+        const int dash = ticker.indexOf(QLatin1Char('-'));
+        const QString family = dash < 0 ? ticker : ticker.left(dash);
+        return family == QLatin1String("KXBTC");
+    }
+
+    /// Any family that owns its own calibrator report (must not leak into
+    /// threshold / kxbtc15m filters).
+    static bool is_owned_non_threshold_ticker(const QString& ticker) {
+        return is_kxbtc15m_ticker(ticker) || is_commodity_15m_ticker(ticker) ||
+               is_commodity_hourly_ticker(ticker) || is_commodity_daily_ticker(ticker) ||
+               is_kxbtc_daily_ticker(ticker);
+    }
+
     /// Copy of `report` keeping only predictions that match (or exclude) the
-    /// KXBTC15M family. Commodity-15m tickers are never kept on either side of
-    /// this bool — they have their own `filter_commodity_15m_predictions`.
-    /// Track-record / trust fields are left intact so `signal_trusted()` still
-    /// answers for that source report.
+    /// KXBTC15M family. Other owned families are never kept on either side of
+    /// this bool — each has its own filter. Track-record / trust fields are
+    /// left intact so `signal_trusted()` still answers for that source report.
     static QJsonObject filter_predictions_for_family(const QJsonObject& report,
                                                      bool keep_kxbtc15m) {
         QJsonObject out = report;
         const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
         QJsonObject filtered;
         for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it) {
-            if (is_commodity_15m_ticker(it.key())) continue;
+            if (is_commodity_15m_ticker(it.key()) || is_commodity_hourly_ticker(it.key()) ||
+                is_commodity_daily_ticker(it.key()) || is_kxbtc_daily_ticker(it.key()))
+                continue;
             if (is_kxbtc15m_ticker(it.key()) == keep_kxbtc15m)
                 filtered.insert(it.key(), it.value());
         }
@@ -571,15 +603,51 @@ class KalshiBotDecision {
         return out;
     }
 
-    /// Predictions from the threshold report (non-directional) plus the BTC
-    /// and commodities 15m reports. Each source contributes only when fresh
-    /// under `config.max_report_age_ms`. Trust never crosses family boundaries.
-    /// `generated_at_ms` is the newest contributing source; empty when none.
+    static QJsonObject filter_commodity_hourly_predictions(const QJsonObject& report) {
+        QJsonObject out = report;
+        const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
+        QJsonObject filtered;
+        for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it) {
+            if (is_commodity_hourly_ticker(it.key())) filtered.insert(it.key(), it.value());
+        }
+        out.insert(QStringLiteral("predictions"), filtered);
+        return out;
+    }
+
+    static QJsonObject filter_commodity_daily_predictions(const QJsonObject& report) {
+        QJsonObject out = report;
+        const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
+        QJsonObject filtered;
+        for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it) {
+            if (is_commodity_daily_ticker(it.key())) filtered.insert(it.key(), it.value());
+        }
+        out.insert(QStringLiteral("predictions"), filtered);
+        return out;
+    }
+
+    static QJsonObject filter_kxbtc_daily_predictions(const QJsonObject& report) {
+        QJsonObject out = report;
+        const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
+        QJsonObject filtered;
+        for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it) {
+            if (is_kxbtc_daily_ticker(it.key())) filtered.insert(it.key(), it.value());
+        }
+        out.insert(QStringLiteral("predictions"), filtered);
+        return out;
+    }
+
+    /// Predictions from every family report the bot reads. Each source
+    /// contributes only when fresh under `config.max_report_age_ms`. Trust
+    /// never crosses family boundaries. `generated_at_ms` is the newest
+    /// contributing source; empty when none.
     static QJsonObject merge_family_reports(const QJsonObject& threshold_report,
                                             const QJsonObject& kxbtc15m_report,
                                             qint64 now_ms,
                                             const Config& config,
-                                            const QJsonObject& commodities_15m_report = {});
+                                            const QJsonObject& commodities_15m_report = {},
+                                            const QJsonObject& commodities_hourly_report = {},
+                                            const QJsonObject& commodities_daily_report = {},
+                                            const QJsonObject& kxbtc_daily_report = {});
 
     /// Flattens the terminal's two real settlement ledgers into
     /// `{ticker, market_result, settled_time, source}` rows. Rows without a

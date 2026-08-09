@@ -56,6 +56,9 @@ add_test(NAME test_bot_bid_postmortem
 add_test(NAME test_eligible_loss_autopsy
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_eligible_loss_autopsy.py -v)
+add_test(NAME test_strike_threshold_family
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_strike_threshold_family.py -v)
 add_test(NAME test_btc_event_impact
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_btc_event_impact.py -v)

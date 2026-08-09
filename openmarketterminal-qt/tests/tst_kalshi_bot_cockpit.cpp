@@ -304,8 +304,7 @@ class KalshiBotCockpitTest : public QObject {
         // The absence is stated, not left as an empty scene the viewer must
         // interpret.
         QVERIFY(scene.census.contains(QStringLiteral("NO FLOW")));
-        QVERIFY(scene.census.contains(QStringLiteral("calibrator.json")));
-        QVERIFY(scene.census.contains(QStringLiteral("kxbtc15m-calibrator.json")));
+        QVERIFY(scene.census.contains(QStringLiteral("multi-cadence calibrators")));
         QVERIFY(!scene.report_present);
         QVERIFY(scene.envelope.contains(QStringLiteral("NO DECISION JOURNALED")));
     }
@@ -1124,7 +1123,7 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(node->value.contains(QStringLiteral("7/100 scored")));
         QCOMPARE(node->role, QStringLiteral("amber"));
         const QString strip = scene.kpi.join(QStringLiteral(" | "));
-        QVERIFY(strip.contains(QStringLiteral("KXBTC15M")));
+        QVERIFY(strip.contains(QStringLiteral("BTC 15M|D")));
         QVERIFY(strip.contains(QStringLiteral("7/100 scored")));
     }
 
@@ -1637,7 +1636,8 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(baseline.columns_total, 1);
         QCOMPARE(baseline.census,
                  QStringLiteral("1 watched contracts · all drawn · L→R · threshold first · ambition "
-                                "KXBTCD · 1 threshold · 0 kxbtc15m · 0 commodities15m"));
+                                "KXBTCD · 1 threshold · 0 kxbtc15m · 0 commodities15m · 0 "
+                                "commodities_hourly · 0 commodities_daily · 0 kxbtc_daily"));
         QCOMPARE(baseline.nodes.size(), 8);
         QVERIFY(!baseline.node(QStringLiteral("kxbtc15m"))->detail.isEmpty());
         QVERIFY(!baseline.node(QStringLiteral("commodities15m"))->detail.isEmpty());
@@ -1655,10 +1655,10 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(baseline.lessons.size(), 1);
         QVERIFY(baseline.lessons.first().contains(QStringLiteral("UNAVAILABLE")));
         QVERIFY(!baseline.kpi_available);
-        // Decision-rate + KXBTC15M + COMMOD15M + model|bot Brier + postmortem.
+        // Decision-rate + BTC 15M|D + COM 15m|H|D + model|bot Brier + postmortem.
         QCOMPARE(baseline.kpi.size(), 6);
-        QVERIFY(baseline.kpi.at(baseline.kpi.size() - 4).startsWith(QStringLiteral("KXBTC15M")));
-        QVERIFY(baseline.kpi.at(baseline.kpi.size() - 3).startsWith(QStringLiteral("COMMOD15M")));
+        QVERIFY(baseline.kpi.at(baseline.kpi.size() - 4).startsWith(QStringLiteral("BTC 15M|D")));
+        QVERIFY(baseline.kpi.at(baseline.kpi.size() - 3).startsWith(QStringLiteral("COM 15m|H|D")));
         QVERIFY(baseline.kpi.at(baseline.kpi.size() - 2).startsWith(QStringLiteral("BRIER model")));
         QVERIFY(baseline.kpi.last().startsWith(QStringLiteral("PM ")));
         // PM KPI inspect body is always present (even UNAVAILABLE) — no 9th node.
