@@ -35,6 +35,12 @@ add_test(NAME test_spot_calibrator
 add_test(NAME test_calibrator_eligibility
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_calibrator_eligibility.py -v)
+if(APPLE)
+    # The build hook must never repoint a live trading LaunchAgent at whatever
+    # tree happened to build. macOS-only: it drives PlistBuddy.
+    add_test(NAME test_restart_kalshi_bot
+             COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test_restart_kalshi_bot.sh)
+endif()
 add_test(NAME test_kxbtc15m_calibrator
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_kxbtc15m_calibrator.py -v)
