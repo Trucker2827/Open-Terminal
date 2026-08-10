@@ -1,3 +1,4 @@
+#include <QSet>
 #include "services/crypto_latency/CryptoLatencyService.h"
 
 #include "datahub/DataHub.h"
@@ -34,6 +35,14 @@ constexpr qint64 kLiveSourceMaxAgeMs = 5000;
 bool source_is_fresh(const CryptoLatencySourceState& state, qint64 now) {
     return state.last_tick_ms > 0 && now >= state.last_tick_ms &&
            now - state.last_tick_ms <= kLiveSourceMaxAgeMs;
+}
+
+// Both sides priced AND sized. Deliberately the same bar
+// CryptoMicrostructureRadar applies for top_book_sources: a quote with no size
+// behind it is not something an order can interact with.
+bool tick_has_usable_book(const CryptoLatencyTick& tick) {
+    return tick.best_bid > 0.0 && tick.best_ask > 0.0 &&
+           tick.bid_size > 0.0 && tick.ask_size > 0.0;
 }
 
 double as_double(const QJsonValue& v) {
@@ -107,6 +116,23 @@ QString topic_symbol(const QString& symbol) {
 }
 
 } // namespace
+
+int crypto_latency_count_live_sources(const QVector<CryptoLatencySourceState>& states,
+                                      const QVector<CryptoLatencyTick>& latest_ticks,
+                                      qint64 now_ms) {
+    QSet<QString> quoting;
+    for (const auto& tick : latest_ticks) {
+        if (tick_has_usable_book(tick))
+            quoting.insert(tick.source.trimmed().toLower());
+    }
+    int live = 0;
+    for (const auto& state : states) {
+        if (source_is_fresh(state, now_ms) &&
+            quoting.contains(state.source.trimmed().toLower()))
+            ++live;
+    }
+    return live;
+}
 
 CryptoLatencyService::CryptoLatencyService(QObject* parent) : QObject(parent) {
     qRegisterMetaType<CryptoLatencyTick>();
@@ -217,10 +243,8 @@ CryptoLatencySnapshot CryptoLatencyService::filtered_snapshot(const CryptoLatenc
         if (filtered.oldest_tick_ms <= 0 || tick.received_ts_ms < filtered.oldest_tick_ms)
             filtered.oldest_tick_ms = tick.received_ts_ms;
     }
-    for (const auto& state : filtered.sources) {
-        if (source_is_fresh(state, now))
-            ++filtered.live_sources;
-    }
+    filtered.live_sources =
+        crypto_latency_count_live_sources(filtered.sources, filtered.latest_ticks, now);
     if (filtered.newest_tick_ms > 0)
         filtered.freshest_age_ms = now - filtered.newest_tick_ms;
     if (filtered.min_price > 0.0 && filtered.max_price > 0.0) {
@@ -958,10 +982,7 @@ CryptoLatencySnapshot CryptoLatencyService::snapshot() const {
         if (s.oldest_tick_ms <= 0 || t.received_ts_ms < s.oldest_tick_ms)
             s.oldest_tick_ms = t.received_ts_ms;
     }
-    for (const auto& state : s.sources) {
-        if (source_is_fresh(state, now))
-            s.live_sources += 1;
-    }
+    s.live_sources = crypto_latency_count_live_sources(s.sources, s.latest_ticks, now);
     if (s.newest_tick_ms > 0)
         s.freshest_age_ms = now - s.newest_tick_ms;
     if (s.min_price > 0.0 && s.max_price > 0.0) {

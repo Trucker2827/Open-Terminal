@@ -64,6 +64,24 @@ struct CryptoLatencySnapshot {
     int total_ticks = 0;
 };
 
+/// How many sources are genuinely usable right now.
+///
+/// A source counts only when it is BOTH fresh and quoting a two-sided book
+/// with size on each side. Recency alone was the old rule, and it let a thin
+/// or heartbeat-shaped feed satisfy the "2 live sources" bar on data nobody
+/// could actually trade against: a venue ticking a bare last-price every few
+/// seconds looked identical to one streaming a real book.
+///
+/// The bar mirrors the one CryptoMicrostructureRadar already applies for
+/// top_book_sources -- both sides priced and sized -- so the two counters stop
+/// disagreeing about what "live" means.
+///
+/// Strictly tightening: this can only ever return fewer sources than the old
+/// recency-only rule, never more.
+int crypto_latency_count_live_sources(const QVector<CryptoLatencySourceState>& states,
+                                      const QVector<CryptoLatencyTick>& latest_ticks,
+                                      qint64 now_ms);
+
 class CryptoLatencyService : public QObject {
     Q_OBJECT
   public:
