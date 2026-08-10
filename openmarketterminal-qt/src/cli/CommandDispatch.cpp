@@ -1,5 +1,6 @@
 #include "cli/CommandDispatch.h"
 #include "storage/sqlite/SqlResult.h"
+#include "services/edge_radar/VolCostContext.h"
 #include "cli/AiRunCommand.h"
 #include "cli/ObserveCommand.h"
 #include "cli/KalshiBotCommands.h"
@@ -13623,7 +13624,13 @@ edge_capture_microstructure(services::edge_radar::CryptoMicrostructureRadar& rad
     service.start(symbol, sources);
     timeout.start(duration_ms);
     loop.exec();
-    const auto snapshot = radar.snapshot(service.snapshot());
+    // Supply the volatility context so the noise-floor fields report what the
+    // gate already knows. Volatility only: `cost_context_available` -- the flag
+    // that lets the radar veto a TRADE CANDIDATE -- keys off fee_available, so
+    // this changes reporting and not the call. See VolCostContext.h.
+    const auto vol_ctx = services::edge_radar::vol_cost_context_for(
+        edge_base_crypto_symbol(symbol), QDateTime::currentMSecsSinceEpoch());
+    const auto snapshot = radar.snapshot(service.snapshot(), vol_ctx);
     service.stop();
     return snapshot;
 }
