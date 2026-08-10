@@ -1,5 +1,6 @@
 // StrategyPortfolio.cpp — saved-strategy persistence (§16) + qty-freeze (§17).
 #include "trading/StrategyPortfolio.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/logging/Logger.h"
 #include "storage/sqlite/Database.h"
@@ -56,7 +57,7 @@ QVector<OptionsLeg> legs_from_json_str(const QString& s) {
     return out;
 }
 
-SavedStrategy map_row(QSqlQuery& q) {
+SavedStrategy map_row(storage::sqlite::SqlResult& q) {
     SavedStrategy s;
     s.id = q.value("id").toString();
     s.name = q.value("name").toString();

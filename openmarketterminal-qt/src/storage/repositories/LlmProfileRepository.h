@@ -11,6 +11,7 @@
 //   4. Active provider fallback    (legacy — from llm_configs)
 
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -93,7 +94,7 @@ class LlmProfileRepository : public BaseRepository<LlmProfile> {
   private:
     LlmProfileRepository() = default;
 
-    static LlmProfile map_profile(QSqlQuery& q);
+    static LlmProfile map_profile(storage::sqlite::SqlResult& q);
     static QString type_default_key(const QString& context_type);
     ResolvedLlmProfile profile_to_resolved(const LlmProfile& p) const;
     ResolvedLlmProfile legacy_fallback() const;

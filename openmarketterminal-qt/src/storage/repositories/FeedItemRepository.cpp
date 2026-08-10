@@ -1,4 +1,5 @@
 #include "storage/repositories/FeedItemRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -13,7 +14,7 @@ FeedItemRepository& FeedItemRepository::instance() {
     return s;
 }
 
-FeedItem FeedItemRepository::map_row(QSqlQuery& q) {
+FeedItem FeedItemRepository::map_row(storage::sqlite::SqlResult& q) {
     FeedItem it;
     it.id = q.value(0).toString();
     it.title = q.value(1).toString();

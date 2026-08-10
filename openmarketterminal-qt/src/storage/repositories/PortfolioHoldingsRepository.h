@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -27,7 +28,7 @@ class PortfolioHoldingsRepository : public BaseRepository<PortfolioHolding> {
 
   private:
     PortfolioHoldingsRepository() = default;
-    static PortfolioHolding map_row(QSqlQuery& q);
+    static PortfolioHolding map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

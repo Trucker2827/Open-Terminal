@@ -1,5 +1,6 @@
 // src/storage/repositories/ScanEventRepository.cpp
 #include "storage/repositories/ScanEventRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QUuid>
 
@@ -16,7 +17,7 @@ ScanEventRepository& ScanEventRepository::instance() {
     return s;
 }
 
-ScanWatchEvent ScanEventRepository::map_row(QSqlQuery& q) {
+ScanWatchEvent ScanEventRepository::map_row(storage::sqlite::SqlResult& q) {
     ScanWatchEvent e;
     e.id       = q.value(0).toString();
     e.watch_id = q.value(1).toString();

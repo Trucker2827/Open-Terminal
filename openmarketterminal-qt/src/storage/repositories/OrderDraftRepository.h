@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -39,7 +40,7 @@ class OrderDraftRepository : public BaseRepository<OrderDraft> {
 
   private:
     OrderDraftRepository() = default;
-    static OrderDraft map_draft(QSqlQuery& q);
+    static OrderDraft map_draft(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

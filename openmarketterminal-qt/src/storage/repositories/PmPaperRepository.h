@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <optional>
 
@@ -50,7 +51,7 @@ class PmPaperRepository : public BaseRepository<PmPosition> {
 
   private:
     PmPaperRepository() = default;
-    static PmPosition map_position(QSqlQuery& q);
+    static PmPosition map_position(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

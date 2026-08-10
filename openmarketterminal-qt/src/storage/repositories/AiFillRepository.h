@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QPair>
 
@@ -33,7 +34,7 @@ class AiFillRepository : public BaseRepository<AiFill> {
 
   private:
     AiFillRepository() = default;
-    static AiFill map_row(QSqlQuery& q);
+    static AiFill map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

@@ -1,6 +1,7 @@
 // src/storage/repositories/CustomIndexRepository.h
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -47,8 +48,8 @@ class CustomIndexRepository : public BaseRepository<CustomIndex> {
 
   private:
     CustomIndexRepository() = default;
-    static CustomIndex map_index(QSqlQuery& q);
-    static CustomIndexValue map_value(QSqlQuery& q);
+    static CustomIndex map_index(storage::sqlite::SqlResult& q);
+    static CustomIndexValue map_value(storage::sqlite::SqlResult& q);
 
     static QString constituents_to_json(const QVector<CustomIndexConstituent>& cs);
     static QVector<CustomIndexConstituent> json_to_constituents(const QString& json);

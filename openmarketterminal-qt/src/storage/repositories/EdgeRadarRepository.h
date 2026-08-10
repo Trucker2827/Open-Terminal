@@ -1,6 +1,7 @@
 #pragma once
 
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QJsonObject>
 
@@ -45,7 +46,7 @@ class EdgeRadarRepository : public BaseRepository<EdgeRadarIdea> {
 
   private:
     EdgeRadarRepository() = default;
-    static EdgeRadarIdea map_row(QSqlQuery& q);
+    static EdgeRadarIdea map_row(storage::sqlite::SqlResult& q);
 };
 
 QJsonObject edge_radar_idea_to_json(const EdgeRadarIdea& idea);

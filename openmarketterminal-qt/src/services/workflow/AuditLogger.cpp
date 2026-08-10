@@ -1,4 +1,5 @@
 #include "services/workflow/AuditLogger.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/logging/Logger.h"
 #include "storage/sqlite/Database.h"
@@ -135,7 +136,7 @@ QString AuditLogger::export_json() const {
     return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Indented));
 }
 
-AuditEntry AuditLogger::map_entry(QSqlQuery& q) {
+AuditEntry AuditLogger::map_entry(storage::sqlite::SqlResult& q) {
     AuditEntry e;
     e.id = q.value(0).toLongLong();
     e.action = string_to_action(q.value(1).toString());

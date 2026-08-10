@@ -79,7 +79,7 @@ QVector<ScreenRow> screen(const QString& market, int limit) {
     // keeps the two query lifetimes from overlapping.
     QVector<QPair<QString, QString>> universe;
     {
-        QSqlQuery& q = rows.value();
+        auto& q = rows.value();
         while (q.next())
             universe.append({q.value(0).toString(), q.value(1).toString()});
     }

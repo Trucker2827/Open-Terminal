@@ -1,4 +1,5 @@
 #include "storage/repositories/PortfolioHoldingsRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ PortfolioHoldingsRepository& PortfolioHoldingsRepository::instance() {
     return s;
 }
 
-PortfolioHolding PortfolioHoldingsRepository::map_row(QSqlQuery& q) {
+PortfolioHolding PortfolioHoldingsRepository::map_row(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toInt(),    q.value(1).toString(), q.value(2).toString(), q.value(3).toDouble(),
         q.value(4).toDouble(), q.value(5).toBool(),   q.value(6).toString(), q.value(7).toString(),

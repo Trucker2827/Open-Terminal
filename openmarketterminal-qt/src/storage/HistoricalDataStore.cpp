@@ -1,4 +1,5 @@
 #include "storage/HistoricalDataStore.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/logging/Logger.h"
 #include "storage/sqlite/Database.h"
@@ -24,7 +25,7 @@ namespace {
 Database& db() { return Database::instance(); }
 
 // Map a SELECT row (timestamp_ms, open, high, low, close, volume, oi) to a candle.
-trading::BrokerCandle map_candle(QSqlQuery& q) {
+trading::BrokerCandle map_candle(storage::sqlite::SqlResult& q) {
     trading::BrokerCandle c;
     c.timestamp = q.value(0).toLongLong();
     c.open = q.value(1).toDouble();

@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -28,7 +29,7 @@ class ContextRecordingRepository : public BaseRepository<RecordedContext> {
 
   private:
     ContextRecordingRepository() = default;
-    static RecordedContext map_row(QSqlQuery& q);
+    static RecordedContext map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

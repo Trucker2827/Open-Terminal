@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -43,8 +44,8 @@ class ChatRepository : public BaseRepository<ChatSession> {
 
   private:
     ChatRepository() = default;
-    static ChatSession map_session(QSqlQuery& q);
-    static ChatMessage map_message(QSqlQuery& q);
+    static ChatSession map_session(storage::sqlite::SqlResult& q);
+    static ChatMessage map_message(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

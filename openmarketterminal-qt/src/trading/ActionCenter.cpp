@@ -1,5 +1,6 @@
 // ActionCenter.cpp — semi-auto order approval implementation (Phase 3 §2).
 #include "trading/ActionCenter.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/logging/Logger.h"
 #include "storage/repositories/SettingsRepository.h"
@@ -229,7 +230,7 @@ QString ActionCenter::queue_order(const QString& account_id, const QString& orde
     return po.id;
 }
 
-PendingOrder ActionCenter::map_row(QSqlQuery& q) {
+PendingOrder ActionCenter::map_row(storage::sqlite::SqlResult& q) {
     PendingOrder po;
     po.id = q.value("id").toString();
     po.account_id = q.value("account_id").toString();

@@ -1,4 +1,5 @@
 #include "storage/repositories/StrategiesRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/logging/Logger.h"
 
@@ -93,7 +94,7 @@ QVector<StrategyLeg> StrategiesRepository::legs_from_json(const QString& json) {
     return out;
 }
 
-SavedStrategyRow StrategiesRepository::map_row(QSqlQuery& q) {
+SavedStrategyRow StrategiesRepository::map_row(storage::sqlite::SqlResult& q) {
     SavedStrategyRow r;
     r.id = q.value(0).toLongLong();
     r.strategy.name = q.value(1).toString();

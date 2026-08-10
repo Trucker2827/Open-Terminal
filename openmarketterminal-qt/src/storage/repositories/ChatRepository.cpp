@@ -1,4 +1,5 @@
 #include "storage/repositories/ChatRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QUuid>
 
@@ -9,12 +10,12 @@ ChatRepository& ChatRepository::instance() {
     return s;
 }
 
-ChatSession ChatRepository::map_session(QSqlQuery& q) {
+ChatSession ChatRepository::map_session(storage::sqlite::SqlResult& q) {
     return {q.value(0).toString(), q.value(1).toString(), q.value(2).toString(), q.value(3).toString(),
             q.value(4).toInt(),    q.value(5).toString(), q.value(6).toString()};
 }
 
-ChatMessage ChatRepository::map_message(QSqlQuery& q) {
+ChatMessage ChatRepository::map_message(storage::sqlite::SqlResult& q) {
     return {q.value(0).toString(), q.value(1).toString(), q.value(2).toString(), q.value(3).toString(),
             q.value(4).toString(), q.value(5).toString(), q.value(6).toInt(),    q.value(7).toString()};
 }

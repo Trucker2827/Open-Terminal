@@ -1,4 +1,5 @@
 #include "storage/repositories/AccountRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ AccountRepository& AccountRepository::instance() {
     return s;
 }
 
-trading::BrokerAccount AccountRepository::map_row(QSqlQuery& q) {
+trading::BrokerAccount AccountRepository::map_row(storage::sqlite::SqlResult& q) {
     trading::BrokerAccount a;
     a.account_id         = q.value(0).toString();
     a.broker_id          = q.value(1).toString();

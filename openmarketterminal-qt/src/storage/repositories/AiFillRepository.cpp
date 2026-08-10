@@ -1,4 +1,5 @@
 #include "storage/repositories/AiFillRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ AiFillRepository& AiFillRepository::instance() {
     return s;
 }
 
-AiFill AiFillRepository::map_row(QSqlQuery& q) {
+AiFill AiFillRepository::map_row(storage::sqlite::SqlResult& q) {
     return {q.value(0).toString(),  q.value(1).toString(),  q.value(2).toString(), q.value(3).toString(),
             q.value(4).toDouble(),  q.value(5).toDouble(),  q.value(6).toDouble(), q.value(7).toDouble(),
             q.value(8).toLongLong(), q.value(9).toString()};
@@ -54,7 +55,7 @@ Result<QVector<QPair<QString, QString>>> AiFillRepository::distinct_handler_symb
     }
     sql += " ORDER BY handler, symbol";
     return query_list_as<QPair<QString, QString>>(
-        sql, params, [](QSqlQuery& q) { return qMakePair(q.value(0).toString(), q.value(1).toString()); });
+        sql, params, [](storage::sqlite::SqlResult& q) { return qMakePair(q.value(0).toString(), q.value(1).toString()); });
 }
 
 } // namespace openmarketterminal

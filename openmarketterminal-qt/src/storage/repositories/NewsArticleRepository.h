@@ -1,5 +1,6 @@
 #pragma once
 #include "services/news/NewsService.h"
+#include "storage/sqlite/SqlResult.h"
 #include "storage/repositories/BaseRepository.h"
 
 #include <cstdint>
@@ -63,7 +64,7 @@ class NewsArticleRepository : public BaseRepository<openmarketterminal::services
 
   private:
     NewsArticleRepository() = default;
-    static openmarketterminal::services::NewsArticle map_row(QSqlQuery& q);
+    static openmarketterminal::services::NewsArticle map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

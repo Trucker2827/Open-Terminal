@@ -3,6 +3,7 @@
 // tab). One row per Strategy; legs serialised as a JSON array.
 
 #include "services/options/OptionChainTypes.h"
+#include "storage/sqlite/SqlResult.h"
 #include "storage/repositories/BaseRepository.h"
 
 namespace openmarketterminal {
@@ -32,7 +33,7 @@ class StrategiesRepository : public BaseRepository<SavedStrategyRow> {
 
   private:
     StrategiesRepository() = default;
-    static SavedStrategyRow map_row(QSqlQuery& q);
+    static SavedStrategyRow map_row(storage::sqlite::SqlResult& q);
 
     /// JSON encode/decode helpers — `legs_json` carries the QVector<StrategyLeg>.
     static QString legs_to_json(const QVector<openmarketterminal::services::options::StrategyLeg>& legs);

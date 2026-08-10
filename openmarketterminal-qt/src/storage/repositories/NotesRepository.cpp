@@ -1,4 +1,5 @@
 #include "storage/repositories/NotesRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ NotesRepository& NotesRepository::instance() {
     return s;
 }
 
-FinancialNote NotesRepository::map_note(QSqlQuery& q) {
+FinancialNote NotesRepository::map_note(storage::sqlite::SqlResult& q) {
     FinancialNote n;
     n.id = q.value(0).toInt();
     n.title = q.value(1).toString();
@@ -28,7 +29,7 @@ FinancialNote NotesRepository::map_note(QSqlQuery& q) {
     return n;
 }
 
-NoteTemplate NotesRepository::map_template(QSqlQuery& q) {
+NoteTemplate NotesRepository::map_template(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toInt(),    q.value(1).toString(), q.value(2).toString(),
         q.value(3).toString(), q.value(4).toString(), q.value(5).toString(),

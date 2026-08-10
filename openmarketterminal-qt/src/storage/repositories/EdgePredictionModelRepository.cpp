@@ -1,4 +1,5 @@
 #include "storage/repositories/EdgePredictionModelRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QDateTime>
 #include <QJsonDocument>
@@ -35,7 +36,7 @@ EdgePredictionModelRepository& EdgePredictionModelRepository::instance() {
     return s;
 }
 
-EdgePredictionRawTick EdgePredictionModelRepository::map_raw_tick(QSqlQuery& q) {
+EdgePredictionRawTick EdgePredictionModelRepository::map_raw_tick(storage::sqlite::SqlResult& q) {
     EdgePredictionRawTick t;
     t.id = q.value(0).toString();
     t.symbol = q.value(1).toString();
@@ -46,7 +47,7 @@ EdgePredictionRawTick EdgePredictionModelRepository::map_raw_tick(QSqlQuery& q) 
     return t;
 }
 
-EdgePredictionObservation EdgePredictionModelRepository::map_observation(QSqlQuery& q) {
+EdgePredictionObservation EdgePredictionModelRepository::map_observation(storage::sqlite::SqlResult& q) {
     EdgePredictionObservation o;
     o.id = q.value(0).toString();
     o.venue = q.value(1).toString();
@@ -71,7 +72,7 @@ EdgePredictionObservation EdgePredictionModelRepository::map_observation(QSqlQue
     return o;
 }
 
-EdgePredictionModelRecord EdgePredictionModelRepository::map_model(QSqlQuery& q) {
+EdgePredictionModelRecord EdgePredictionModelRepository::map_model(storage::sqlite::SqlResult& q) {
     EdgePredictionModelRecord m;
     m.id = q.value(0).toString();
     m.symbol = q.value(1).toString();
@@ -86,7 +87,7 @@ EdgePredictionModelRecord EdgePredictionModelRepository::map_model(QSqlQuery& q)
     return m;
 }
 
-EdgePredictionModelOutput EdgePredictionModelRepository::map_output(QSqlQuery& q) {
+EdgePredictionModelOutput EdgePredictionModelRepository::map_output(storage::sqlite::SqlResult& q) {
     EdgePredictionModelOutput o;
     o.id = q.value(0).toString();
     o.symbol = q.value(1).toString();

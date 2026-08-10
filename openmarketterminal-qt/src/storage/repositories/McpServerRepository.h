@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -32,7 +33,7 @@ class McpServerRepository : public BaseRepository<McpServer> {
 
   private:
     McpServerRepository() = default;
-    static McpServer map_row(QSqlQuery& q);
+    static McpServer map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

@@ -1,4 +1,5 @@
 #include "storage/repositories/NewsMonitorRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ NewsMonitorRepository& NewsMonitorRepository::instance() {
     return s;
 }
 
-NewsMonitorRow NewsMonitorRepository::map_row(QSqlQuery& q) {
+NewsMonitorRow NewsMonitorRepository::map_row(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toString(), q.value(1).toString(), q.value(2).toString().split(",", Qt::SkipEmptyParts),
         q.value(3).toString(), q.value(4).toBool(),

@@ -1,4 +1,5 @@
 #include "storage/repositories/SettingsRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ SettingsRepository& SettingsRepository::instance() {
     return s;
 }
 
-Setting SettingsRepository::map_row(QSqlQuery& q) {
+Setting SettingsRepository::map_row(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toString(),
         q.value(1).toString(),

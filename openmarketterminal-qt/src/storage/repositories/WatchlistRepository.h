@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QUuid>
 
@@ -47,8 +48,8 @@ class WatchlistRepository : public BaseRepository<Watchlist> {
 
   private:
     WatchlistRepository() = default;
-    static Watchlist map_watchlist(QSqlQuery& q);
-    static WatchlistStock map_stock(QSqlQuery& q);
+    static Watchlist map_watchlist(storage::sqlite::SqlResult& q);
+    static WatchlistStock map_stock(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

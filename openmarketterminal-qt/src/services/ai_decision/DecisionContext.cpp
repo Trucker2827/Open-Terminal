@@ -125,7 +125,7 @@ DecisionPacket assess(const QString& symbol, const QString& market) {
         return packet;
     }
 
-    QSqlQuery& q = rows.value();
+    auto& q = rows.value();
 
     const qint64 created_at_ms = q.value(col(EdgeCol::kCreatedAt)).toLongLong();
     // Horizon-aware recency bound. seconds_left is the edge's validity window

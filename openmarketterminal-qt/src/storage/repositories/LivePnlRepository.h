@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <optional>
 
@@ -45,7 +46,7 @@ class LivePnlRepository : public BaseRepository<LivePosition> {
 
   private:
     LivePnlRepository() = default;
-    static LivePosition map_position(QSqlQuery& q);
+    static LivePosition map_position(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

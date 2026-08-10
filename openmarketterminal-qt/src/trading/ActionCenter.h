@@ -20,6 +20,7 @@
 // via SettingsRepository (key "action_center.mode.<account_id>").
 
 #include "trading/TradingTypes.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QDateTime>
 #include <QJsonObject>
@@ -137,7 +138,7 @@ class ActionCenter : public QObject {
     static void populate_display_fields(PendingOrder& po);
 
     // Row mapper for the pending_orders table.
-    static PendingOrder map_row(class QSqlQuery& q);
+    static PendingOrder map_row(storage::sqlite::SqlResult& q);
 
     // Execute a queued order against UnifiedTrading. Returns the broker order id
     // (empty on failure) and sets `ok`/`err`.

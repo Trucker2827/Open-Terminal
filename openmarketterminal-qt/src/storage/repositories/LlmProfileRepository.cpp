@@ -1,6 +1,7 @@
 // LlmProfileRepository.cpp
 
 #include "storage/repositories/LlmProfileRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/config/ProfileManager.h"
 #include "core/logging/Logger.h"
@@ -37,7 +38,7 @@ LlmProfileRepository& LlmProfileRepository::instance() {
 
 // ── Row mapper ────────────────────────────────────────────────────────────────
 
-LlmProfile LlmProfileRepository::map_profile(QSqlQuery& q) {
+LlmProfile LlmProfileRepository::map_profile(storage::sqlite::SqlResult& q) {
     LlmProfile p;
     p.id = q.value(0).toString();
     p.name = q.value(1).toString();

@@ -1,6 +1,7 @@
 // src/storage/repositories/PortfolioRepository.h
 #pragma once
 #include "screens/portfolio/PortfolioTypes.h"
+#include "storage/sqlite/SqlResult.h"
 #include "storage/repositories/BaseRepository.h"
 
 namespace openmarketterminal {
@@ -84,10 +85,10 @@ class PortfolioRepository : public BaseRepository<portfolio::Portfolio> {
   private:
     PortfolioRepository() = default;
 
-    static portfolio::Portfolio map_portfolio(QSqlQuery& q);
-    static portfolio::PortfolioAsset map_asset(QSqlQuery& q);
-    static portfolio::Transaction map_transaction(QSqlQuery& q);
-    static portfolio::PortfolioSnapshot map_snapshot(QSqlQuery& q);
+    static portfolio::Portfolio map_portfolio(storage::sqlite::SqlResult& q);
+    static portfolio::PortfolioAsset map_asset(storage::sqlite::SqlResult& q);
+    static portfolio::Transaction map_transaction(storage::sqlite::SqlResult& q);
+    static portfolio::PortfolioSnapshot map_snapshot(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

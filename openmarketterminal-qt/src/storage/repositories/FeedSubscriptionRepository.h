@@ -1,5 +1,6 @@
 #pragma once
 #include "services/feeds/FeedTypes.h"
+#include "storage/sqlite/SqlResult.h"
 #include "storage/repositories/BaseRepository.h"
 
 #include <QVector>
@@ -21,7 +22,7 @@ class FeedSubscriptionRepository : public BaseRepository<feeds::FeedSubscription
 
   private:
     FeedSubscriptionRepository() = default;
-    static feeds::FeedSubscription map_row(QSqlQuery& q);
+    static feeds::FeedSubscription map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

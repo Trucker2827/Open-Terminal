@@ -1,4 +1,5 @@
 #include "storage/repositories/RssFeedRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ RssFeedRepository& RssFeedRepository::instance() {
     return s;
 }
 
-RssFeedRow RssFeedRepository::map_row(QSqlQuery& q) {
+RssFeedRow RssFeedRepository::map_row(storage::sqlite::SqlResult& q) {
     RssFeedRow r;
     r.id = q.value(0).toString();
     r.name = q.value(1).toString();

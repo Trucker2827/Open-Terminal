@@ -6,6 +6,7 @@
 // to the last green Windows build. A TU boundary fully resets the front-end.
 
 #include "cli/EdgeJournalShared.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
 #include "services/edge_radar/EdgeProofStats.h"
@@ -864,7 +865,7 @@ struct EdgeDecisionLane {
     qint64 created_at = 0;
 };
 
-static EdgeDecisionLane edge_decision_lane_from_query(QSqlQuery& q) {
+static EdgeDecisionLane edge_decision_lane_from_query(storage::sqlite::SqlResult& q) {
     EdgeDecisionLane lane;
     lane.found = true;
     lane.id = q.value(0).toString();
@@ -1208,7 +1209,7 @@ QString edge_crypto_raw_tick_symbol(const QString& symbol) {
     return edge_base_crypto_symbol(symbol);
 }
 
-Result<CryptoRecommendationOutcome> edge_score_crypto_recommendation_outcome(QSqlQuery& q) {
+Result<CryptoRecommendationOutcome> edge_score_crypto_recommendation_outcome(storage::sqlite::SqlResult& q) {
     CryptoRecommendationOutcome out;
     out.id = q.value(0).toString();
     out.decision_ts = q.value(1).toLongLong();

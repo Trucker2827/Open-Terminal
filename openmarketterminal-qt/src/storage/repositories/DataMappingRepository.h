@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -36,7 +37,7 @@ class DataMappingRepository : public BaseRepository<DataMapping> {
 
   private:
     DataMappingRepository() = default;
-    static DataMapping map_row(QSqlQuery& q);
+    static DataMapping map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

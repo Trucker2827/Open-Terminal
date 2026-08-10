@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QStringList>
 
@@ -24,7 +25,7 @@ class NewsMonitorRepository : public BaseRepository<NewsMonitorRow> {
 
   private:
     NewsMonitorRepository() = default;
-    static NewsMonitorRow map_row(QSqlQuery& q);
+    static NewsMonitorRow map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

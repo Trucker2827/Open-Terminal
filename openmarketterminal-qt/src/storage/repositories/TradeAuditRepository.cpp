@@ -1,4 +1,5 @@
 #include "storage/repositories/TradeAuditRepository.h"
+#include "storage/sqlite/SqlResult.h"
 #include "core/events/EventBus.h"
 #include "core/logging/Logger.h"
 #include "storage/LocalDataLake.h"
@@ -16,7 +17,7 @@ TradeAuditRepository& TradeAuditRepository::instance() {
 static const char* kAuditColumns =
     "ts, phase, tool, account, mode, intent_json, decision, reason, risk_snapshot_json";
 
-TradeAuditRow TradeAuditRepository::map_row(QSqlQuery& q) {
+TradeAuditRow TradeAuditRepository::map_row(storage::sqlite::SqlResult& q) {
     TradeAuditRow r;
     r.ts = q.value(0).toString();
     r.phase = q.value(1).toString();

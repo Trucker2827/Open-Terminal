@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -34,7 +35,7 @@ class AiHandlerRepository : public BaseRepository<AiHandler> {
 
   private:
     AiHandlerRepository() = default;
-    static AiHandler map_handler(QSqlQuery& q);
+    static AiHandler map_handler(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

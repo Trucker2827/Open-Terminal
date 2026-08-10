@@ -1,6 +1,7 @@
 // src/storage/repositories/ScanEventRepository.h
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QString>
 #include <QVector>
@@ -26,7 +27,7 @@ class ScanEventRepository : public BaseRepository<ScanWatchEvent> {
 
   private:
     ScanEventRepository() = default;
-    static ScanWatchEvent map_row(QSqlQuery& q);
+    static ScanWatchEvent map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

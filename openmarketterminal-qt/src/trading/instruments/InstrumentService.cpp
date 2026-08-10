@@ -129,18 +129,22 @@ void InstrumentService::load_from_db(const QString& broker_id) {
     // the main thread so that the single QSqlDatabase connection is not
     // accessed concurrently (QSqlDatabase is not thread-safe).
     QVector<Instrument> all;
-    QSqlQuery q(Database::instance().connection());
-    q.prepare("SELECT instrument_token, exchange_token, symbol, brsymbol, name, "
-              "exchange, brexchange, expiry, strike, lot_size, instrument_type, "
-              "tick_size, broker_id, broker_token "
-              "FROM instruments WHERE broker_id = ?");
-    q.addBindValue(broker_id);
-    if (q.exec()) {
-        while (q.next())
-            all.append(InstrumentRepository::map_row_static(q));
+    // Through execute(), not a raw QSqlQuery: this runs on the SHARED
+    // connection, so a cursor held here would block any later write on it.
+    // (The two async loaders below open their own connection and are exempt.)
+    auto r = Database::instance().execute(
+        "SELECT instrument_token, exchange_token, symbol, brsymbol, name, "
+        "exchange, brexchange, expiry, strike, lot_size, instrument_type, "
+        "tick_size, broker_id, broker_token "
+        "FROM instruments WHERE broker_id = ?",
+        {broker_id});
+    if (r.is_ok()) {
+        while (r.value().next())
+            all.append(InstrumentRepository::map_row_static(r.value()));
     } else {
         LOG_ERROR("InstrumentService",
-                  QString("Failed loading instruments for %1: %2").arg(broker_id, q.lastError().text()));
+                  QString("Failed loading instruments for %1: %2")
+                      .arg(broker_id, QString::fromStdString(r.error())));
     }
     if (all.isEmpty()) {
         LOG_WARN("InstrumentService", QString("No instruments found in DB for %1 — run refresh").arg(broker_id));

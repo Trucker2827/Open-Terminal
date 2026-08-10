@@ -1,4 +1,5 @@
 #include "storage/repositories/DataSourceRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ DataSourceRepository& DataSourceRepository::instance() {
     return s;
 }
 
-DataSource DataSourceRepository::map_row(QSqlQuery& q) {
+DataSource DataSourceRepository::map_row(storage::sqlite::SqlResult& q) {
     return {q.value(0).toString(), q.value(1).toString(), q.value(2).toString(),  q.value(3).toString(),
             q.value(4).toString(), q.value(5).toString(), q.value(6).toString(),  q.value(7).toString(),
             q.value(8).toBool(),   q.value(9).toString(), q.value(10).toString(), q.value(11).toString()};
