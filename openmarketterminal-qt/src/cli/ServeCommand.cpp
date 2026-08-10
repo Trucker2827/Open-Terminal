@@ -1,4 +1,5 @@
 #include "cli/ServeCommand.h"
+#include "services/edge_radar/VolCostContext.h"
 #include "cli/BridgeDiscoveryFile.h"
 #include "cli/CryptoFeedHub.h"
 #include "cli/automation/AutomationState.h"
@@ -3154,7 +3155,12 @@ class DaemonScalpEngine {
         using namespace services::crypto_scalp;
         const auto latency_snapshot = CryptoLatencyService::filtered_snapshot(
             hub_->snapshot(symbol), scalp_sources_for_symbol(sources_, symbol));
-        const auto micro = radars_[symbol].snapshot(latency_snapshot);
+        // Volatility context only — reporting, not the call. See VolCostContext.h.
+        const auto micro = radars_[symbol].snapshot(
+            latency_snapshot,
+            services::edge_radar::vol_cost_context_for(
+                symbol.section(QLatin1Char('-'), 0, 0).trimmed().toUpper(),
+                QDateTime::currentMSecsSinceEpoch()));
         const QVector<CryptoLatencyTick> rows = recent_.value(symbol);
         const ScalpMsWindow w250 = ms_window(rows, 250);
         const ScalpMsWindow w500 = ms_window(rows, 500);
