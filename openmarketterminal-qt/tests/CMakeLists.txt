@@ -840,6 +840,11 @@ target_include_directories(tst_edge_vol_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_edge_vol_gate PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_edge_vol_gate COMMAND tst_edge_vol_gate)
 
+add_executable(tst_crypto_latency_live_sources tst_crypto_latency_live_sources.cpp)
+target_include_directories(tst_crypto_latency_live_sources PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_latency_live_sources PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_crypto_latency_live_sources COMMAND tst_crypto_latency_live_sources)
+
 add_executable(tst_crypto_microstructure_radar tst_crypto_microstructure_radar.cpp)
 target_include_directories(tst_crypto_microstructure_radar PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_crypto_microstructure_radar PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)

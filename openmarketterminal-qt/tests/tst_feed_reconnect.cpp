@@ -86,6 +86,14 @@ class TstFeedReconnect : public QObject {
         cb_tick.source = QStringLiteral("coinbase");
         cb_tick.symbol = snapshot.symbol;
         cb_tick.price = 100.0;
+        // A live source must be QUOTING, not merely ticking a last price: the
+        // count now requires a two-sided book with size. This fixture is about
+        // source isolation, so give it a real quote and let it keep testing
+        // that.
+        cb_tick.best_bid = 99.9;
+        cb_tick.best_ask = 100.1;
+        cb_tick.bid_size = 3.0;
+        cb_tick.ask_size = 4.0;
         cb_tick.received_ts_ms = now;
         CryptoLatencyTick kraken_tick = cb_tick;
         kraken_tick.source = QStringLiteral("kraken");
@@ -116,6 +124,25 @@ class TstFeedReconnect : public QObject {
         stale.source = QStringLiteral("kraken");
         stale.last_tick_ms = now - 5001;
         snapshot.sources = {fresh, stale};
+
+        // Both sources quote a proper book, so the ONLY thing separating them
+        // is staleness -- which is exactly what this test is about. Without
+        // ticks neither would count, and the test would pass for the wrong
+        // reason.
+        auto quote = [&](const QString& source) {
+            CryptoLatencyTick t;
+            t.source = source;
+            t.symbol = snapshot.symbol;
+            t.price = 100.0;
+            t.best_bid = 99.9;
+            t.best_ask = 100.1;
+            t.bid_size = 2.0;
+            t.ask_size = 2.0;
+            t.received_ts_ms = now;
+            return t;
+        };
+        snapshot.latest_ticks = {quote(QStringLiteral("coinbase")),
+                                 quote(QStringLiteral("kraken"))};
 
         const auto filtered = CryptoLatencyService::filtered_snapshot(snapshot,
                                                                         {QStringLiteral("coinbase"), QStringLiteral("kraken")});

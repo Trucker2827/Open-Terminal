@@ -2829,6 +2829,21 @@ add_library(openterminal_core STATIC
 # WindowRegistry→QWidget) that it never calls — masking the true GUI-free
 # boundary that Gate B (tst_mcp_init_split) verifies.
 set_target_properties(openterminal_core PROPERTIES AUTOMOC ON AUTORCC ON UNITY_BUILD OFF)
+# SpeechService.cpp lives in core and calls create_apple_speech_provider()
+# under #ifdef __APPLE__, but the .mm that defines it was only ever added to
+# the GUI target. Every test whose symbol closure reaches SpeechService.cpp.o
+# therefore failed to LINK on macOS -- tst_pm_paper, tst_bridge_offthread and
+# tst_command_dispatch among them. Linux is unaffected (the branch compiles
+# out), which is why CI never showed it.
+if(APPLE)
+    target_sources(openterminal_core PRIVATE src/services/stt/AppleSpeechProvider.mm)
+    set_source_files_properties(src/services/stt/AppleSpeechProvider.mm
+        PROPERTIES
+            COMPILE_OPTIONS "-fobjc-arc"
+            SKIP_PRECOMPILE_HEADERS ON)
+    target_link_libraries(openterminal_core PRIVATE
+        "-framework AVFoundation" "-framework Speech" "-framework Foundation")
+endif()
 target_include_directories(openterminal_core PUBLIC src)
 target_link_libraries(openterminal_core PUBLIC
     Qt6::Core Qt6::Gui Qt6::Network Qt6::Sql Qt6::Concurrent miniz openmarketterminal_ed25519)
