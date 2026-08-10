@@ -1,4 +1,5 @@
 #include "storage/repositories/PaperTradingRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "trading/PaperTrading.h"
 
@@ -17,7 +18,7 @@ PaperTradingRepository& PaperTradingRepository::instance() {
 
 // ── Row Mappers (ported from PaperTrading.cpp read_*_row functions) ──────────
 
-PtPortfolio PaperTradingRepository::map_portfolio(QSqlQuery& q) {
+PtPortfolio PaperTradingRepository::map_portfolio(storage::sqlite::SqlResult& q) {
     PtPortfolio p;
     p.id = q.value(0).toString();
     p.name = q.value(1).toString();
@@ -32,7 +33,7 @@ PtPortfolio PaperTradingRepository::map_portfolio(QSqlQuery& q) {
     return p;
 }
 
-PtOrder PaperTradingRepository::map_order(QSqlQuery& q) {
+PtOrder PaperTradingRepository::map_order(storage::sqlite::SqlResult& q) {
     PtOrder o;
     o.id = q.value(0).toString();
     o.portfolio_id = q.value(1).toString();
@@ -53,7 +54,7 @@ PtOrder PaperTradingRepository::map_order(QSqlQuery& q) {
     return o;
 }
 
-PtPosition PaperTradingRepository::map_position(QSqlQuery& q) {
+PtPosition PaperTradingRepository::map_position(storage::sqlite::SqlResult& q) {
     PtPosition p;
     p.id = q.value(0).toString();
     p.portfolio_id = q.value(1).toString();
@@ -75,7 +76,7 @@ PtPosition PaperTradingRepository::map_position(QSqlQuery& q) {
     return p;
 }
 
-PtTrade PaperTradingRepository::map_trade(QSqlQuery& q) {
+PtTrade PaperTradingRepository::map_trade(storage::sqlite::SqlResult& q) {
     PtTrade t;
     t.id = q.value(0).toString();
     t.portfolio_id = q.value(1).toString();

@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 #include "trading/TradingTypes.h"
 
 #include <optional>
@@ -73,10 +74,10 @@ class PaperTradingRepository : public BaseRepository<trading::PtPortfolio> {
     Result<trading::PtStats> get_stats(const QString& portfolio_id);
 
     // ── Row mappers (public for reuse) ───────────────────────────────────────
-    static trading::PtPortfolio map_portfolio(QSqlQuery& q);
-    static trading::PtOrder map_order(QSqlQuery& q);
-    static trading::PtPosition map_position(QSqlQuery& q);
-    static trading::PtTrade map_trade(QSqlQuery& q);
+    static trading::PtPortfolio map_portfolio(storage::sqlite::SqlResult& q);
+    static trading::PtOrder map_order(storage::sqlite::SqlResult& q);
+    static trading::PtPosition map_position(storage::sqlite::SqlResult& q);
+    static trading::PtTrade map_trade(storage::sqlite::SqlResult& q);
 
   private:
     PaperTradingRepository() = default;

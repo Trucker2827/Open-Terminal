@@ -1,4 +1,5 @@
 #include "storage/repositories/WorkflowRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/logging/Logger.h"
 
@@ -12,7 +13,7 @@ WorkflowRepository& WorkflowRepository::instance() {
     return s;
 }
 
-WorkflowRow WorkflowRepository::map_row(QSqlQuery& q) {
+WorkflowRow WorkflowRepository::map_row(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toString(), q.value(1).toString(), q.value(2).toString(),
         q.value(3).toString(), q.value(4).toString(), q.value(5).toString(),

@@ -1,4 +1,5 @@
 #include "storage/repositories/LlmConfigRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/config/ProfileManager.h"
 #include "core/logging/Logger.h"
@@ -18,12 +19,12 @@ LlmConfigRepository& LlmConfigRepository::instance() {
     return s;
 }
 
-LlmConfig LlmConfigRepository::map_config(QSqlQuery& q) {
+LlmConfig LlmConfigRepository::map_config(storage::sqlite::SqlResult& q) {
     return {q.value(0).toString(), q.value(1).toString(), q.value(2).toString(), q.value(3).toString(),
             q.value(4).toBool(),   q.value(5).toBool(),   q.value(6).toString(), q.value(7).toString()};
 }
 
-LlmModelConfig LlmConfigRepository::map_model(QSqlQuery& q) {
+LlmModelConfig LlmConfigRepository::map_model(storage::sqlite::SqlResult& q) {
     return {q.value(0).toString(), q.value(1).toString(), q.value(2).toString(), q.value(3).toString(),
             q.value(4).toString(), q.value(5).toString(), q.value(6).toBool(),   q.value(7).toBool(),
             q.value(8).toString(), q.value(9).toString()};

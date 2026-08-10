@@ -135,10 +135,12 @@ QSqlDatabase Database::connection() {
     return QSqlDatabase::database(guard.name, /*open=*/false);
 }
 
-Result<QSqlQuery> Database::execute(const QString& sql, const QVariantList& params) {
+Result<storage::sqlite::SqlResult> Database::execute(const QString& sql,
+                                                     const QVariantList& params) {
+    using storage::sqlite::SqlResult;
     QSqlDatabase conn = connection();
     if (!conn.isOpen()) {
-        return Result<QSqlQuery>::err("DB connection unavailable on this thread");
+        return Result<SqlResult>::err("DB connection unavailable on this thread");
     }
     QSqlQuery query(conn);
     query.prepare(sql);
@@ -148,10 +150,12 @@ Result<QSqlQuery> Database::execute(const QString& sql, const QVariantList& para
     if (!query.exec()) {
         // Carry the statement: "database is locked" alone cannot be acted on
         // when several jobs hit it thousands of times a day.
-        return Result<QSqlQuery>::err(
+        return Result<SqlResult>::err(
             storage::sqlite::sql_error_with_context(query.lastError().text(), sql).toStdString());
     }
-    return Result<QSqlQuery>::ok(std::move(query));
+    // Read every row and release the statement before returning, so the caller
+    // cannot hold a cursor open across a later write.
+    return Result<SqlResult>::ok(SqlResult(query));
 }
 
 Result<void> Database::exec(const QString& sql) {

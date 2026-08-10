@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -52,8 +53,8 @@ class NotesRepository : public BaseRepository<FinancialNote> {
 
   private:
     NotesRepository() = default;
-    static FinancialNote map_note(QSqlQuery& q);
-    static NoteTemplate map_template(QSqlQuery& q);
+    static FinancialNote map_note(storage::sqlite::SqlResult& q);
+    static NoteTemplate map_template(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

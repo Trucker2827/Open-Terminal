@@ -1,4 +1,5 @@
 #include "trading/instruments/InstrumentRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/logging/Logger.h"
 
@@ -12,29 +13,6 @@ InstrumentRepository& InstrumentRepository::instance() {
 }
 
 // ── Row mapper ────────────────────────────────────────────────────────────────
-
-Instrument InstrumentRepository::map_row(QSqlQuery& q) {
-    Instrument i;
-    i.instrument_token = q.value(0).toLongLong();
-    i.exchange_token = q.value(1).toLongLong();
-    i.symbol = q.value(2).toString();
-    i.brsymbol = q.value(3).toString();
-    i.name = q.value(4).toString();
-    i.exchange = q.value(5).toString();
-    i.brexchange = q.value(6).toString();
-    i.expiry = q.value(7).toString();
-    i.strike = q.value(8).toDouble();
-    i.lot_size = q.value(9).toInt();
-    i.instrument_type = parse_instrument_type(q.value(10).toString());
-    i.tick_size = q.value(11).toDouble();
-    i.broker_id = q.value(12).toString();
-    i.broker_token = q.value(13).toString();
-    return i;
-}
-
-Instrument InstrumentRepository::map_row_static(QSqlQuery& q) {
-    return map_row(q);
-}
 
 // ── Write ─────────────────────────────────────────────────────────────────────
 

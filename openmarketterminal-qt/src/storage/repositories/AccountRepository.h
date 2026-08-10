@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 #include "trading/BrokerAccount.h"
 
 namespace openmarketterminal {
@@ -21,7 +22,7 @@ class AccountRepository : public BaseRepository<trading::BrokerAccount> {
 
   private:
     AccountRepository() = default;
-    static trading::BrokerAccount map_row(QSqlQuery& q);
+    static trading::BrokerAccount map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

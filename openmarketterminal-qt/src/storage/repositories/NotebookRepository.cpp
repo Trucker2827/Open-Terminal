@@ -1,4 +1,5 @@
 #include "storage/repositories/NotebookRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ NotebookRepository& NotebookRepository::instance() {
     return s;
 }
 
-Notebook NotebookRepository::map_row(QSqlQuery& q) {
+Notebook NotebookRepository::map_row(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toString(), q.value(1).toString(), q.value(2).toString(), q.value(3).toString(),
         q.value(4).toString(), q.value(5).toInt(),    q.value(6).toString(), q.value(7).toString(),

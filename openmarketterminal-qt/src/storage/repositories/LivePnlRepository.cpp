@@ -1,4 +1,5 @@
 #include "storage/repositories/LivePnlRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QDateTime>
 
@@ -12,7 +13,7 @@ LivePnlRepository& LivePnlRepository::instance() {
 static const char* kPositionColumns =
     "id, account, venue, instrument, qty, avg_cost, cost_basis, opened_at, status";
 
-LivePosition LivePnlRepository::map_position(QSqlQuery& q) {
+LivePosition LivePnlRepository::map_position(storage::sqlite::SqlResult& q) {
     LivePosition p;
     p.id = q.value(0).toLongLong();
     p.account = q.value(1).toString();

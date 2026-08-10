@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -24,7 +25,7 @@ class SettingsRepository : public BaseRepository<Setting> {
 
   private:
     SettingsRepository() = default;
-    static Setting map_row(QSqlQuery& q);
+    static Setting map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

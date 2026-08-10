@@ -1,6 +1,7 @@
 #pragma once
 
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QJsonObject>
 #include <QVector>
@@ -136,10 +137,10 @@ class EdgePredictionModelRepository : public BaseRepository<EdgePredictionObserv
 
   private:
     EdgePredictionModelRepository() = default;
-    static EdgePredictionRawTick map_raw_tick(QSqlQuery& q);
-    static EdgePredictionObservation map_observation(QSqlQuery& q);
-    static EdgePredictionModelRecord map_model(QSqlQuery& q);
-    static EdgePredictionModelOutput map_output(QSqlQuery& q);
+    static EdgePredictionRawTick map_raw_tick(storage::sqlite::SqlResult& q);
+    static EdgePredictionObservation map_observation(storage::sqlite::SqlResult& q);
+    static EdgePredictionModelRecord map_model(storage::sqlite::SqlResult& q);
+    static EdgePredictionModelOutput map_output(storage::sqlite::SqlResult& q);
 };
 
 QJsonObject edge_prediction_observation_to_json(const EdgePredictionObservation& o);

@@ -1,4 +1,5 @@
 #include "storage/repositories/NewsArticleRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/logging/Logger.h"
 #include "storage/sqlite/Database.h"
@@ -116,7 +117,7 @@ static ThreatLevel threat_level_from(const QString& s) {
 
 // ── Row mapper ───────────────────────────────────────────────────────────────
 
-NewsArticle NewsArticleRepository::map_row(QSqlQuery& q) {
+NewsArticle NewsArticleRepository::map_row(storage::sqlite::SqlResult& q) {
     NewsArticle a;
     a.id = q.value(0).toString();
     a.headline = q.value(1).toString();

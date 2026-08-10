@@ -1,4 +1,5 @@
 #include "storage/repositories/OrderDraftRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <algorithm>
 
@@ -12,7 +13,7 @@ OrderDraftRepository& OrderDraftRepository::instance() {
 static const char* kDraftColumns =
     "draft_id, intent_json, risk_verdict_json, account, mode_hint, status, created_at, expires_at";
 
-OrderDraft OrderDraftRepository::map_draft(QSqlQuery& q) {
+OrderDraft OrderDraftRepository::map_draft(storage::sqlite::SqlResult& q) {
     OrderDraft d;
     d.draft_id = q.value(0).toString();
     d.intent_json = q.value(1).toString();

@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 #include <QJsonObject>
 #include <QVariantMap>
 
@@ -33,7 +34,7 @@ class TradeAuditRepository : public BaseRepository<TradeAuditRow> {
 
   private:
     TradeAuditRepository() = default;
-    static TradeAuditRow map_row(QSqlQuery& q);
+    static TradeAuditRow map_row(storage::sqlite::SqlResult& q);
 };
 
 /// Lossless map↔row helpers for serialising TradeAuditRow to/from a QVariantMap

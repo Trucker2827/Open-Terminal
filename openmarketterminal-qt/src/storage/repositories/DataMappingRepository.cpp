@@ -1,4 +1,5 @@
 #include "storage/repositories/DataMappingRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ DataMappingRepository& DataMappingRepository::instance() {
     return s;
 }
 
-DataMapping DataMappingRepository::map_row(QSqlQuery& q) {
+DataMapping DataMappingRepository::map_row(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toString(),  // id
         q.value(1).toString(),  // name

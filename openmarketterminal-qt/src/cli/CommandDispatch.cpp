@@ -1,4 +1,5 @@
 #include "cli/CommandDispatch.h"
+#include "storage/sqlite/SqlResult.h"
 #include "cli/AiRunCommand.h"
 #include "cli/ObserveCommand.h"
 #include "cli/KalshiBotCommands.h"
@@ -9489,7 +9490,7 @@ static int data_lake_emit(const GlobalOpts& opts, const QJsonObject& o) {
 }
 
 const char* edge_journal_cols();
-static QJsonObject edge_journal_row_to_lake_json(QSqlQuery& q);
+static QJsonObject edge_journal_row_to_lake_json(storage::sqlite::SqlResult& q);
 
 static QString duckdb_path() {
     const QString from_path = QStandardPaths::findExecutable(QStringLiteral("duckdb"));
@@ -14657,7 +14658,7 @@ QString edge_time_text(qint64 ts_ms) {
     return QDateTime::fromMSecsSinceEpoch(ts_ms, QTimeZone::UTC).toString(Qt::ISODate);
 }
 
-QJsonObject edge_journal_row_to_json(QSqlQuery& q) {
+QJsonObject edge_journal_row_to_json(storage::sqlite::SqlResult& q) {
     return QJsonObject{
         {"id", q.value(0).toString()},
         {"created_at", edge_time_text(q.value(1).toLongLong())},
@@ -14691,7 +14692,7 @@ QJsonObject edge_journal_row_to_json(QSqlQuery& q) {
     };
 }
 
-static QJsonObject edge_journal_row_to_lake_json(QSqlQuery& q) {
+static QJsonObject edge_journal_row_to_lake_json(storage::sqlite::SqlResult& q) {
     const qint64 created_at = q.value(1).toLongLong();
     const qint64 updated_at = q.value(2).toLongLong();
     const qint64 resolved_at = q.value(27).toLongLong();
@@ -21583,7 +21584,7 @@ static QJsonObject control_prediction_pulse(int limit) {
         "ORDER BY created_at DESC LIMIT 80",
         {now_ms - 2 * 60 * 1000LL});
     if (rows.is_ok()) {
-        QSqlQuery& q = rows.value();
+        auto& q = rows.value();
         while (q.next() && markets.size() < limit) {
             const QString market_id = q.value(2).toString();
             const QString side = q.value(6).toString().trimmed().toLower();
@@ -22521,7 +22522,7 @@ static QJsonObject mission_explain_packet(const QString& decision_id) {
     QJsonObject journal{{"state", "missing"}};
     if (rows.is_err()) journal = QJsonObject{{"state", "unavailable"}, {"reason", QString::fromStdString(rows.error())}};
     else if (rows.value().next()) {
-        QSqlQuery& q = rows.value();
+        auto& q = rows.value();
         auto parsed_object = [](const QString& text) { const QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8()); return doc.isObject() ? doc.object() : QJsonObject{}; };
         journal = QJsonObject{{"state", "available"}, {"decision_id", q.value(0).toString()}, {"created_at_ms", q.value(1).toString()},
             {"venue", q.value(2).toString()}, {"symbol", q.value(3).toString()}, {"horizon", q.value(4).toString()}, {"market_id", q.value(5).toString()},

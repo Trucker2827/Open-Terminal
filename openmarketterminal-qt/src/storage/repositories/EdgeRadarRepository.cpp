@@ -1,4 +1,5 @@
 #include "storage/repositories/EdgeRadarRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QDateTime>
 #include <QJsonObject>
@@ -22,7 +23,7 @@ EdgeRadarRepository& EdgeRadarRepository::instance() {
     return s;
 }
 
-EdgeRadarIdea EdgeRadarRepository::map_row(QSqlQuery& q) {
+EdgeRadarIdea EdgeRadarRepository::map_row(storage::sqlite::SqlResult& q) {
     EdgeRadarIdea i;
     i.id = q.value(0).toString();
     i.asset_class = q.value(1).toString();

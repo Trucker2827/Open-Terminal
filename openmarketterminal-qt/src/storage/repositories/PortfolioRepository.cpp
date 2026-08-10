@@ -1,5 +1,6 @@
 // src/storage/repositories/PortfolioRepository.cpp
 #include "storage/repositories/PortfolioRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/logging/Logger.h"
 
@@ -15,7 +16,7 @@ PortfolioRepository& PortfolioRepository::instance() {
 
 // ── Row mappers ──────────────────────────────────────────────────────────────
 
-portfolio::Portfolio PortfolioRepository::map_portfolio(QSqlQuery& q) {
+portfolio::Portfolio PortfolioRepository::map_portfolio(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toString(), // id
         q.value(1).toString(), // name
@@ -31,7 +32,7 @@ portfolio::Portfolio PortfolioRepository::map_portfolio(QSqlQuery& q) {
     };
 }
 
-portfolio::PortfolioAsset PortfolioRepository::map_asset(QSqlQuery& q) {
+portfolio::PortfolioAsset PortfolioRepository::map_asset(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toInt(),    // id
         q.value(1).toString(), // portfolio_id
@@ -47,7 +48,7 @@ portfolio::PortfolioAsset PortfolioRepository::map_asset(QSqlQuery& q) {
     };
 }
 
-portfolio::Transaction PortfolioRepository::map_transaction(QSqlQuery& q) {
+portfolio::Transaction PortfolioRepository::map_transaction(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toString(), // id
         q.value(1).toString(), // portfolio_id
@@ -62,7 +63,7 @@ portfolio::Transaction PortfolioRepository::map_transaction(QSqlQuery& q) {
     };
 }
 
-portfolio::PortfolioSnapshot PortfolioRepository::map_snapshot(QSqlQuery& q) {
+portfolio::PortfolioSnapshot PortfolioRepository::map_snapshot(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toInt(),    // id
         q.value(1).toString(), // portfolio_id

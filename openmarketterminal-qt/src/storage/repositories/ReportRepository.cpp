@@ -1,4 +1,5 @@
 #include "storage/repositories/ReportRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,12 +8,12 @@ ReportRepository& ReportRepository::instance() {
     return s;
 }
 
-Report ReportRepository::map_report(QSqlQuery& q) {
+Report ReportRepository::map_report(storage::sqlite::SqlResult& q) {
     return {q.value(0).toInt(), q.value(1).toString(), q.value(2).toString(), q.value(3).toString(),
             q.value(4).toString()};
 }
 
-ReportTemplate ReportRepository::map_template(QSqlQuery& q) {
+ReportTemplate ReportRepository::map_template(storage::sqlite::SqlResult& q) {
     return {q.value(0).toString(), q.value(1).toString(), q.value(2).toString(),
             q.value(3).toString(), q.value(4).toString(), q.value(5).toString()};
 }

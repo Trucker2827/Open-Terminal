@@ -1,4 +1,5 @@
 #include "storage/repositories/FeedSubscriptionRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QJsonDocument>
 #include <QSqlQuery>
@@ -12,7 +13,7 @@ FeedSubscriptionRepository& FeedSubscriptionRepository::instance() {
     return s;
 }
 
-FeedSubscription FeedSubscriptionRepository::map_row(QSqlQuery& q) {
+FeedSubscription FeedSubscriptionRepository::map_row(storage::sqlite::SqlResult& q) {
     FeedSubscription s;
     s.id = q.value(0).toString();
     s.name = q.value(1).toString();

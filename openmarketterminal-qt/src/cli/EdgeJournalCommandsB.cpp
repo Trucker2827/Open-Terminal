@@ -2,6 +2,7 @@
 // CommandDispatch.cpp and EdgeJournalShared.h (MSVC front-end capacity).
 
 #include "cli/EdgeJournalShared.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "storage/sqlite/Database.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
@@ -34,7 +35,7 @@ QString edge_normalize_stats_horizon(QString horizon) {
 
 // CryptoRecommendationOutcome moved to EdgeJournalShared.h.
 
-Result<CryptoRecommendationOutcome> edge_score_crypto_recommendation_outcome(QSqlQuery& q);
+Result<CryptoRecommendationOutcome> edge_score_crypto_recommendation_outcome(storage::sqlite::SqlResult& q);
 
 int edge_journal_crypto_stats_command(const GlobalOpts& opts, QStringList args) {
     QString symbol;

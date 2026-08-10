@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -37,8 +38,8 @@ class ReportRepository : public BaseRepository<Report> {
 
   private:
     ReportRepository() = default;
-    static Report map_report(QSqlQuery& q);
-    static ReportTemplate map_template(QSqlQuery& q);
+    static Report map_report(storage::sqlite::SqlResult& q);
+    static ReportTemplate map_template(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

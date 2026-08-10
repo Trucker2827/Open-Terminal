@@ -1,4 +1,5 @@
 #include "services/alpha_arena/AlphaArenaRepo.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/logging/Logger.h"
 #include "storage/sqlite/Database.h"
@@ -106,7 +107,7 @@ Result<void> AlphaArenaRepo::increment_cycle_count(const QString& id) {
 }
 
 namespace {
-CompetitionRow row_to_competition(QSqlQuery& q) {
+CompetitionRow row_to_competition(storage::sqlite::SqlResult& q) {
     CompetitionRow c;
     c.id = q.value("id").toString();
     c.name = q.value("name").toString();
@@ -201,7 +202,7 @@ Result<void> AlphaArenaRepo::bump_risk_rejects(const QString& agent_id, int new_
 }
 
 namespace {
-AgentRow row_to_agent(QSqlQuery& q) {
+AgentRow row_to_agent(storage::sqlite::SqlResult& q) {
     AgentRow a;
     a.id = q.value("id").toString();
     a.competition_id = q.value("competition_id").toString();

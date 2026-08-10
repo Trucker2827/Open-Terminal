@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/result/Result.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QDateTime>
 #include <QJsonObject>
@@ -77,7 +78,7 @@ class AuditLogger : public QObject {
 
     static QString action_to_string(AuditAction action);
     static AuditAction string_to_action(const QString& str);
-    static AuditEntry map_entry(QSqlQuery& q);
+    static AuditEntry map_entry(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal::workflow

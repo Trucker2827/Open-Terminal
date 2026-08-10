@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QString>
 #include <QVector>
@@ -32,7 +33,7 @@ class RssFeedRepository : public BaseRepository<RssFeedRow> {
 
   private:
     RssFeedRepository() = default;
-    static RssFeedRow map_row(QSqlQuery& q);
+    static RssFeedRow map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

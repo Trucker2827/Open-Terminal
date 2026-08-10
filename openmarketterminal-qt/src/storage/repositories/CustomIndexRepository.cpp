@@ -1,5 +1,6 @@
 // src/storage/repositories/CustomIndexRepository.cpp
 #include "storage/repositories/CustomIndexRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -46,7 +47,7 @@ QVector<CustomIndexConstituent> CustomIndexRepository::json_to_constituents(cons
 
 // ── Row mappers ───────────────────────────────────────────────────────────────
 
-CustomIndex CustomIndexRepository::map_index(QSqlQuery& q) {
+CustomIndex CustomIndexRepository::map_index(storage::sqlite::SqlResult& q) {
     CustomIndex idx;
     idx.id = q.value(0).toString();
     idx.name = q.value(1).toString();
@@ -59,7 +60,7 @@ CustomIndex CustomIndexRepository::map_index(QSqlQuery& q) {
     return idx;
 }
 
-CustomIndexValue CustomIndexRepository::map_value(QSqlQuery& q) {
+CustomIndexValue CustomIndexRepository::map_value(storage::sqlite::SqlResult& q) {
     CustomIndexValue v;
     v.id = q.value(0).toLongLong();
     v.index_id = q.value(1).toString();
@@ -108,7 +109,7 @@ Result<void> CustomIndexRepository::save_value(const QString& index_id, const QS
 Result<QVector<CustomIndexValue>> CustomIndexRepository::get_values(const QString& index_id, int limit) {
     return query_list_as<CustomIndexValue>("SELECT id, index_id, date, value FROM custom_index_values "
                                            "WHERE index_id = ? ORDER BY date ASC LIMIT ?",
-                                           {index_id, limit}, std::function<CustomIndexValue(QSqlQuery&)>(map_value));
+                                           {index_id, limit}, std::function<CustomIndexValue(storage::sqlite::SqlResult&)>(map_value));
 }
 
 double CustomIndexRepository::latest_value(const QString& index_id) {

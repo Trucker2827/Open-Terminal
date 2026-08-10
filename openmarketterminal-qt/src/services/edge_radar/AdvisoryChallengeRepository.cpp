@@ -1,4 +1,5 @@
 #include "services/edge_radar/AdvisoryChallengeRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "services/edge_radar/AdvisoryProtocol.h"
 #include "storage/sqlite/Database.h"
@@ -49,7 +50,7 @@ struct ChallengeRow {
     QString competition_pair_id;
 };
 
-ChallengeRow map_challenge_row(QSqlQuery& q) {
+ChallengeRow map_challenge_row(storage::sqlite::SqlResult& q) {
     ChallengeRow r;
     int i = 0;
     r.challenge_id = q.value(i++).toString();

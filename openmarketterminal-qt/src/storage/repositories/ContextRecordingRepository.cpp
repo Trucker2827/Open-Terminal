@@ -1,4 +1,5 @@
 #include "storage/repositories/ContextRecordingRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ ContextRecordingRepository& ContextRecordingRepository::instance() {
     return s;
 }
 
-RecordedContext ContextRecordingRepository::map_row(QSqlQuery& q) {
+RecordedContext ContextRecordingRepository::map_row(storage::sqlite::SqlResult& q) {
     return {q.value(0).toString(), q.value(1).toString(), q.value(2).toString(),
             q.value(3).toString(), q.value(4).toString(), q.value(5).toString(),
             q.value(6).toInt(),    q.value(7).toString(), q.value(8).toString()};

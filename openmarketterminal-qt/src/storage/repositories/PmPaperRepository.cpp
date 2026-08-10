@@ -1,4 +1,5 @@
 #include "storage/repositories/PmPaperRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -10,7 +11,7 @@ PmPaperRepository& PmPaperRepository::instance() {
 static const char* kPositionColumns =
     "id, venue, market_id, asset_id, outcome, category, contracts, avg_price, cost_basis, opened_at, status";
 
-PmPosition PmPaperRepository::map_position(QSqlQuery& q) {
+PmPosition PmPaperRepository::map_position(storage::sqlite::SqlResult& q) {
     PmPosition p;
     p.id = q.value(0).toLongLong();
     p.venue = q.value(1).toString();

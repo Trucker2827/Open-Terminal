@@ -7,14 +7,14 @@ WatchlistRepository& WatchlistRepository::instance() {
     return s;
 }
 
-Watchlist WatchlistRepository::map_watchlist(QSqlQuery& q) {
+Watchlist WatchlistRepository::map_watchlist(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toString(), q.value(1).toString(), q.value(2).toString(), q.value(3).toString(),
         q.value(4).toInt(),    q.value(5).toBool(),   q.value(6).toString(), q.value(7).toString(),
     };
 }
 
-WatchlistStock WatchlistRepository::map_stock(QSqlQuery& q) {
+WatchlistStock WatchlistRepository::map_stock(storage::sqlite::SqlResult& q) {
     return {
         q.value(0).toInt(),    q.value(1).toString(), q.value(2).toString(), q.value(3).toString(),
         q.value(4).toString(), q.value(5).toString(), q.value(6).toInt(),    q.value(7).toString(),

@@ -1,6 +1,7 @@
 // src/storage/repositories/ScanWatchRepository.h
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -48,7 +49,7 @@ class ScanWatchRepository : public BaseRepository<ScanWatch> {
 
   private:
     ScanWatchRepository() = default;
-    static ScanWatch map_row(QSqlQuery& q);
+    static ScanWatch map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

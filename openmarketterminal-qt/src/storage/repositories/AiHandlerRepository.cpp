@@ -1,4 +1,5 @@
 #include "storage/repositories/AiHandlerRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 namespace openmarketterminal {
 
@@ -7,7 +8,7 @@ AiHandlerRepository& AiHandlerRepository::instance() {
     return s;
 }
 
-AiHandler AiHandlerRepository::map_handler(QSqlQuery& q) {
+AiHandler AiHandlerRepository::map_handler(storage::sqlite::SqlResult& q) {
     AiHandler h;
     h.name = q.value(0).toString();
     h.strategy = q.value(1).toString();

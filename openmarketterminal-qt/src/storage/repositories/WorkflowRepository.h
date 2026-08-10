@@ -1,5 +1,6 @@
 #pragma once
 #include "screens/node_editor/NodeEditorTypes.h"
+#include "storage/sqlite/SqlResult.h"
 #include "storage/repositories/BaseRepository.h"
 
 namespace openmarketterminal {
@@ -32,7 +33,7 @@ class WorkflowRepository : public BaseRepository<WorkflowRow> {
 
   private:
     WorkflowRepository() = default;
-    static WorkflowRow map_row(QSqlQuery& q);
+    static WorkflowRow map_row(storage::sqlite::SqlResult& q);
 };
 
 } // namespace openmarketterminal

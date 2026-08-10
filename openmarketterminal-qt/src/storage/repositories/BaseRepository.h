@@ -2,6 +2,7 @@
 #include "core/logging/Logger.h"
 #include "core/result/Result.h"
 #include "storage/sqlite/Database.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QSqlQuery>
 #include <QString>
@@ -18,14 +19,17 @@ namespace openmarketterminal {
 template <typename Entity>
 class BaseRepository {
   protected:
-    using RowMapper = std::function<Entity(QSqlQuery&)>;
+    // Rows arrive already read (see storage/sqlite/SqlResult.h): execute()
+    // releases the statement before returning, so a mapper can no longer keep
+    // a cursor open on the connection while later code writes.
+    using RowMapper = std::function<Entity(storage::sqlite::SqlResult&)>;
 
     static Database& db() { return Database::instance(); }
 
     /// Execute a SELECT and return all matching rows mapped to a different type.
     template <typename T>
     Result<QVector<T>> query_list_as(const QString& sql, const QVariantList& params,
-                                     std::function<T(QSqlQuery&)> mapper) const {
+                                     std::function<T(storage::sqlite::SqlResult&)> mapper) const {
         auto r = db().execute(sql, params);
         if (r.is_err()) {
             LOG_ERROR("Repo", QString("query_list_as failed: %1").arg(QString::fromStdString(r.error())));

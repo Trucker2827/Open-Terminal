@@ -10,6 +10,7 @@
 // them. Definitions stay in CommandDispatch.cpp (now external linkage).
 
 #include "cli/CommandDispatch.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include "core/result/Result.h"
 #include "services/crypto/CryptoFees.h"
@@ -83,7 +84,7 @@ struct CryptoRecommendationDecision {
 
 // Defined in CommandDispatch.cpp; used by the split edge-journal TU.
 QString elide_text(QString s, int max = 88);
-QJsonObject edge_journal_row_to_json(QSqlQuery& q);
+QJsonObject edge_journal_row_to_json(storage::sqlite::SqlResult& q);
 QString edge_outcome_text(int outcome);
 int edge_parse_outcome(const QString& raw);
 QString edge_price_or_dash(double price);
@@ -234,7 +235,7 @@ struct CryptoRecommendationOutcome {
     qint64 future_ts = 0;
     QString tick_source;
 };
-Result<CryptoRecommendationOutcome> edge_score_crypto_recommendation_outcome(QSqlQuery& q);
+Result<CryptoRecommendationOutcome> edge_score_crypto_recommendation_outcome(storage::sqlite::SqlResult& q);
 
 QString edge_normalize_stats_horizon(QString horizon);
 bool edge_crypto_is_buy_call(const QString& call, const QString& side);

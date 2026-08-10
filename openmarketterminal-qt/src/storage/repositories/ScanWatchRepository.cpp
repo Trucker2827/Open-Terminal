@@ -1,5 +1,6 @@
 // src/storage/repositories/ScanWatchRepository.cpp
 #include "storage/repositories/ScanWatchRepository.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QDateTime>
 #include <QJsonDocument>
@@ -29,7 +30,7 @@ ScanWatchRepository& ScanWatchRepository::instance() {
     return s;
 }
 
-ScanWatch ScanWatchRepository::map_row(QSqlQuery& q) {
+ScanWatch ScanWatchRepository::map_row(storage::sqlite::SqlResult& q) {
     ScanWatch w;
     w.id            = q.value(0).toString();
     w.name          = q.value(1).toString();

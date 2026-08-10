@@ -1,5 +1,6 @@
 #pragma once
 #include "core/result/Result.h"
+#include "storage/sqlite/SqlResult.h"
 
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -36,7 +37,12 @@ class Database {
     /// removes the cloned connection from the registry on thread exit.
     QSqlDatabase connection();
 
-    Result<QSqlQuery> execute(const QString& sql, const QVariantList& params = {});
+    /// Runs `sql` and returns its rows already read. Nothing stays live on the
+    /// connection: SQLite holds a read transaction while a statement is open,
+    /// and a write issued in that state fails with SQLITE_BUSY immediately
+    /// without consulting busy_timeout. See SqlResult.h for the full history.
+    Result<storage::sqlite::SqlResult> execute(const QString& sql,
+                                               const QVariantList& params = {});
     Result<void> exec(const QString& sql);
 
     // Transaction support (per-thread — operates on the calling thread's connection).

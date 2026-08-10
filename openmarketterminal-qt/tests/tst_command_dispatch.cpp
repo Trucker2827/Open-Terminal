@@ -154,7 +154,7 @@ static QStringList cli_settings_fingerprint() {
     auto rows = Database::instance().execute(
         "SELECT key, value, updated_at FROM settings WHERE key LIKE 'cli.%' ORDER BY key");
     if (rows.is_ok()) {
-        QSqlQuery& q = rows.value();
+        auto& q = rows.value();
         while (q.next()) {
             out << q.value(0).toString() + QStringLiteral("|") + q.value(1).toString() +
                        QStringLiteral("|") + q.value(2).toString();

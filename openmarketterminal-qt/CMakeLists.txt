@@ -1375,6 +1375,7 @@ set(SERVICE_SOURCES
     src/services/daemon/JobHealth.cpp
     src/services/daemon/JobRunFinish.cpp
     src/storage/sqlite/SqlErrorContext.cpp
+    src/storage/sqlite/SqlResult.cpp
     src/services/prediction/kalshi/KalshiBotDecision.cpp
     src/services/prediction/kalshi/KalshiBotFunnel.cpp
     src/services/prediction/kalshi/KalshiBotGate.cpp
