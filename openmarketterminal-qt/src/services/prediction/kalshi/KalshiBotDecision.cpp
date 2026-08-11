@@ -1,5 +1,7 @@
 #include "services/prediction/kalshi/KalshiBotDecision.h"
 
+#include "services/prediction/kalshi/KalshiBotGate.h"
+
 #include "services/edge_radar/KalshiAutoEngine.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 // For the fill model's NAME only (kFillModel), so a bid row can state the model
@@ -193,7 +195,35 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
     // Signal trust is re-read from the live report on every call: the
     // calibrator sets adds_value_over_market only once its Brier beats the raw
     // market mid across its own >=100-CONTRACT gate (issue #171).
-    const bool trusted = signal_trusted(report);
+    // Trust is per FAMILY, not per report. A report covering several series
+    // pooled three different prediction problems into one flag, and that flag
+    // once authorised bids in all three from evidence none of them had earned.
+    // Each contract is now asked about its OWN family, and a family the report
+    // cannot speak for refuses.
+    const auto trust_for = [&report](const QString& ticker) {
+        return family_trust(report, KalshiBotGate::family_of(ticker));
+    };
+    const auto refusal_for = [](FamilyTrust t) {
+        // Both refuse. Only one of them is a statement about the model:
+        // UNMEASURED means "not enough of its own evidence yet", which is the
+        // state every family is in immediately after evidence is split.
+        return t == FamilyTrust::Fail ? QString::fromLatin1(kSignalUntrusted)
+                                      : QString::fromLatin1(kSignalUnmeasured);
+    };
+
+    // Whether ANY contract in this report belongs to a family that clears its
+    // own bar. When none does, the tick stays a single journaled PASS -- the
+    // shape it has always had -- rather than one row per contract saying the
+    // same thing.
+    FamilyTrust best = FamilyTrust::Unavailable;
+    // Hoisted: iterating a temporary QJsonObject dangles both iterators.
+    const QJsonObject scan_predictions = report.value(QStringLiteral("predictions")).toObject();
+    for (auto it = scan_predictions.constBegin(); it != scan_predictions.constEnd(); ++it) {
+        const FamilyTrust t = trust_for(it.key());
+        if (t == FamilyTrust::Pass) { best = t; break; }
+        if (t == FamilyTrust::Fail) best = FamilyTrust::Fail;
+    }
+    const bool trusted = best == FamilyTrust::Pass;
     const QJsonObject record = track_record(report);
     const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
 
@@ -211,13 +241,16 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
     // REPORT, not of any one contract — the same reason REPORT_STALE is one
     // row and EDGE_BELOW_THRESHOLD is one per contract. Nothing downstream can
     // reinstate the bid: this returns before a single contract is priced.
-    if (!trusted)
-        return QJsonArray{finish(base_row(now_ms, QString(), QStringLiteral("pass"),
-                                          QString::fromLatin1(kSignalUntrusted)))};
-
+    // "No contracts" is a fact about the REPORT and is independent of trust:
+    // with nothing to price, there is no family to ask about. Answering
+    // UNMEASURED here would blame the model for an empty book.
     if (predictions.isEmpty())
         return QJsonArray{finish(base_row(now_ms, QString(), QStringLiteral("pass"),
                                           QString::fromLatin1(kNoPredictions)))};
+
+    if (!trusted)
+        return QJsonArray{finish(base_row(now_ms, QString(), QStringLiteral("pass"),
+                                          refusal_for(best)))};
 
     QSet<QString> held;
     for (const auto& value : open_positions)
@@ -243,6 +276,17 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
         const double market_mid = prediction.value(QStringLiteral("market_yes_mid")).toDouble();
         const QJsonObject features = prediction.value(QStringLiteral("features")).toObject();
         const double sqrt_minutes_left = features.value(QStringLiteral("sqrt_minutes_left")).toDouble();
+
+        // BEFORE the contract is priced, exactly as the report-level gate used
+        // to return before any contract was: a family that has not earned its
+        // own trust never reaches the edge maths, so nothing downstream can
+        // reinstate the bid.
+        const FamilyTrust contract_trust = trust_for(ticker);
+        if (contract_trust != FamilyTrust::Pass) {
+            rows.append(finish(base_row(now_ms, ticker, QStringLiteral("pass"),
+                                        refusal_for(contract_trust))));
+            continue;
+        }
 
         if (!(calibrated_p > 0.0 && calibrated_p < 1.0) || !(market_mid > 0.0 && market_mid < 1.0) ||
             !(sqrt_minutes_left > 0.0)) {
