@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for shared Phase-3 outside-info features."""
+import math
 import os
 import sys
 import unittest
@@ -74,6 +75,43 @@ class AblationTest(unittest.TestCase):
                         "physics_vol_regime_confirm")),
             "physics_tape_confirm_near_close",
         )
+
+
+class MidPriorTiltTest(unittest.TestCase):
+    def test_identity_when_private_equals_mid(self):
+        p = oif.capped_mid_prior_tilt(0.55, 0.55)
+        self.assertAlmostEqual(p, 0.55)
+
+    def test_cap_binds_when_private_extreme(self):
+        mid = 0.50
+        uncapped_delta = oif.logit(0.99) - oif.logit(mid)
+        self.assertGreater(uncapped_delta, oif.TILT_MAX_ABS_LOGIT)
+        p = oif.capped_mid_prior_tilt(mid, 0.99)
+        expected = oif.sigmoid(oif.logit(mid) + oif.TILT_MAX_ABS_LOGIT)
+        self.assertAlmostEqual(p, expected)
+        # ~±5¢ near 0.5 for default cap 0.20
+        self.assertLess(abs(p - mid), 0.06)
+        self.assertGreater(p, mid)
+
+    def test_conflict_private_mid_stays_mid(self):
+        # Caller encodes conflict by passing p_private=mid.
+        self.assertAlmostEqual(oif.capped_mid_prior_tilt(0.62, 0.62), 0.62)
+
+    def test_edge_probs_do_not_nan(self):
+        for mid, priv in ((1e-12, 0.9), (1.0 - 1e-12, 0.1), (0.5, 0.0), (0.5, 1.0)):
+            p = oif.capped_mid_prior_tilt(mid, priv)
+            self.assertIsNotNone(p)
+            self.assertTrue(math.isfinite(p))
+            self.assertGreater(p, 0.0)
+            self.assertLess(p, 1.0)
+
+    def test_invalid_mid_fail_closed(self):
+        self.assertIsNone(oif.capped_mid_prior_tilt(None, 0.6))
+        self.assertIsNone(oif.capped_mid_prior_tilt(float("nan"), 0.6))
+
+    def test_invalid_private_returns_mid(self):
+        self.assertAlmostEqual(oif.capped_mid_prior_tilt(0.44, None), 0.44)
+        self.assertAlmostEqual(oif.capped_mid_prior_tilt(0.44, float("nan")), 0.44)
 
 
 if __name__ == "__main__":

@@ -99,11 +99,14 @@ PYTH_SERIES_MAX_POINTS = 180  # ~3h at 1/min poll cadence
 EASTERN = zoneinfo.ZoneInfo("America/New_York")
 CLOSE_FOLD = 0
 UA = "OpenTerminal/commodities-15m-calibrator"
+# Trusted selection / live_p — Phase-4 tilt deliberately excluded.
 ABLATION_KEYS = (
     "physics",
     "physics_tape_confirm_near_close",
     "physics_vol_regime_confirm",
 )
+SCORED_ABLATION_KEYS = ABLATION_KEYS + ("physics_mid_prior_tilt",)
+PHASE4_TILT_KEY = "physics_mid_prior_tilt"
 
 
 def is_commodity_15m_ticker(ticker):
@@ -350,10 +353,26 @@ def _enrich_phase3_features(features, open_price, spot, yes_mid, model_p,
     p_tape = oif.ablation_tape_confirm_near_close(
         model_p, yes_mid, seconds_left, tape["tape_confirms"])
     p_vol = oif.ablation_vol_regime_confirm(model_p, yes_mid, vol, session=session)
+    # Confirm-gated private likelihood vs market mid prior (Phase-4 observe).
+    try:
+        secs = int(seconds_left)
+    except (TypeError, ValueError):
+        secs = 0
+    near_close = secs <= oif.NEAR_CLOSE_S
+    if session == "weekend" or vreg == "quiet":
+        p_private = yes_mid
+    elif near_close and (tape["tape_conflicts"] or not tape["tape_confirms"]):
+        p_private = yes_mid
+    else:
+        p_private = model_p
+    p_tilt = oif.capped_mid_prior_tilt(yes_mid, p_private)
+    if p_tilt is None:
+        p_tilt = yes_mid
     ablations = {
         "physics": float(model_p),
         "physics_tape_confirm_near_close": float(p_tape),
         "physics_vol_regime_confirm": float(p_vol),
+        PHASE4_TILT_KEY: float(p_tilt),
     }
     features.update({
         "session_regime": session,
@@ -364,6 +383,7 @@ def _enrich_phase3_features(features, open_price, spot, yes_mid, model_p,
         "tape_available": tape["tape_available"],
         "p_tape_confirm_near_close": p_tape,
         "p_vol_regime_confirm": p_vol,
+        "p_mid_prior_tilt": float(p_tilt),
     })
     return ablations
 
@@ -514,6 +534,7 @@ def default_state():
         "contract_scores_market_mid_raw": [],
         "contract_scores_physics_tape_confirm_near_close": [],
         "contract_scores_physics_vol_regime_confirm": [],
+        "contract_scores_physics_mid_prior_tilt": [],
         # Same contracts, scored over ONLY the observations where the model's
         # edge over the mid reached the bot's bid threshold -- the population
         # the trust flag is actually used to authorise. See
@@ -522,6 +543,7 @@ def default_state():
         "contract_scores_eligible_market_mid_raw": [],
         "contract_scores_eligible_physics_tape_confirm_near_close": [],
         "contract_scores_eligible_physics_vol_regime_confirm": [],
+        "contract_scores_eligible_physics_mid_prior_tilt": [],
         # Each variant's OWN eligible mid population -- a contract can be
         # eligible for one variant and not another, so the variant's Brier
         # must be paired against the mid observed on ITS eligible contracts,
@@ -529,6 +551,7 @@ def default_state():
         # contract_scores_eligible_market_mid_raw above.)
         "contract_scores_eligible_mid_physics_tape_confirm_near_close": [],
         "contract_scores_eligible_mid_physics_vol_regime_confirm": [],
+        "contract_scores_eligible_mid_physics_mid_prior_tilt": [],
         "resolved": 0,
         "observation_count": 0,
         "pyth_series": {},
@@ -554,6 +577,7 @@ def load_state(path=STATE_PATH):
     state.setdefault("contract_scores_market_mid_raw", [])
     state.setdefault("contract_scores_physics_tape_confirm_near_close", [])
     state.setdefault("contract_scores_physics_vol_regime_confirm", [])
+    state.setdefault("contract_scores_physics_mid_prior_tilt", [])
     # Same hazard as the contract_scores_* keys above: a state file written
     # before this change predates these keys, so a bare index/append below
     # would KeyError on the first settlement.
@@ -561,9 +585,11 @@ def load_state(path=STATE_PATH):
     state.setdefault("contract_scores_eligible_market_mid_raw", [])
     state.setdefault("contract_scores_eligible_physics_tape_confirm_near_close", [])
     state.setdefault("contract_scores_eligible_physics_vol_regime_confirm", [])
+    state.setdefault("contract_scores_eligible_physics_mid_prior_tilt", [])
     # Same hazard again: each variant's own eligible-mid population.
     state.setdefault("contract_scores_eligible_mid_physics_tape_confirm_near_close", [])
     state.setdefault("contract_scores_eligible_mid_physics_vol_regime_confirm", [])
+    state.setdefault("contract_scores_eligible_mid_physics_mid_prior_tilt", [])
     state.setdefault("resolved", 0)
     state.setdefault("observation_count", 0)
     state.setdefault("pyth_series", {})
@@ -572,17 +598,8 @@ def load_state(path=STATE_PATH):
 
 
 def select_trusted_variant(state):
-    board, _ = oif.paired_ablation_scoreboard(
-        {
-            "physics": state.get("contract_scores_full") or [],
-            "physics_tape_confirm_near_close":
-                state.get("contract_scores_physics_tape_confirm_near_close") or [],
-            "physics_vol_regime_confirm":
-                state.get("contract_scores_physics_vol_regime_confirm") or [],
-        },
-        state.get("contract_scores_market_mid_raw") or [],
-        MIN_SCORED_CONTRACTS,
-    )
+    """Best trusted ablation for live_p — Phase-4 tilt never selected."""
+    board, _ = ablation_scoreboard(state)
     return oif.select_best_trusted(board, ABLATION_KEYS)
 
 
@@ -601,6 +618,7 @@ def _record_observation(state, obs, now_ms, predictions):
         "physics": obs["p_model"],
         "physics_tape_confirm_near_close": obs["p_model"],
         "physics_vol_regime_confirm": obs["p_model"],
+        PHASE4_TILT_KEY: obs["yes_mid"],
     }
     if len(entry["obs"]) < MAX_OBS_PER_TICKER:
         entry["obs"].append({
@@ -783,6 +801,7 @@ def settle_cycle(state, now_ms, resolver=None, yahoo_cache=None, pyth_series=Non
             race.brier([(obs["yes_mid"], outcome) for obs in observations]))
         tape_pairs = []
         vol_pairs = []
+        tilt_pairs = []
         for obs in observations:
             ablations = obs.get("p_ablations") or {}
             tape_pairs.append((
@@ -791,18 +810,28 @@ def settle_cycle(state, now_ms, resolver=None, yahoo_cache=None, pyth_series=Non
             vol_pairs.append((
                 ablations.get("physics_vol_regime_confirm", obs["p_model"]),
                 outcome))
+            tilt_pairs.append((
+                ablations.get(PHASE4_TILT_KEY, obs["yes_mid"]),
+                outcome))
         state["contract_scores_physics_tape_confirm_near_close"].append(
             race.brier(tape_pairs))
         state["contract_scores_physics_vol_regime_confirm"].append(
             race.brier(vol_pairs))
+        state["contract_scores_physics_mid_prior_tilt"].append(
+            race.brier(tilt_pairs))
         eligible_rows = [(obs["p_model"], obs["yes_mid"]) for obs in observations]
         eligible_model, eligible_mid = ce.eligible_pairs(eligible_rows, outcome)
         if eligible_model:
             state["contract_scores_eligible_full"].append(race.brier(eligible_model))
             state["contract_scores_eligible_market_mid_raw"].append(race.brier(eligible_mid))
-        for key in ("physics_tape_confirm_near_close", "physics_vol_regime_confirm"):
-            rows = [((obs.get("p_ablations") or {}).get(key, obs["p_model"]), obs["yes_mid"])
-                    for obs in observations]
+        for key in ("physics_tape_confirm_near_close", "physics_vol_regime_confirm",
+                    PHASE4_TILT_KEY):
+            rows = [
+                ((obs.get("p_ablations") or {}).get(
+                    key, obs["yes_mid"] if key == PHASE4_TILT_KEY else obs["p_model"]),
+                 obs["yes_mid"])
+                for obs in observations
+            ]
             v_model, v_mid = ce.eligible_pairs(rows, outcome)
             if v_model:
                 # Pair this variant's Brier against the mid observed on ITS
@@ -820,12 +849,15 @@ def settle_cycle(state, now_ms, resolver=None, yahoo_cache=None, pyth_series=Non
         "contract_scores_market_mid_raw",
         "contract_scores_physics_tape_confirm_near_close",
         "contract_scores_physics_vol_regime_confirm",
+        "contract_scores_physics_mid_prior_tilt",
         "contract_scores_eligible_full",
         "contract_scores_eligible_market_mid_raw",
         "contract_scores_eligible_physics_tape_confirm_near_close",
         "contract_scores_eligible_physics_vol_regime_confirm",
+        "contract_scores_eligible_physics_mid_prior_tilt",
         "contract_scores_eligible_mid_physics_tape_confirm_near_close",
         "contract_scores_eligible_mid_physics_vol_regime_confirm",
+        "contract_scores_eligible_mid_physics_mid_prior_tilt",
     ):
         state[key] = state[key][-SCORED_CONTRACT_WINDOW:]
 
@@ -854,6 +886,8 @@ def ablation_scoreboard(state):
                 state.get("contract_scores_physics_tape_confirm_near_close") or [],
             "physics_vol_regime_confirm":
                 state.get("contract_scores_physics_vol_regime_confirm") or [],
+            PHASE4_TILT_KEY:
+                state.get("contract_scores_physics_mid_prior_tilt") or [],
         },
         state.get("contract_scores_market_mid_raw") or [],
         MIN_SCORED_CONTRACTS,
@@ -887,6 +921,8 @@ def eligible_ablation_scoreboard(state):
          "contract_scores_eligible_mid_physics_tape_confirm_near_close"),
         ("physics_vol_regime_confirm",
          "contract_scores_eligible_mid_physics_vol_regime_confirm"),
+        (PHASE4_TILT_KEY,
+         "contract_scores_eligible_mid_physics_mid_prior_tilt"),
     ):
         variant_board, _variant_mid = oif.paired_ablation_scoreboard(
             {key: state.get(f"contract_scores_eligible_{key}") or []},
@@ -903,6 +939,7 @@ def select_trusted_variant_eligible(state):
 
     Deliberately separate from select_trusted_variant: that one also selects
     live_p, the published probability. This one gates trust only.
+    Phase-4 mid-prior tilt is scored on the board but never selected here.
     """
     board, _b_mid = eligible_ablation_scoreboard(state)
     return oif.select_best_trusted(board, ABLATION_KEYS)
@@ -958,7 +995,8 @@ def build_report(state, predictions, now_ms):
             "(Pyth Metal preferred, Yahoo cold fallback); "
             "physics_tape_confirm_near_close uses Yahoo futures tape confirm "
             "in the final 3m; physics_vol_regime_confirm clamps quiet/weekend "
-            "to mid; market is raw yes mid"
+            "to mid; physics_mid_prior_tilt is mid prior × confirm-gated "
+            "private LR (capped log-odds, scored only); market is raw yes mid"
         ),
         "spot_feeds": {
             family: {
@@ -975,6 +1013,18 @@ def build_report(state, predictions, now_ms):
         "ablations": ablations,
         "trusted_variant": trusted,
         "adds_value_over_market": trusted is not None,
+        "phase4_tilt": {
+            "status": "scored_only",
+            "key": PHASE4_TILT_KEY,
+            "max_abs_logit": oif.TILT_MAX_ABS_LOGIT,
+            "beats_mid": bool((ablations.get(PHASE4_TILT_KEY) or {}).get("beats_mid")),
+            "scored_contracts": int(
+                (ablations.get(PHASE4_TILT_KEY) or {}).get("scored_contracts") or 0),
+            "brier": (ablations.get(PHASE4_TILT_KEY) or {}).get("brier"),
+            "eligible_beats_mid": bool(
+                (eligible_ablations.get(PHASE4_TILT_KEY) or {}).get("beats_mid")),
+            "in_trusted_selection": False,
+        },
         "eligible_ablations": eligible_ablations,
         # Count of contracts with at least one eligible observation for the
         # physics population -- the deployment-observability number, kept as

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Shared outside-info features for 15m race calibrators (Phase 3).
+"""Shared outside-info features for 15m race calibrators (Phase 3–4 observe).
 
-Veto/confirm only — never invents trust. Used by commodities_15m_calibrator
-and kxbtc15m_calibrator for futures-tape and session/vol-regime signals.
+Veto/confirm + scored-only mid-prior tilt — never invents trust. Used by
+commodities_15m_calibrator and kxbtc15m_calibrator.
 """
 from __future__ import annotations
 
@@ -17,6 +17,9 @@ NEAR_CLOSE_S = 180
 # Absolute per-minute vol floors (bps). Quiet markets get clamped to mid.
 VOL_QUIET_BPS = 3.0
 VOL_ELEVATED_BPS = 12.0
+# Phase-4 observe: max |Δlogit| when updating mid prior (~±5¢ near 0.5).
+TILT_MAX_ABS_LOGIT = 0.20
+_PROB_EPS = 1e-6
 
 
 def session_regime_at(now_ms):
@@ -154,6 +157,72 @@ def ablation_vol_regime_confirm(p_physics, yes_mid, per_min_vol_bps, session=Non
     if regime == "quiet":
         return yes_mid
     return p_physics
+
+
+def _finite_prob(value):
+    try:
+        p = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(p):
+        return None
+    return p
+
+
+def logit(p, eps=_PROB_EPS):
+    """log-odds; clamps to (eps, 1-eps). Raises ValueError if p is not finite."""
+    p = _finite_prob(p)
+    if p is None:
+        raise ValueError("logit: non-finite probability")
+    p = min(max(p, eps), 1.0 - eps)
+    return math.log(p / (1.0 - p))
+
+
+def sigmoid(x):
+    """Inverse logit."""
+    try:
+        x = float(x)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(x):
+        return None
+    # Stable sigmoid.
+    if x >= 0.0:
+        z = math.exp(-x)
+        return 1.0 / (1.0 + z)
+    z = math.exp(x)
+    return z / (1.0 + z)
+
+
+def capped_mid_prior_tilt(mid, p_private, max_abs_logit=TILT_MAX_ABS_LOGIT):
+    """Market mid prior × private likelihood, capped in log-odds space.
+
+    logit(p_post) = logit(mid) + clip(logit(p_private) − logit(mid), ±cap)
+
+    Fail-closed: invalid mid → None; invalid private → mid (no update).
+    """
+    mid_p = _finite_prob(mid)
+    if mid_p is None:
+        return None
+    try:
+        cap = abs(float(max_abs_logit))
+    except (TypeError, ValueError):
+        cap = TILT_MAX_ABS_LOGIT
+    if not math.isfinite(cap) or cap <= 0.0:
+        return mid_p
+    priv = _finite_prob(p_private)
+    if priv is None:
+        return mid_p
+    try:
+        delta = logit(priv) - logit(mid_p)
+    except ValueError:
+        return mid_p
+    if delta > cap:
+        delta = cap
+    elif delta < -cap:
+        delta = -cap
+    post = sigmoid(logit(mid_p) + delta)
+    return mid_p if post is None else post
 
 
 def mean_or_none(values):
