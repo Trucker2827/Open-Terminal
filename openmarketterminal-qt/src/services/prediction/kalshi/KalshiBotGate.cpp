@@ -95,7 +95,8 @@ QJsonObject KalshiBotGate::parse_params(const QJsonObject& raw, QString* error) 
     static const QSet<QString> allowed = {QStringLiteral("min_settled_bids"),
                                           QStringLiteral("min_net_pnl_usd"),
                                           QStringLiteral("max_drawdown_usd"),
-                                          QStringLiteral("min_brier_margin")};
+                                          QStringLiteral("min_brier_margin"),
+                                          QStringLiteral("families")};
     QStringList unknown;
     for (auto it = raw.constBegin(); it != raw.constEnd(); ++it)
         if (!allowed.contains(it.key())) unknown.append(it.key());
@@ -143,11 +144,46 @@ QJsonObject KalshiBotGate::parse_params(const QJsonObject& raw, QString* error) 
         margin = brier_margin.toDouble();
     }
 
+    // Which families may earn a per-family PASS. Preregistered like every other
+    // criterion, and for the same reason: without it, pointing the bot at a new
+    // series would mint a fresh hypothesis after the fact, and N families each
+    // getting an independent shot at the same thresholds inflates the chance
+    // one passes by luck. Absent means NO family is eligible — fail-closed, so
+    // per-family admission is something an operator preregisters deliberately
+    // rather than something that switches on the moment this code ships.
+    // Present in the normalized params ONLY when the operator preregistered it.
+    // Emitting `families: []` for every gate would change the sealed bytes of
+    // params files sealed before this existed, and every one of them would then
+    // read TAMPERED — turning a compatible addition into a fleet-wide refusal.
+    bool has_families = false;
+    QJsonArray families;
+    const QJsonValue families_raw = raw.value(QStringLiteral("families"));
+    if (!families_raw.isUndefined()) {
+        if (!families_raw.isArray() || families_raw.toArray().isEmpty())
+            return fail(QStringLiteral("gate param 'families' must be a non-empty array of series "
+                                       "tickers (e.g. [\"KXBTCD\"]); omit it to preregister no "
+                                       "per-family admission at all"));
+        QSet<QString> seen;
+        for (const auto& value : families_raw.toArray()) {
+            const QString name = value.toString().trimmed().toUpper();
+            if (name.isEmpty() || name != value.toString().trimmed())
+                return fail(QStringLiteral("gate param 'families' entries must be non-empty "
+                                           "upper-case series tickers"));
+            if (seen.contains(name))
+                return fail(QStringLiteral("gate param 'families' lists '%1' twice").arg(name));
+            seen.insert(name);
+            families.append(name);
+        }
+        has_families = true;
+    }
+
     if (error) error->clear();
-    return QJsonObject{{QStringLiteral("min_settled_bids"), min_settled},
-                       {QStringLiteral("min_net_pnl_usd"), min_net_pnl},
-                       {QStringLiteral("max_drawdown_usd"), max_drawdown},
-                       {QStringLiteral("min_brier_margin"), margin}};
+    QJsonObject normalized{{QStringLiteral("min_settled_bids"), min_settled},
+                           {QStringLiteral("min_net_pnl_usd"), min_net_pnl},
+                           {QStringLiteral("max_drawdown_usd"), max_drawdown},
+                           {QStringLiteral("min_brier_margin"), margin}};
+    if (has_families) normalized.insert(QStringLiteral("families"), families);
+    return normalized;
 }
 
 QJsonObject KalshiBotGate::preregister(const QString& path, const QJsonObject& raw_params,
@@ -216,11 +252,30 @@ qint64 KalshiBotGate::published_anchor_ms(const QJsonObject& published_verdict) 
     return is_number(carried) ? static_cast<qint64>(carried.toDouble()) : 0;
 }
 
+QString KalshiBotGate::family_of(const QString& ticker) {
+    // Kalshi series ticker: everything before the first '-'. A row whose ticker
+    // is empty or has no series prefix belongs to NO family, so it can never be
+    // bucketed into a "" family that then earns a PASS on nobody's evidence.
+    const QString trimmed = ticker.trimmed().toUpper();
+    const int dash = trimmed.indexOf(QLatin1Char('-'));
+    if (dash <= 0) return {};
+    return trimmed.left(dash);
+}
+
 QJsonObject KalshiBotGate::evaluate(const QJsonValue& params_record,
                                     const QJsonArray& decision_rows,
                                     const QJsonArray& settlement_rows,
                                     qint64 now_ms,
-                                    const RecordIntegrity& ledger_record) {
+                                    const RecordIntegrity& record) {
+    return evaluate_scoped(params_record, decision_rows, settlement_rows, now_ms, record, true);
+}
+
+QJsonObject KalshiBotGate::evaluate_scoped(const QJsonValue& params_record,
+                                    const QJsonArray& decision_rows,
+                                    const QJsonArray& settlement_rows,
+                                    qint64 now_ms,
+                                    const RecordIntegrity& ledger_record,
+                                    bool with_families) {
     const qint64 anchor = ledger_record.published_first_settled_ts_ms;
 
     // --- the criteria must be trustworthy before the ledger is read at all --
@@ -474,6 +529,45 @@ QJsonObject KalshiBotGate::evaluate(const QJsonValue& params_record,
                      {QStringLiteral("last_settled_ts_ms"),
                       settled.empty() ? QJsonValue()
                                       : settled.back().value(QStringLiteral("ts_ms"))}}}};
+
+    // --- per-family verdicts -------------------------------------------------
+    // The top-level verdict above stays POOLED: it is the whole-record answer,
+    // and existing consumers must not silently change meaning. Admission is a
+    // separate question, answered per family by KalshiBotLive::permit(), which
+    // reads `by_family` and refuses any family absent from it.
+    //
+    // Only preregistered families are scored. With none preregistered there is
+    // no per-family admission at all — see parse_params.
+    if (with_families) {
+        const QJsonArray eligible = params.value(QStringLiteral("families")).toArray();
+        QJsonObject by_family;
+        for (const auto& value : eligible) {
+            const QString name = value.toString();
+            QJsonArray family_settlements;
+            for (const auto& row : settlement_rows)
+                if (family_of(row.toObject().value(QStringLiteral("ticker")).toString()) == name)
+                    family_settlements.append(row);
+            // Decision rows are passed whole: the scorer pairs them to
+            // settlements by position_id, so rows from other families simply
+            // never match. Filtering them here would risk dropping the bid row
+            // a kept settlement needs.
+            const QJsonObject scored_family = evaluate_scoped(
+                params_record, decision_rows, family_settlements, now_ms, ledger_record, false);
+            by_family.insert(name,
+                             QJsonObject{{QStringLiteral("verdict"),
+                                          scored_family.value(QStringLiteral("verdict"))},
+                                         {QStringLiteral("criteria"),
+                                          scored_family.value(QStringLiteral("criteria"))},
+                                         {QStringLiteral("ledger"),
+                                          scored_family.value(QStringLiteral("ledger"))}});
+        }
+        out.insert(QStringLiteral("by_family"), by_family);
+        out.insert(QStringLiteral("by_family_eligible"), !eligible.isEmpty());
+        if (eligible.isEmpty())
+            out.insert(QStringLiteral("by_family_note"),
+                       QStringLiteral("no families preregistered — no family is admissible; seal a "
+                                      "'families' param to enable per-family admission"));
+    }
     return out;
 }
 

@@ -523,9 +523,31 @@ QJsonObject publish_gate_verdict(qint64 now_ms, const QJsonArray& record_rows) {
 /// Re-read from disk on every call: the arm, the gate verdict and the kill
 /// switch are all revocable, so a `run` loop asks again each tick rather than
 /// latching an answer at startup.
-KalshiBotLive::Permission live_permission(qint64 now_ms) {
+/// `family` is the Kalshi series the caller wants to trade. Admission is per
+/// family, so it is threaded through rather than defaulted — a permission is
+/// only ever as good as that family's own paper record.
+/// A family the published verdict currently admits, or empty when none does.
+///
+/// Used ONLY to ask the session-level questions once per tick — is the bot
+/// armed, is the kill switch off, is the verdict fresh — which are the same
+/// whichever family is asked. It is never what authorises a bid: every bid
+/// re-asks for its OWN family, so naming one family here cannot admit another.
+/// Empty means nothing is admissible, and the tick refuses.
+QString session_admission_family() {
+    const QJsonObject by_family =
+        read_gate_verdict().value(QStringLiteral("by_family")).toObject();
+    QStringList names = by_family.keys();
+    names.sort();  // deterministic: the same tick must not pick a different family
+    for (const QString& name : names)
+        if (by_family.value(name).toObject().value(QStringLiteral("verdict")).toString() ==
+            QLatin1String("PASS"))
+            return name;
+    return {};
+}
+
+KalshiBotLive::Permission live_permission(qint64 now_ms, const QString& family) {
     return KalshiBotLive::permit(kalshi_bot_live_status(), read_gate_verdict(),
-                                 kalshi_bot_read_stop_file(bot_stop_path()), now_ms);
+                                 kalshi_bot_read_stop_file(bot_stop_path()), now_ms, family);
 }
 
 struct TickResult {
@@ -917,6 +939,11 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
 TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config& config,
                          qint64 now_ms, const KalshiBotStopFile& stop,
                          const KalshiBotLive::Permission& permission,
+                         // Re-asks live admission for ONE family. Admission is
+                         // per family, and a tick spans several, so the
+                         // session-level `permission` above cannot answer for a
+                         // specific contract — this does, at the bid itself.
+                         const std::function<KalshiBotLive::Permission(const QString&)>& admit_family,
                          double session_opened_usd, bool auto_refresh_calibrators = true) {
     const QString ledger_path = bot_ledger_path();
     const auto journal = [&ledger_path](const QJsonObject& row) {
@@ -973,6 +1000,20 @@ TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config
             // A live tick's passes are live decisions and are journaled as
             // such: a tick that bid nothing still has to say why.
             journal(KalshiBotLive::live_row(row, permission));
+            ++result.passes;
+            continue;
+        }
+
+        // PER-FAMILY ADMISSION, asked at the bid because only here is the
+        // contract known. The session-level permission above cleared the arm,
+        // the kill switch and the gate's freshness; it cannot say whether THIS
+        // family's own paper record earned promotion. A family that did not is
+        // journaled as a refusal and never reaches prepare or submit.
+        const QString bid_family = services::prediction::kalshi_ns::KalshiBotGate::family_of(
+            row.value(QStringLiteral("ticker")).toString());
+        const KalshiBotLive::Permission family_permission = admit_family(bid_family);
+        if (!family_permission.permitted) {
+            journal(KalshiBotLive::refusal_row(family_permission, now_ms));
             ++result.passes;
             continue;
         }
@@ -2225,8 +2266,10 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     // same ledger (mode=live, no numbers) and exits non-zero: a live run that
     // silently degraded to paper would be the dishonest outcome, and one that
     // said nothing at all would leave no evidence it was attempted.
-    const auto admit = [&](qint64 now_ms) -> KalshiBotLive::Permission {
-        const KalshiBotLive::Permission permission = live_permission(now_ms);
+    // `family` is the series the bid is for. Admission is per family, so the
+    // caller must name it; there is no "any family" permission to fall back to.
+    const auto admit = [&](qint64 now_ms, const QString& family) -> KalshiBotLive::Permission {
+        const KalshiBotLive::Permission permission = live_permission(now_ms, family);
         if (permission.permitted) return permission;
         journal_ledger_row(bot_ledger_path(), KalshiBotLive::refusal_row(permission, now_ms));
         std::fprintf(stderr, "kalshi bot: LIVE REFUSED · %s\n  %s\n",
@@ -2244,12 +2287,13 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     if (sub == QStringLiteral("once")) {
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
         if (live) {
-            const KalshiBotLive::Permission permission = admit(now_ms);
+            const KalshiBotLive::Permission permission = admit(now_ms, session_admission_family());
             if (!permission.permitted) return 4;
             apply_session_caps(permission);
             print_tick(opts,
                        run_live_tick(opts, config, now_ms,
-                                     kalshi_bot_read_stop_file(bot_stop_path()), permission, 0.0,
+                                     kalshi_bot_read_stop_file(bot_stop_path()), permission,
+                                     [&](const QString& f) { return admit(now_ms, f); }, 0.0,
                                      auto_refresh_calibrators),
                        config);
             return 0;
@@ -2275,11 +2319,12 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
             // Re-asked every tick, not latched at startup: the arm expires, the
             // gate verdict ages out, and the kill switch is thrown mid-run. A
             // lapsed permission ends the run rather than riding the old answer.
-            const KalshiBotLive::Permission permission = admit(now_ms);
+            const KalshiBotLive::Permission permission = admit(now_ms, session_admission_family());
             if (!permission.permitted) return 4;
             apply_session_caps(permission);
-            tick = run_live_tick(opts, config, now_ms, stop, permission, session_opened_usd,
-                                 auto_refresh_calibrators);
+            tick = run_live_tick(opts, config, now_ms, stop, permission,
+                                 [&](const QString& f) { return admit(now_ms, f); },
+                                 session_opened_usd, auto_refresh_calibrators);
         } else {
             tick = run_tick(config, now_ms, stop, session_opened_usd, auto_refresh_calibrators);
         }

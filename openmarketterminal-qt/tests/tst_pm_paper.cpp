@@ -1288,10 +1288,15 @@ class TstPmPaper : public QObject {
                             {"ends_at", QDateTime::fromMSecsSinceEpoch(now_ms + 3'600'000,
                                                                        QTimeZone::UTC)
                                             .toString(Qt::ISODateWithMs)}}}};
+        // Admission is per family, so the fixture must carry `by_family`; the
+        // pooled verdict is deliberately not what admits.
         const QJsonObject gate{{"verdict", "PASS"}, {"evaluated", true},
+                               {"by_family_eligible", true},
+                               {"by_family", QJsonObject{{"KXBTC15M",
+                                    QJsonObject{{"verdict", "PASS"}}}}},
                                {"ts_ms", static_cast<double>(now_ms - 60'000)}};
         const bot::KalshiBotLive::Permission permission =
-            bot::KalshiBotLive::permit(status, gate, {}, now_ms);
+            bot::KalshiBotLive::permit(status, gate, {}, now_ms, QStringLiteral("KXBTC15M"));
         if (!permission.permitted) return {};
 
         // A bid row in KalshiBotDecision::decide()'s exact shape.

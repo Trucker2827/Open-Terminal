@@ -48,6 +48,7 @@ KalshiBotLive::Permission KalshiBotLive::permit(const QJsonObject& live_status,
                                                 const QJsonObject& gate,
                                                 const KalshiBotStopFile& stop,
                                                 qint64 now_ms,
+                                                const QString& family,
                                                 qint64 max_gate_age_ms) {
     Permission permission;
 
@@ -143,11 +144,34 @@ KalshiBotLive::Permission KalshiBotLive::permit(const QJsonObject& live_status,
                           .arg(verdict.isEmpty() ? QStringLiteral("no verdict") : verdict,
                                gate.value(QStringLiteral("reason"))
                                    .toString(QStringLiteral("no reason given"))));
-    if (verdict != QLatin1String("PASS"))
+    // Admission is PER FAMILY. The top-level `verdict` is the pooled
+    // whole-record answer and is deliberately NOT the admission test: pooling
+    // lets one family's losses bury another's evidence, and lets a losing
+    // family ride on a winner's. `family` names the series this permission is
+    // for, and only that family's own record can authorise it.
+    if (family.trimmed().isEmpty())
         return refuse(permission, kRefusedGateFail,
-                      QStringLiteral("the preregistered gate reads %1, not PASS — an ungated "
-                                     "signal trades paper only")
-                          .arg(verdict.isEmpty() ? QStringLiteral("no verdict") : verdict));
+                      QStringLiteral("no family was named for this permission — admission is "
+                                     "per family, so an unnamed one is refused"));
+    const QJsonObject by_family = gate.value(QStringLiteral("by_family")).toObject();
+    if (!gate.value(QStringLiteral("by_family_eligible")).toBool())
+        return refuse(permission, kRefusedGateFail,
+                      QStringLiteral("the gate preregistered no families, so no family is "
+                                     "admissible — seal a 'families' param first"));
+    if (!by_family.contains(family))
+        return refuse(permission, kRefusedGateFail,
+                      QStringLiteral("family %1 is not preregistered in the sealed gate — only a "
+                                     "family sealed BEFORE the evidence can be admitted")
+                          .arg(family));
+    const QString family_verdict =
+        by_family.value(family).toObject().value(QStringLiteral("verdict")).toString();
+    if (family_verdict != QLatin1String("PASS"))
+        return refuse(permission, kRefusedGateFail,
+                      QStringLiteral("the preregistered gate reads %1 for family %2, not PASS — an "
+                                     "ungated signal trades paper only")
+                          .arg(family_verdict.isEmpty() ? QStringLiteral("no verdict")
+                                                        : family_verdict,
+                               family));
 
     const QJsonValue gate_ts = gate.value(QStringLiteral("ts_ms"));
     permission.gate_ts_ms = gate_ts.isDouble() ? static_cast<qint64>(gate_ts.toDouble()) : -1;

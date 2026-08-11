@@ -113,10 +113,15 @@ class KalshiBotLive {
     /// unreadable arm state is never read as armed, and never as disarmed
     /// either. `gate` is kalshi-bot-gate.json as published, `stop` the kill
     /// switch as read from disk this tick.
+    /// `family` is the Kalshi series this permission is for (KalshiBotGate::
+    /// family_of). It is REQUIRED and never defaulted, for the same reason
+    /// RecordIntegrity is: a caller that forgot it would otherwise be granted a
+    /// permission nobody's paper record earned.
     static Permission permit(const QJsonObject& live_status,
                              const QJsonObject& gate,
                              const KalshiBotStopFile& stop,
                              qint64 now_ms,
+                             const QString& family,
                              qint64 max_gate_age_ms = kMaxGateAgeMs);
 
     /// The `prepare_order` intent for one bid row from
