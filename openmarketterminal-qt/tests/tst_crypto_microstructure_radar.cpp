@@ -1,6 +1,7 @@
 #include <QtTest>
 #include "services/crypto/CryptoFees.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
+#include "services/edge_radar/VolCostContext.h"
 
 using namespace openmarketterminal::services::edge_radar;
 namespace latency = openmarketterminal::services::crypto_latency;
@@ -159,6 +160,67 @@ private slots:
         const auto profile = fees::crypto_default_fee_profile(QStringLiteral("coinbase_advanced"));
         QCOMPARE(profile.maker_bps, 40.0);
         QCOMPARE(profile.taker_bps, 60.0);
+    }
+
+    // The radar's veto has been correct and unreachable: nothing on the live
+    // path supplied a fee context, so every CLI snapshot reported
+    // `cost_context_available = false` and the call stayed GROSS. with_fee_context
+    // is the missing half. It must agree with the scalp gate's arithmetic
+    // ((fee_bps * 2.0) + slippage_bps, EdgeJournalCommandsC.cpp) or the radar and
+    // the gate would disagree about the same trade.
+    void fee_context_matches_the_scalp_gate_arithmetic() {
+        CryptoMicrostructureCostContext vol;
+        vol.vol_available = true;
+        vol.realized_vol_per_min_bps = 2.847;
+        vol.realized_vol_samples = 356;
+
+        const auto merged = with_fee_context(
+            vol, CryptoFeeInputs{QStringLiteral("coinbase_advanced"), 60.0, 5.0});
+        QVERIFY(merged.fee_available);
+        QCOMPARE(merged.venue_key, QString("coinbase_advanced"));
+        QCOMPARE(merged.round_trip_fee_bps, 120.0); // 60 one-way, entry + exit
+        QCOMPARE(merged.slippage_bps, 5.0);
+        // The vol half must survive untouched — it is a separate estimate.
+        QVERIFY(merged.vol_available);
+        QCOMPARE(merged.realized_vol_per_min_bps, 2.847);
+        QCOMPARE(merged.realized_vol_samples, 356);
+    }
+
+    // An absent profile must read as UNKNOWN, never as zero cost — that is the
+    // whole reason the radar has a separate availability flag. A zero RATE is
+    // different: waivers and rebate tiers are real, and must gate normally.
+    void absent_profile_stays_unknown_but_zero_rate_is_real() {
+        const CryptoMicrostructureCostContext empty;
+
+        const auto absent = with_fee_context(empty, CryptoFeeInputs{});
+        QVERIFY(!absent.fee_available);
+        QCOMPARE(absent.round_trip_fee_bps, 0.0);
+
+        const auto waived = with_fee_context(
+            empty, CryptoFeeInputs{QStringLiteral("coinbase_advanced"), 0.0, 0.0});
+        QVERIFY(waived.fee_available);
+        QCOMPARE(waived.round_trip_fee_bps, 0.0);
+    }
+
+    // End to end through the radar: the same trend that reads TRADE CANDIDATE
+    // gross must downgrade once the fee half is supplied by with_fee_context —
+    // not just by the test's hand-built context.
+    void wired_fee_context_downgrades_a_gross_candidate() {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+        CryptoMicrostructureRadar gross;
+        feed_trend(gross, now, 100000.0, 0.5, 61);
+        QCOMPARE(gross.snapshot(live_snapshot()).call, QString("TRADE CANDIDATE"));
+
+        CryptoMicrostructureRadar netted;
+        feed_trend(netted, now, 100000.0, 0.5, 61);
+        const auto snap = netted.snapshot(
+            live_snapshot(),
+            with_fee_context(CryptoMicrostructureCostContext{},
+                             CryptoFeeInputs{QStringLiteral("coinbase_advanced"), 60.0, 5.0}));
+        QCOMPARE(snap.call, QString("WATCH"));
+        QVERIFY(snap.cost_context_available);
+        QVERIFY(snap.rationale.contains(QStringLiteral("hurdle")));
     }
 };
 QTEST_MAIN(TstCryptoMicrostructureRadar)

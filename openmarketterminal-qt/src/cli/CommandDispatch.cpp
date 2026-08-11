@@ -13595,7 +13595,8 @@ edge_capture_microstructure(services::edge_radar::CryptoMicrostructureRadar& rad
                             const QString& symbol,
                             const QStringList& sources,
                             int duration_ms,
-                            bool store_raw_ticks = false) {
+                            bool store_raw_ticks = false,
+                            const services::edge_radar::CryptoFeeInputs& fees = {}) {
     using services::crypto_latency::CryptoLatencyService;
 
     CryptoLatencyService service;
@@ -13624,13 +13625,17 @@ edge_capture_microstructure(services::edge_radar::CryptoMicrostructureRadar& rad
     service.start(symbol, sources);
     timeout.start(duration_ms);
     loop.exec();
-    // Supply the volatility context so the noise-floor fields report what the
-    // gate already knows. Volatility only: `cost_context_available` -- the flag
-    // that lets the radar veto a TRADE CANDIDATE -- keys off fee_available, so
-    // this changes reporting and not the call. See VolCostContext.h.
-    const auto vol_ctx = services::edge_radar::vol_cost_context_for(
-        edge_base_crypto_symbol(symbol), QDateTime::currentMSecsSinceEpoch());
-    const auto snapshot = radar.snapshot(service.snapshot(), vol_ctx);
+    // Volatility populates the noise-floor reporting fields only. The fee half
+    // is what arms `cost_context_available`, and therefore the round-trip veto,
+    // so it is supplied ONLY by callers that resolved a venue profile — the
+    // crypto recommend/scalp commands. Callers that pass no fees (the plain
+    // `edge microstructure` display, and every Kalshi path) keep the previous
+    // gross behaviour. See VolCostContext.h.
+    const auto cost_ctx = services::edge_radar::with_fee_context(
+        services::edge_radar::vol_cost_context_for(
+            edge_base_crypto_symbol(symbol), QDateTime::currentMSecsSinceEpoch()),
+        fees);
+    const auto snapshot = radar.snapshot(service.snapshot(), cost_ctx);
     service.stop();
     return snapshot;
 }
@@ -13639,9 +13644,10 @@ services::edge_radar::CryptoMicrostructureSnapshot
 edge_capture_microstructure(const QString& symbol,
                             const QStringList& sources,
                             int duration_ms,
-                            bool store_raw_ticks) {
+                            bool store_raw_ticks,
+                            const services::edge_radar::CryptoFeeInputs& fees) { // defaults: EdgeJournalShared.h
     services::edge_radar::CryptoMicrostructureRadar radar;
-    return edge_capture_microstructure(radar, symbol, sources, duration_ms, store_raw_ticks);
+    return edge_capture_microstructure(radar, symbol, sources, duration_ms, store_raw_ticks, fees);
 }
 
 QString edge_price_or_dash(double price) {
@@ -15023,10 +15029,14 @@ static int edge_crypto_recommend_command(const GlobalOpts& opts, QStringList arg
         return code;
 
     const QString symbol = services::crypto_latency::CryptoLatencyService::normalize_symbol(symbol_raw);
-    const auto snapshot = edge_capture_microstructure(symbol,
-                                                      edge_safe_latency_sources_for_symbol(sources_raw, symbol),
-                                                      duration_ms,
-                                                      true);
+    // This command's product IS the snapshot's call, journaled as a
+    // recommendation, so it must be net-of-round-trip rather than gross. Reuse
+    // the fee_bps/slippage_bps already resolved above — including any --fee-bps
+    // override — so the radar and edge_score_crypto_recommendation below cannot
+    // disagree about the same trade.
+    const auto snapshot = edge_capture_microstructure(
+        symbol, edge_safe_latency_sources_for_symbol(sources_raw, symbol), duration_ms, true,
+        services::edge_radar::CryptoFeeInputs{fee_profile.venue_key, fee_bps, slippage_bps});
     auto decision = edge_score_crypto_recommendation(symbol, venue, snapshot,
                                                      horizon_sec, fee_bps, slippage_bps, min_edge_bps);
     auto inserted = edge_journal_insert_crypto_recommendation(decision, snapshot,
