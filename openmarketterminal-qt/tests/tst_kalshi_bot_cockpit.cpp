@@ -1930,6 +1930,68 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(node->value.contains(QStringLiteral("BOT LOSES TO MID")));
         QCOMPARE(node->role, QStringLiteral("red"));
     }
+
+    // ---- the cockpit must not re-pool what the gate unpooled --------------
+    static QJsonObject fam_block(bool passes, int eligible) {
+        return QJsonObject{
+            {QStringLiteral("adds_value_over_market"), passes},
+            {QStringLiteral("brier_full"), 0.05},
+            {QStringLiteral("brier_market_mid_raw"), 0.30},
+            {QStringLiteral("adds_value_on_bet_eligible"), passes},
+            {QStringLiteral("brier_eligible_full"), passes ? 0.05 : 0.40},
+            {QStringLiteral("brier_eligible_market_mid_raw"), 0.30},
+            {QStringLiteral("eligible_scored_contracts"), eligible},
+            {QStringLiteral("min_eligible_contracts"), 100},
+        };
+    }
+
+    // Gold must never look green because Silver carried the pool.
+    void one_passing_family_never_greens_the_group() {
+        const QJsonObject report{
+            {QStringLiteral("by_family"),
+             QJsonObject{{QStringLiteral("KXGOLDH"), fam_block(true, 200)},
+                         {QStringLiteral("KXSILVERH"), fam_block(false, 200)}}}};
+        const auto states = family_states(report);
+        QCOMPARE(states.size(), 2);
+        // A measured loss outranks everything: the group cannot read green.
+        QCOMPARE(family_group_colour(states), QStringLiteral("amber"));
+        const QString line = family_states_line(states);
+        QVERIFY(line.contains(QStringLiteral("KXGOLDH T")));
+        QVERIFY(line.contains(QStringLiteral("KXSILVERH U")));
+    }
+
+    // The footgun after the split: every family starts at zero, and rendering
+    // "not measured" as "measured and lost" invites dropping instruments
+    // nobody has looked at. Unmeasured is GREY, never amber.
+    void an_unmeasured_family_is_grey_not_amber() {
+        const QJsonObject report{
+            {QStringLiteral("by_family"),
+             QJsonObject{{QStringLiteral("KXGOLDH"), fam_block(false, 0)},
+                         {QStringLiteral("KXSILVERH"), fam_block(false, 0)},
+                         {QStringLiteral("KXWTIH"), fam_block(false, 0)}}}};
+        const auto states = family_states(report);
+        QCOMPARE(family_group_colour(states), QStringLiteral("grey"));
+        QVERIFY(family_states_line(states).contains(QStringLiteral("KXWTIH ?")));
+    }
+
+    // Green requires EVERY family to pass on its own evidence.
+    void green_requires_every_family_to_pass() {
+        const QJsonObject all_pass{
+            {QStringLiteral("by_family"),
+             QJsonObject{{QStringLiteral("KXGOLDH"), fam_block(true, 200)},
+                         {QStringLiteral("KXSILVERH"), fam_block(true, 200)}}}};
+        QCOMPARE(family_group_colour(family_states(all_pass)),
+                 QStringLiteral("green"));
+
+        // One unmeasured family is enough to withhold green.
+        const QJsonObject mixed{
+            {QStringLiteral("by_family"),
+             QJsonObject{{QStringLiteral("KXGOLDH"), fam_block(true, 200)},
+                         {QStringLiteral("KXSILVERH"), fam_block(false, 0)}}}};
+        QCOMPARE(family_group_colour(family_states(mixed)),
+                 QStringLiteral("grey"));
+    }
+
 };
 
 QTEST_GUILESS_MAIN(KalshiBotCockpitTest)
