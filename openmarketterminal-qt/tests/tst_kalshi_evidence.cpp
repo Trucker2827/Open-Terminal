@@ -69,6 +69,7 @@ class TestKalshiEvidence : public QObject {
     Q_OBJECT
   private slots:
     void detectsExecutableRelationships();
+    void sweepsEveryEventInTheFetchedLadder();
     void reconcilesForwardAndSettlementLabels();
     void appliesSeriesFeesAndWaivers();
     void pricesExecutableCryptoYesAndNo();
@@ -104,6 +105,70 @@ void TestKalshiEvidence::detectsExecutableRelationships() {
     const QJsonArray no_depth = KalshiEvidenceEngine::analyze_ladder(markets, books, event);
     QCOMPARE(severity_for(no_depth, QStringLiteral("nested_above_portfolio")),
              QStringLiteral("watch"));
+}
+
+// The relationships analyze_ladder looks for hold BETWEEN strikes, so they are
+// invisible to a caller holding part of a ladder. The live WS path subscribes to
+// a bounded contract set by design (ServeCommand.cpp:1073) and saw 17 of 395
+// strikes; the planner's REST fetch holds the whole ladder — 188 strikes in one
+// hourly event when this was measured. This pins the sweep on the property that
+// distinguishes the two: the same violation is found over the full ladder and
+// missed over a bounded slice of it.
+void TestKalshiEvidence::sweepsEveryEventInTheFetchedLadder() {
+    const QString hour = QStringLiteral("BTC-HOUR");
+    const QString day = QStringLiteral("BTC-DAY");
+    QVector<PredictionMarket> markets{
+        market(QStringLiteral("H-LOW"), hour, QStringLiteral("above"), 100.0, 0.0, 0.39, 0.58),
+        market(QStringLiteral("H-HIGH"), hour, QStringLiteral("above"), 110.0, 0.0, 0.59, 0.39),
+        market(QStringLiteral("D-LOW"), day, QStringLiteral("above"), 100.0, 0.0, 0.39, 0.58),
+        market(QStringLiteral("D-HIGH"), day, QStringLiteral("above"), 110.0, 0.0, 0.59, 0.39),
+    };
+    QHash<QString, PredictionOrderBook> books;
+    for (const auto& m : markets) {
+        const QString ticker = m.key.market_id;
+        const bool high = ticker.endsWith(QStringLiteral("HIGH"));
+        books.insert(ticker + QStringLiteral(":yes"),
+                     book(ticker + QStringLiteral(":yes"), high ? 0.59 : 0.39, high ? 0.60 : 0.40));
+        books.insert(ticker + QStringLiteral(":no"),
+                     book(ticker + QStringLiteral(":no"), high ? 0.39 : 0.58, high ? 0.40 : 0.05));
+    }
+
+    const QJsonObject full = KalshiEvidenceEngine::ladder_sweep(markets, books, {hour, day});
+    QCOMPARE(full.value(QStringLiteral("contracts_examined")).toInt(), 4);
+    QCOMPARE(full.value(QStringLiteral("events")).toArray().size(), 2);
+
+    const QJsonArray rows = full.value(QStringLiteral("diagnostics")).toArray();
+    QVERIFY(has_kind(rows, QStringLiteral("monotonicity_violation")));
+
+    // Every row carries its event, or a merged array cannot be attributed.
+    QStringList violation_events;
+    int actionable = 0;
+    for (const auto& value : rows) {
+        const auto row = value.toObject();
+        QVERIFY(!row.value(QStringLiteral("event_ticker")).toString().isEmpty());
+        if (row.value(QStringLiteral("kind")).toString() == QStringLiteral("monotonicity_violation"))
+            violation_events.append(row.value(QStringLiteral("event_ticker")).toString());
+        if (row.value(QStringLiteral("severity")).toString() == QStringLiteral("opportunity"))
+            ++actionable;
+    }
+    violation_events.sort();
+    QCOMPARE(violation_events, (QStringList{day, hour}));
+    QCOMPARE(full.value(QStringLiteral("actionable_count")).toInt(), actionable);
+
+    // The bounded-coverage failure: one strike of the hourly ladder, the shape
+    // the WS path had. The relationship is still true of the market and still
+    // undetectable, so this must not report a violation.
+    const QJsonObject bounded = KalshiEvidenceEngine::ladder_sweep(
+        {markets.first()}, books, {hour});
+    QCOMPARE(bounded.value(QStringLiteral("contracts_examined")).toInt(), 1);
+    QVERIFY(!has_kind(bounded.value(QStringLiteral("diagnostics")).toArray(),
+                      QStringLiteral("monotonicity_violation")));
+
+    // An empty event list means "every event present", so a caller that forgets
+    // to pass the scope still gets the whole ladder rather than silence.
+    const QJsonObject implied = KalshiEvidenceEngine::ladder_sweep(markets, books, {});
+    QCOMPARE(implied.value(QStringLiteral("events")).toArray().size(), 2);
+    QCOMPARE(implied.value(QStringLiteral("diagnostics")).toArray().size(), rows.size());
 }
 
 void TestKalshiEvidence::appliesSeriesFeesAndWaivers() {

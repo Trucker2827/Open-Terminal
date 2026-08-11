@@ -418,6 +418,45 @@ QJsonObject KalshiEvidenceEngine::ladder_snapshot(
                        {QStringLiteral("live_eligible"), false}};
 }
 
+QJsonObject KalshiEvidenceEngine::ladder_sweep(
+    const QVector<PredictionMarket>& markets,
+    const QHash<QString, PredictionOrderBook>& books,
+    const QStringList& events) {
+    QStringList scope = events;
+    if (scope.isEmpty()) {
+        // No scope means every event present. Preserve first-seen order so two
+        // runs over the same fetch produce the same record.
+        for (const auto& market : markets)
+            if (!market.key.event_id.isEmpty() && !scope.contains(market.key.event_id))
+                scope.append(market.key.event_id);
+    }
+
+    QJsonArray diagnostics;
+    QJsonArray scope_json;
+    int actionable = 0;
+    int examined = 0;
+    for (const auto& event : scope) {
+        int width = 0;
+        for (const auto& market : markets)
+            if (market.key.event_id == event) ++width;
+        examined += width;
+        scope_json.append(QJsonObject{{QStringLiteral("event_ticker"), event},
+                                      {QStringLiteral("contracts"), width}});
+        for (const auto& value : analyze_ladder(markets, books, event)) {
+            QJsonObject row = value.toObject();
+            row.insert(QStringLiteral("event_ticker"), event);
+            if (row.value(QStringLiteral("severity")).toString() == QStringLiteral("opportunity"))
+                ++actionable;
+            diagnostics.append(row);
+        }
+    }
+
+    return QJsonObject{{QStringLiteral("events"), scope_json},
+                       {QStringLiteral("diagnostics"), diagnostics},
+                       {QStringLiteral("actionable_count"), actionable},
+                       {QStringLiteral("contracts_examined"), examined}};
+}
+
 bool KalshiEvidenceEngine::append_jsonl(const QString& path, const QJsonObject& row,
                                         Rotation rotation) {
     constexpr qint64 max_bytes = 64LL * 1024 * 1024;
