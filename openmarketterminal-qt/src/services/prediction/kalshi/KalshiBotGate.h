@@ -3,6 +3,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -153,7 +154,25 @@ class KalshiBotGate {
                                 const QJsonArray& decision_rows,
                                 const QJsonArray& settlement_rows,
                                 qint64 now_ms,
-                                const RecordIntegrity& record);
+                                const RecordIntegrity& record,
+                                const QSet<QString>& quarantined_position_ids = {});
+
+    /// Position ids whose bid was authorised by evidence that did not belong to
+    /// the family it traded, read from the append-only quarantine record.
+    ///
+    /// This exists because trust was once POOLED: one flag over KXGOLDH +
+    /// KXSILVERH + KXWTIH authorised bids in all three from evidence no single
+    /// one had earned. The resulting settlements are real outcomes, but they are
+    /// not that family's evidence, and the sealed gate must not count them
+    /// toward the family's promotion.
+    ///
+    /// The ledger itself is NEVER rewritten -- it is append-only, and a gate
+    /// that refuses truncated records cannot also be a caller that edits them.
+    /// Quarantine is recorded beside the ledger and applied at scoring time.
+    static QSet<QString> quarantined_position_ids(const QJsonArray& quarantine_rows);
+
+    /// The event name of a quarantine row.
+    static constexpr auto kQuarantineEvent = "kalshi_bot_evidence_quarantine";
 
     /// The Kalshi series ticker a row belongs to: everything before the first
     /// '-' (`KXBTCD-26JUL2412-T63999.99` → `KXBTCD`). Returns an EMPTY string
@@ -174,7 +193,8 @@ class KalshiBotGate {
                                        const QJsonArray& settlement_rows,
                                        qint64 now_ms,
                                        const RecordIntegrity& record,
-                                       bool with_families);
+                                       bool with_families,
+                                       const QSet<QString>& quarantined);
 };
 
 } // namespace openmarketterminal::services::prediction::kalshi_ns
