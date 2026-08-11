@@ -17,7 +17,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -560,17 +560,99 @@ def build_report(state: dict, predictions: dict, now_ms: int, profile: Profile) 
     return report
 
 
+def family_profile(profile: Profile, series_ticker: str) -> Profile:
+    """`profile` narrowed to a single series, so every downstream helper —
+    fetching, feature building, fitting, scoring, reporting — operates on ONE
+    prediction problem without knowing it was ever part of a group."""
+    return replace(profile, series={series_ticker: profile.series[series_ticker]})
+
+
+def split_state(outer: dict, profile: Profile) -> dict:
+    """Per-family state slices, migrating a legacy pooled state on first run.
+
+    A pooled state carries ONE OnlineLogit fitted across every series in the
+    profile. It cannot seed any individual family: a gold-and-silver-and-oil
+    model is not gold's model, and copying it into all three would recreate the
+    exact contamination this split exists to remove. So the legacy blob is set
+    aside (the caller archives it) and each family starts from an empty state.
+
+    The cost is real and worth stating: pooled sample counts do not carry over.
+    commodities-hourly had 500 pooled scored contracts; after the split every
+    family starts at zero. That is the honest price of measuring three separate
+    things separately.
+    """
+    by_family = outer.get("by_family")
+    if not isinstance(by_family, dict):
+        by_family = {}
+    for series_ticker in profile.series:
+        if not isinstance(by_family.get(series_ticker), dict):
+            by_family[series_ticker] = default_state()
+    return by_family
+
+
 def run_once(profile: Profile, now_ms: Optional[int] = None, rest_markets=None) -> dict:
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
-    state = load_state(profile.state_path)
-    predictions = observe_cycle(
-        state, profile, now_ms, rest_markets=rest_markets, yahoo_cache={}
-    )
-    settle_cycle(state, now_ms)
-    sc.save_json_atomic(state, profile.state_path)
-    report = build_report(state, predictions, now_ms, profile)
+    outer = load_state(profile.state_path)
+
+    # One-time migration: archive a legacy pooled state rather than deleting it,
+    # so the evidence that produced earlier reports still exists to inspect.
+    if "by_family" not in outer and outer.get("resolved"):
+        legacy = "%s.pooled-legacy.json" % profile.state_path
+        if not os.path.exists(legacy):
+            sc.save_json_atomic(outer, legacy)
+
+    by_family_state = split_state(outer, profile)
+    markets = rest_markets if rest_markets is not None else fetch_open_markets(profile)
+    yahoo_cache: dict = {}
+
+    by_family_report: dict = {}
+    predictions: dict = {}
+    for series_ticker in sorted(profile.series):
+        sub = family_profile(profile, series_ticker)
+        state = by_family_state[series_ticker]
+        # Only this family's markets reach this family's model.
+        mine = [m for m in markets if series_of(str(m.get("ticker") or "")) == series_ticker]
+        preds = observe_cycle(state, sub, now_ms, rest_markets=mine, yahoo_cache=yahoo_cache)
+        settle_cycle(state, now_ms)
+        by_family_state[series_ticker] = state
+        # build_report on a SINGLE-series profile, so each family's trust is
+        # computed from its own evidence and is not withheld as pooled.
+        by_family_report[series_ticker] = build_report(state, preds, now_ms, sub)
+        predictions.update(preds)
+
+    outer = {"schema": STATE_SCHEMA, "by_family": by_family_state}
+    sc.save_json_atomic(outer, profile.state_path)
+
+    # The umbrella report keeps its pooled shape for existing readers, with the
+    # authorising flags withheld (see build_report), and carries the per-family
+    # verdicts that ARE authoritative under `by_family`. One atomic write.
+    report = build_report(pooled_view(by_family_state), predictions, now_ms, profile)
+    report["by_family"] = by_family_report
     sc.save_json_atomic(report, profile.output_path)
     return report
+
+
+def pooled_view(by_family_state: dict) -> dict:
+    """Every family's scores concatenated — DIAGNOSTIC ONLY.
+
+    This is the apples-and-oranges number: it counts how many contracts were
+    scored across the group, which is meaningful, and averages their Brier,
+    which is not. build_report withholds the authorising flags for any
+    multi-series profile, so this can be reported without being believed.
+    """
+    pooled = default_state()
+    for state in by_family_state.values():
+        for key in (
+            "contract_scores_full",
+            "contract_scores_market_trained_logit",
+            "contract_scores_market_mid_raw",
+            "contract_scores_eligible_full",
+            "contract_scores_eligible_market_mid_raw",
+        ):
+            pooled[key] = list(pooled[key]) + list(state.get(key) or [])
+        pooled["resolved"] += int(state.get("resolved") or 0)
+        pooled["skipped_unmodeled"] += int(state.get("skipped_unmodeled") or 0)
+    return pooled
 
 
 def main_for(profile: Profile, argv: Sequence[str]) -> int:

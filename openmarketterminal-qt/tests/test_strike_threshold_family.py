@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -139,6 +140,99 @@ class TrustReportTest(unittest.TestCase):
 
         self.assertEqual(len(report["families"]), 1, "fixture must be a single-series profile")
         self.assertTrue(report["adds_value_over_market"])
+        self.assertTrue(report["adds_value_on_bet_eligible"])
+        self.assertNotIn("pooled_trust_withheld", report)
+
+
+class PerFamilySplitTest(unittest.TestCase):
+    """Gold 15m, Silver 15m and Oil 15m are three prediction problems.
+
+    You can count one apple and one orange as two objects; you cannot average
+    their quality into one number and learn anything. These pin that each
+    family carries its own model, its own evidence and its own verdict.
+    """
+
+    def _profile(self):
+        tmp = tempfile.mkdtemp()
+        return stf.Profile(
+            event="test_split",
+            family="TEST_SPLIT",
+            series={
+                "KXGOLDH": stf.SeriesSpec(yahoo="GC=F", label="gold", spot_mode="yahoo"),
+                "KXSILVERH": stf.SeriesSpec(yahoo="SI=F", label="silver", spot_mode="yahoo"),
+            },
+            state_path=os.path.join(tmp, "state.json"),
+            output_path=os.path.join(tmp, "out.json"),
+            probability_source="test",
+        )
+
+    def test_each_family_gets_its_own_state_slice(self):
+        profile = self._profile()
+        state = stf.split_state({}, profile)
+        self.assertEqual(sorted(state), ["KXGOLDH", "KXSILVERH"])
+        self.assertIsNot(state["KXGOLDH"], state["KXSILVERH"])
+
+    def test_updating_gold_cannot_change_silver(self):
+        """The isolation property, asserted on the fitted model itself."""
+        profile = self._profile()
+        state = stf.split_state({}, profile)
+        silver_before = json.dumps(state["KXSILVERH"], sort_keys=True)
+
+        gold = state["KXGOLDH"]
+        gold["contract_scores_full"] = [0.01] * 40
+        gold["resolved"] = 40
+        gold["full"]["n_seen"] = 999
+
+        self.assertEqual(json.dumps(state["KXSILVERH"], sort_keys=True), silver_before)
+        self.assertNotEqual(state["KXGOLDH"]["full"]["n_seen"],
+                            state["KXSILVERH"]["full"].get("n_seen"))
+
+    def test_a_legacy_pooled_state_never_seeds_a_family(self):
+        """A gold+silver+oil model is not gold's model.
+
+        Copying the pooled fit into each family would recreate exactly the
+        contamination the split removes, while making the counters look
+        healthy — the most dangerous possible outcome.
+        """
+        profile = self._profile()
+        pooled = stf.default_state()
+        pooled["resolved"] = 500
+        pooled["contract_scores_full"] = [0.02] * 500
+        pooled["full"]["n_seen"] = 33709
+
+        state = stf.split_state(pooled, profile)
+        for family in ("KXGOLDH", "KXSILVERH"):
+            self.assertEqual(state[family]["resolved"], 0, family)
+            self.assertEqual(state[family]["contract_scores_full"], [], family)
+            self.assertNotEqual(state[family]["full"].get("n_seen"), 33709, family)
+
+    def test_per_family_totals_reconcile_with_the_pooled_diagnostic(self):
+        profile = self._profile()
+        state = stf.split_state({}, profile)
+        state["KXGOLDH"]["contract_scores_full"] = [0.1] * 30
+        state["KXGOLDH"]["resolved"] = 30
+        state["KXSILVERH"]["contract_scores_full"] = [0.2] * 70
+        state["KXSILVERH"]["resolved"] = 70
+
+        pooled = stf.pooled_view(state)
+        self.assertEqual(len(pooled["contract_scores_full"]), 100)
+        self.assertEqual(pooled["resolved"], 100)
+
+    def test_a_single_family_report_earns_its_own_trust(self):
+        """Narrowed to one series, a family is no longer 'pooled' and its
+        verdict is its own — which is the entire point of the split."""
+        profile = self._profile()
+        sub = stf.family_profile(profile, "KXGOLDH")
+        self.assertEqual(list(sub.series), ["KXGOLDH"])
+
+        state = stf.default_state()
+        state["contract_scores_full"] = [0.05] * 500
+        state["contract_scores_market_mid_raw"] = [0.30] * 500
+        state["contract_scores_eligible_full"] = [0.05] * 500
+        state["contract_scores_eligible_market_mid_raw"] = [0.30] * 500
+        report = stf.build_report(state, {}, 1, sub)
+
+        self.assertEqual(report["families"], ["KXGOLDH"])
         self.assertTrue(report["adds_value_on_bet_eligible"])
         self.assertNotIn("pooled_trust_withheld", report)
 
