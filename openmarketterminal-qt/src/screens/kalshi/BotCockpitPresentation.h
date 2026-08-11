@@ -97,6 +97,64 @@ inline QString kalshi_kxbtc_daily_calibrator_path() {
 }
 
 /// Compact cadence status for orbit/KPI folding (no new nodes).
+/// Per-family verdicts for a report, in the report's own declared order.
+///
+/// A pooled report renders one colour for several instruments; this is what
+/// stops the cockpit re-pooling what the gate and decide() just unpooled. Gold
+/// must never look green because Silver carried the pool.
+inline QVector<QPair<QString, KalshiBotDecision::FamilyTrust>> family_states(
+    const QJsonObject& report) {
+    QVector<QPair<QString, KalshiBotDecision::FamilyTrust>> out;
+    QStringList names;
+    const QJsonObject by_family = report.value(QStringLiteral("by_family")).toObject();
+    if (!by_family.isEmpty()) names = by_family.keys();
+    else
+        for (const auto& value : report.value(QStringLiteral("families")).toArray())
+            names.append(value.toString());
+    names.sort();
+    for (const QString& name : names)
+        out.append({name, KalshiBotDecision::family_trust(report, name)});
+    return out;
+}
+
+/// The colour for a group of families: green only when EVERY one passes.
+///
+/// Worst-of, with a deliberate ordering. A measured loss (amber) outranks an
+/// absence of measurement (grey), because "we looked and it lost" is a
+/// stronger statement than "we have not looked". Rendering the second as the
+/// first is the footgun after the split: every family starts at zero, and a
+/// wall of red invites dropping instruments nobody has measured yet.
+inline QString family_group_colour(
+    const QVector<QPair<QString, KalshiBotDecision::FamilyTrust>>& states) {
+    using Trust = KalshiBotDecision::FamilyTrust;
+    if (states.isEmpty()) return QStringLiteral("grey");
+    bool any_fail = false;
+    bool any_unavailable = false;
+    for (const auto& entry : states) {
+        if (entry.second == Trust::Fail) any_fail = true;
+        if (entry.second == Trust::Unavailable) any_unavailable = true;
+    }
+    if (any_fail) return QStringLiteral("amber");
+    if (any_unavailable) return QStringLiteral("grey");
+    return QStringLiteral("green");
+}
+
+/// One chip per family: `GOLD T` / `SILVER U` / `WTI ?`, so the reader can see
+/// WHICH instrument earned what instead of one averaged verdict.
+inline QString family_states_line(
+    const QVector<QPair<QString, KalshiBotDecision::FamilyTrust>>& states) {
+    using Trust = KalshiBotDecision::FamilyTrust;
+    if (states.isEmpty()) return QStringLiteral("no family declared");
+    QStringList chips;
+    for (const auto& entry : states) {
+        const QString mark = entry.second == Trust::Pass   ? QStringLiteral("T")
+                             : entry.second == Trust::Fail ? QStringLiteral("U")
+                                                           : QStringLiteral("?");
+        chips << QStringLiteral("%1 %2").arg(entry.first, mark);
+    }
+    return chips.join(QStringLiteral(" · "));
+}
+
 inline QString family_cadence_chip(const QJsonObject& report) {
     if (report.isEmpty()) return QStringLiteral("—");
     const int scored = report.value(QStringLiteral("scored_contracts")).toInt();
@@ -1484,38 +1542,39 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                            commodities_15m_report.value(QStringLiteral("brier_full")).isDouble() &&
                            commodities_15m_report.value(QStringLiteral("brier_market_mid_raw"))
                                .isDouble();
-        const bool adds_value = KalshiBotDecision::signal_trusted(commodities_15m_report);
+        // Per family, never pooled: gold must not read green because silver
+        // carried the pool. Green requires EVERY family to pass.
+        const auto states = family_states(commodities_15m_report);
+        line += QStringLiteral(" · %1").arg(family_states_line(states));
         QString detail = outside_info_inspect_detail(commodities_15m_report);
         if (!commodities_daily_report.isEmpty())
             detail += QStringLiteral("\n── commodities daily ──\n") +
                       outside_info_inspect_detail(commodities_daily_report);
         add_node(QStringLiteral("commodities15m"),
                  QStringLiteral("COMMODITIES 15M — DIRECTIONAL SCOREBOARD · click"), line,
-                 !known       ? QStringLiteral("grey")
-                 : adds_value ? QStringLiteral("green")
-                              : QStringLiteral("amber"),
-                 known, detail);
+                 !known ? QStringLiteral("grey") : family_group_colour(states), known, detail);
     }
 
     // Commodities 1h — GOLD/SILVER/WTI strike books. This cadence has its own
     // report and trust verdict, so it gets its own visible scoreboard instead
     // of being hidden behind the 15-minute panel's detail affordance.
     {
-        const QString line = commodities_hourly_scoreboard_line(commodities_hourly_report);
+        QString line = commodities_hourly_scoreboard_line(commodities_hourly_report);
         const bool known = !commodities_hourly_report.isEmpty() &&
                            commodities_hourly_report.value(QStringLiteral("brier_full"))
                                .isDouble() &&
                            commodities_hourly_report
                                .value(QStringLiteral("brier_market_mid_raw"))
                                .isDouble();
-        const bool adds_value =
-            KalshiBotDecision::signal_trusted(commodities_hourly_report);
+        // Per family. This is the report whose POOLED flag once authorised bids
+        // in gold, silver and oil at once; it must never render as one verdict
+        // again.
+        const auto states = family_states(commodities_hourly_report);
+        line += QStringLiteral(" · %1").arg(family_states_line(states));
         add_node(QStringLiteral("commodities_hourly"),
                  QStringLiteral("COMMODITIES 1H — THRESHOLD SCOREBOARD · click"), line,
-                 !known       ? QStringLiteral("grey")
-                 : adds_value ? QStringLiteral("green")
-                              : QStringLiteral("amber"),
-                 known, outside_info_inspect_detail(commodities_hourly_report));
+                 !known ? QStringLiteral("grey") : family_group_colour(states), known,
+                 outside_info_inspect_detail(commodities_hourly_report));
     }
 
     // MODEL vs BOT-SETTLED Brier — the split that decides whether paper may
