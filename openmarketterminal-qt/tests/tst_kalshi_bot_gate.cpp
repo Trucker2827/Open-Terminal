@@ -604,6 +604,71 @@ class TestKalshiBotGate : public QObject {
         QCOMPARE(out.value(QStringLiteral("ledger")).toObject()
                      .value(QStringLiteral("settled_bids")).toInt(), 0);
     }
+
+    // ---- quarantined evidence -------------------------------------------
+    // Trust was once POOLED: one flag over KXGOLDH + KXSILVERH + KXWTIH
+    // authorised bids in all three from evidence no single one had earned.
+    // Five KXGOLDH settlements exist because of it. They are real outcomes and
+    // they stay in the append-only ledger forever -- but they are not gold's
+    // evidence, so they must not count toward gold's promotion.
+    void quarantined_settlements_do_not_count_toward_promotion() {
+        Ledger ledger = baseline_ledger();
+        const QString id = ledger.settlements.at(0).toObject()
+                               .value(QStringLiteral("position_id")).toString();
+        QVERIFY(!id.isEmpty());
+
+        const QJsonObject clean = verdict_of(ledger);
+        QCOMPARE(clean.value(QStringLiteral("ledger")).toObject()
+                     .value(QStringLiteral("settled_bids")).toInt(), 300);
+
+        const QJsonObject quarantined = KalshiBotGate::evaluate(
+            sealed_record(), ledger.decisions, ledger.settlements, kNow,
+            KalshiBotGate::RecordIntegrity::whole(), QSet<QString>{id});
+        const QJsonObject led = quarantined.value(QStringLiteral("ledger")).toObject();
+        QCOMPARE(led.value(QStringLiteral("settled_bids")).toInt(), 299);
+        QCOMPARE(led.value(QStringLiteral("quarantined_settlements")).toInt(), 1);
+        // Quarantine must be VISIBLE, not a silent subtraction: a record that
+        // quietly shrank would be indistinguishable from a truncated one.
+        QVERIFY(led.contains(QStringLiteral("quarantined_settlements")));
+    }
+
+    // Quarantine can only ever make the gate HARDER to pass, never easier --
+    // it removes evidence, and the settled floor is a minimum.
+    void quarantine_can_only_tighten_the_gate() {
+        Ledger ledger = baseline_ledger(300);
+        QSet<QString> ids;
+        for (int i = 0; i < 5; ++i)
+            ids.insert(ledger.settlements.at(i).toObject()
+                           .value(QStringLiteral("position_id")).toString());
+
+        QCOMPARE(verdict(verdict_of(ledger)), QString::fromLatin1(KalshiBotGate::kVerdictPass));
+        const QJsonObject out = KalshiBotGate::evaluate(
+            sealed_record(), ledger.decisions, ledger.settlements, kNow,
+            KalshiBotGate::RecordIntegrity::whole(), ids);
+        QCOMPARE(verdict(out), QString::fromLatin1(KalshiBotGate::kVerdictFail));
+        QCOMPARE(out.value(QStringLiteral("ledger")).toObject()
+                     .value(QStringLiteral("settled_bids")).toInt(), 295);
+    }
+
+    // The reader takes only rows that say what they are, and a row naming no
+    // position quarantines nothing -- treating it as a wildcard would erase
+    // the record it exists to mark.
+    void the_quarantine_reader_ignores_rows_that_name_nothing() {
+        const QJsonArray rows{
+            QJsonObject{{QStringLiteral("event"),
+                         QString::fromLatin1(KalshiBotGate::kQuarantineEvent)},
+                        {QStringLiteral("position_id"), QStringLiteral("KXGOLDH-A@1")}},
+            QJsonObject{{QStringLiteral("event"),
+                         QString::fromLatin1(KalshiBotGate::kQuarantineEvent)},
+                        {QStringLiteral("position_id"), QStringLiteral("   ")}},
+            QJsonObject{{QStringLiteral("event"), QStringLiteral("something_else")},
+                        {QStringLiteral("position_id"), QStringLiteral("KXGOLDH-B@2")}},
+        };
+        const QSet<QString> ids = KalshiBotGate::quarantined_position_ids(rows);
+        QCOMPARE(ids.size(), 1);
+        QVERIFY(ids.contains(QStringLiteral("KXGOLDH-A@1")));
+    }
+
 };
 
 QTEST_APPLESS_MAIN(TestKalshiBotGate)

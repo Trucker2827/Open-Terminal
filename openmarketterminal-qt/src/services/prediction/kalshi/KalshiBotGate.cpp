@@ -266,6 +266,20 @@ qint64 KalshiBotGate::published_anchor_ms(const QJsonObject& published_verdict) 
     return is_number(carried) ? static_cast<qint64>(carried.toDouble()) : 0;
 }
 
+QSet<QString> KalshiBotGate::quarantined_position_ids(const QJsonArray& quarantine_rows) {
+    QSet<QString> out;
+    for (const auto& value : quarantine_rows) {
+        const QJsonObject row = value.toObject();
+        if (row.value(QStringLiteral("event")).toString() != QLatin1String(kQuarantineEvent))
+            continue;
+        const QString id = row.value(QStringLiteral("position_id")).toString().trimmed();
+        // A quarantine row that names nothing quarantines nothing. Silently
+        // treating it as a wildcard would erase the record it is meant to mark.
+        if (!id.isEmpty()) out.insert(id);
+    }
+    return out;
+}
+
 QString KalshiBotGate::family_of(const QString& ticker) {
     // Kalshi series ticker: everything before the first '-'. A row whose ticker
     // is empty or has no series prefix belongs to NO family, so it can never be
@@ -280,8 +294,10 @@ QJsonObject KalshiBotGate::evaluate(const QJsonValue& params_record,
                                     const QJsonArray& decision_rows,
                                     const QJsonArray& settlement_rows,
                                     qint64 now_ms,
-                                    const RecordIntegrity& record) {
-    return evaluate_scoped(params_record, decision_rows, settlement_rows, now_ms, record, true);
+                                    const RecordIntegrity& record,
+                                    const QSet<QString>& quarantined_position_ids) {
+    return evaluate_scoped(params_record, decision_rows, settlement_rows, now_ms, record, true,
+                           quarantined_position_ids);
 }
 
 QJsonObject KalshiBotGate::evaluate_scoped(const QJsonValue& params_record,
@@ -289,7 +305,8 @@ QJsonObject KalshiBotGate::evaluate_scoped(const QJsonValue& params_record,
                                     const QJsonArray& settlement_rows,
                                     qint64 now_ms,
                                     const RecordIntegrity& ledger_record,
-                                    bool with_families) {
+                                    bool with_families,
+                                    const QSet<QString>& quarantined) {
     const qint64 anchor = ledger_record.published_first_settled_ts_ms;
 
     // --- the criteria must be trustworthy before the ledger is read at all --
@@ -386,6 +403,7 @@ QJsonObject KalshiBotGate::evaluate_scoped(const QJsonValue& params_record,
     std::vector<QJsonObject> settled;
     QSet<QString> seen;
     int malformed = 0;
+    int quarantined_settlements = 0;
     for (const auto& value : settlement_rows) {
         const QJsonObject row = value.toObject();
         if (KalshiBotLive::is_live_row(row)) continue;
@@ -399,6 +417,13 @@ QJsonObject KalshiBotGate::evaluate_scoped(const QJsonValue& params_record,
         }
         if (seen.contains(id)) continue;
         seen.insert(id);
+        // Quarantined: a real outcome, but authorised by evidence belonging to
+        // another family. Counting it toward THIS family's promotion would let
+        // the pooled mistake keep paying dividends after it was fixed.
+        if (quarantined.contains(id)) {
+            ++quarantined_settlements;
+            continue;
+        }
         settled.push_back(row);
     }
     std::stable_sort(settled.begin(), settled.end(),
@@ -587,6 +612,7 @@ QJsonObject KalshiBotGate::evaluate_scoped(const QJsonValue& params_record,
                      {QStringLiteral("scored_contracts"), scored},
                      {QStringLiteral("unscored_contracts"), unscored},
                      {QStringLiteral("malformed_settlement_rows"), malformed},
+                     {QStringLiteral("quarantined_settlements"), quarantined_settlements},
                      {QStringLiteral("first_settled_ts_ms"),
                       settled.empty() ? QJsonValue()
                                       : settled.front().value(QStringLiteral("ts_ms"))},
@@ -616,7 +642,8 @@ QJsonObject KalshiBotGate::evaluate_scoped(const QJsonValue& params_record,
             // never match. Filtering them here would risk dropping the bid row
             // a kept settlement needs.
             const QJsonObject scored_family = evaluate_scoped(
-                params_record, decision_rows, family_settlements, now_ms, ledger_record, false);
+                params_record, decision_rows, family_settlements, now_ms, ledger_record, false,
+                quarantined);
             by_family.insert(name,
                              QJsonObject{{QStringLiteral("verdict"),
                                           scored_family.value(QStringLiteral("verdict"))},

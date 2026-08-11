@@ -504,14 +504,22 @@ QJsonObject publish_gate_verdict(qint64 now_ms, const QJsonArray& record_rows) {
 
     const QJsonValue params = KalshiBotGate::load_params_file(
         kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kParamsFile)));
+
+    // Evidence a family did not earn. Read beside the ledger, never edited into
+    // it: the ledger is append-only, and a gate that refuses truncated records
+    // cannot also be the caller that rewrites them.
+    const QSet<QString> quarantined = KalshiBotGate::quarantined_position_ids(
+        read_ledger(kalshi_evidence_path(QStringLiteral("kalshi-bot-evidence-quarantine.jsonl")),
+                    is_event(KalshiBotGate::kQuarantineEvent)));
     const QJsonObject out =
         record_rows.isEmpty()
             ? KalshiBotGate::evaluate(params, read_ledger(ledger_path, is_event(kDecisionEvent)),
                                       read_ledger(ledger_path, is_event(kSettlementEvent)), now_ms,
-                                      integrity)
+                                      integrity, quarantined)
             // The same array twice: `evaluate()` filters decision rows out of
             // the first and settlement rows out of the second itself.
-            : KalshiBotGate::evaluate(params, record_rows, record_rows, now_ms, integrity);
+            : KalshiBotGate::evaluate(params, record_rows, record_rows, now_ms, integrity,
+                                      quarantined);
 
     const QString path = kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile));
     if (!write_json_file(path, out))
