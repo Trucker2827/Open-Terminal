@@ -584,6 +584,14 @@ def split_state(outer: dict, profile: Profile) -> dict:
     by_family = outer.get("by_family")
     if not isinstance(by_family, dict):
         by_family = {}
+        # A SINGLE-series profile was never pooled: its flat state already IS
+        # that family's own evidence, so it is ADOPTED rather than discarded.
+        # Resetting it would destroy legitimate history to fix a problem that
+        # profile never had. Measured the hard way: kxbtc-daily (KXBTC only)
+        # lost resolved=4 / n_seen=167 to exactly this mistake.
+        if len(profile.series) == 1 and "full" in outer:
+            only = next(iter(profile.series))
+            by_family[only] = {k: v for k, v in outer.items() if k != "by_family"}
     for series_ticker in profile.series:
         if not isinstance(by_family.get(series_ticker), dict):
             by_family[series_ticker] = default_state()
