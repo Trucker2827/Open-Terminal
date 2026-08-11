@@ -139,6 +139,12 @@ class KalshiBotDecision {
     static constexpr auto kQuoteResting = "QUOTE_RESTING";
     static constexpr auto kExposureCapBlocksBid = "EXPOSURE_CAP_BLOCKS_BID";
     static constexpr auto kSessionBudgetBlocksBid = "SESSION_BUDGET_BLOCKS_BID";
+    /// This FAMILY has spent its own allocation. Distinct from the global
+    /// codes: one family exhausting its budget must be legible as that, not as
+    /// "the book is full", or a family that starved its siblings looks
+    /// identical to a bot that simply ran out of room.
+    static constexpr auto kFamilyBudgetBlocksBid = "FAMILY_BUDGET_BLOCKS_BID";
+    static constexpr auto kFamilyExposureBlocksBid = "FAMILY_EXPOSURE_BLOCKS_BID";
     static constexpr auto kRequoted = "REQUOTED";
     /// Paper cashout (sell-to-close before settlement). Fail-closed reasons.
     static constexpr auto kCashoutNoBid = "CASHOUT_NO_BID";
@@ -295,6 +301,21 @@ class KalshiBotDecision {
         /// half of that bound. Defaults to the same ceiling, so it constrains
         /// only once a session tightens it.
         double session_budget_usd = 120.00;
+        /// Per-family allocations, nested UNDER the global caps above. A family
+        /// may spend up to its own limit; the global ceiling still binds, so
+        /// the sum of the family limits may exceed it without ever letting the
+        /// book exceed it.
+        ///
+        /// Why this exists: with one shared pool, the first family to trade can
+        /// consume the whole book and starve the families being measured
+        /// alongside it. Observed live -- EXPOSURE_CAP_BLOCKS_BID fired 2,947
+        /// times in a day while capital sat trapped in positions that could not
+        /// be exited (CASHOUT_NO_BID, 24,921). Per-family promotion is
+        /// meaningless if one family can deny the others the chance to earn
+        /// evidence.
+        double family_session_budget_usd = 40.00;
+        double family_open_exposure_usd = 10.00;
+        bool enforce_family_budget = true;
         /// The session budget (issue #125) is a LIVE bounded-run safety: an
         /// armed run may commit at most this all-in before a human re-arms,
         /// and stop/resume does not reset it. The perpetual paper loop has no
@@ -369,6 +390,12 @@ class KalshiBotDecision {
         double at_risk_usd = 0.0;
         /// All-in this run has already committed, against `session_budget_usd`.
         double session_opened_usd = 0.0;
+        /// The same two totals, keyed by series family, so one family cannot
+        /// spend another's allocation. `{family: usd}`; an absent family has
+        /// spent nothing. Global totals still bind ON TOP -- these partition
+        /// the ceiling, they never raise it.
+        QJsonObject at_risk_by_family;
+        QJsonObject session_opened_by_family;
         /// Orders still working. A ticker with one is not quoted again: the
         /// bot replaces quotes, it never stacks them.
         QJsonArray resting;

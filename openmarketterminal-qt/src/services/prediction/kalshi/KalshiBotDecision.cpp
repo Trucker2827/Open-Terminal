@@ -267,6 +267,16 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
     // whether it is bid in five ticks or one.
     double at_risk_usd = exposure.at_risk_usd;
     double session_opened_usd = exposure.session_opened_usd;
+    // Per-family running totals. Seeded from the book so a family's earlier
+    // ticks count against its own allocation, not just this tick's.
+    QHash<QString, double> family_at_risk;
+    QHash<QString, double> family_opened;
+    for (auto it = exposure.at_risk_by_family.constBegin();
+         it != exposure.at_risk_by_family.constEnd(); ++it)
+        family_at_risk.insert(it.key(), it.value().toDouble());
+    for (auto it = exposure.session_opened_by_family.constBegin();
+         it != exposure.session_opened_by_family.constEnd(); ++it)
+        family_opened.insert(it.key(), it.value().toDouble());
 
     QJsonArray rows;
     for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it) {
@@ -532,6 +542,25 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
             row.insert(QStringLiteral("exposure_cap_usd"), cap);
             rows.append(finish(row));
         };
+        // PER-FAMILY FIRST, then the global ceiling. Checking the family's own
+        // allocation before the shared pool is what makes the refusal legible:
+        // "gold has spent its budget" instead of "the book is full", which is
+        // what one family starving the others looks like otherwise.
+        const QString bid_family = KalshiBotGate::family_of(ticker);
+        if (config.enforce_family_budget && !bid_family.isEmpty()) {
+            const double used_risk = family_at_risk.value(bid_family, 0.0);
+            if (used_risk + all_in > config.family_open_exposure_usd + 1e-9) {
+                refuse_on_cap(kFamilyExposureBlocksBid, used_risk,
+                              config.family_open_exposure_usd);
+                continue;
+            }
+            const double used_opened = family_opened.value(bid_family, 0.0);
+            if (used_opened + all_in > config.family_session_budget_usd + 1e-9) {
+                refuse_on_cap(kFamilyBudgetBlocksBid, used_opened,
+                              config.family_session_budget_usd);
+                continue;
+            }
+        }
         if (at_risk_usd + all_in > config.max_open_exposure_usd + 1e-9) {
             refuse_on_cap(kExposureCapBlocksBid, at_risk_usd, config.max_open_exposure_usd);
             continue;
@@ -545,6 +574,12 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
         // rule), the new order contributes its all-in (its worst case).
         at_risk_usd = round_cents(at_risk_usd + stake);
         session_opened_usd = round_cents(session_opened_usd + all_in);
+        if (!bid_family.isEmpty()) {
+            family_at_risk.insert(bid_family,
+                                  round_cents(family_at_risk.value(bid_family, 0.0) + stake));
+            family_opened.insert(bid_family,
+                                 round_cents(family_opened.value(bid_family, 0.0) + all_in));
+        }
 
         row.insert(QStringLiteral("action"), QStringLiteral("bid"));
         // Every bid that reaches here was made on a TRUSTED signal — the
