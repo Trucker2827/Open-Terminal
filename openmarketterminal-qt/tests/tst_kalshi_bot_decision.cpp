@@ -1671,6 +1671,90 @@ class TestKalshiBotDecision : public QObject {
         QVERIFY(!record.contains(QStringLiteral("brier_eligible_market_mid_raw")));
     }
 
+
+    // ---- per-family trust, three states ---------------------------------
+    // A boolean collapses the distinction that matters after the split: a
+    // family with too little evidence is UNAVAILABLE, not FAIL. Gold at n=40
+    // and gold at n=200 that lost to the mid are different facts.
+    static QJsonObject trusted_block(int scored = 200) {
+        return QJsonObject{
+            {QStringLiteral("adds_value_over_market"), true},
+            {QStringLiteral("brier_full"), 0.05},
+            {QStringLiteral("brier_market_mid_raw"), 0.30},
+            {QStringLiteral("adds_value_on_bet_eligible"), true},
+            {QStringLiteral("brier_eligible_full"), 0.05},
+            {QStringLiteral("brier_eligible_market_mid_raw"), 0.30},
+            {QStringLiteral("eligible_scored_contracts"), scored},
+            {QStringLiteral("min_eligible_contracts"), 100},
+        };
+    }
+
+    void a_family_is_pass_fail_or_unavailable() {
+        using Trust = KalshiBotDecision::FamilyTrust;
+
+        QJsonObject lost = trusted_block();
+        lost.insert(QStringLiteral("adds_value_on_bet_eligible"), false);
+        lost.insert(QStringLiteral("brier_eligible_full"), 0.31);  // worse than mid
+
+        QJsonObject young = trusted_block(40);   // below the 100 floor
+        young.insert(QStringLiteral("adds_value_on_bet_eligible"), false);
+
+        const QJsonObject report{
+            {QStringLiteral("by_family"),
+             QJsonObject{{QStringLiteral("KXGOLDH"), trusted_block()},
+                         {QStringLiteral("KXSILVERH"), lost},
+                         {QStringLiteral("KXWTIH"), young}}}};
+
+        QVERIFY(KalshiBotDecision::family_trust(report, QStringLiteral("KXGOLDH")) == Trust::Pass);
+        QVERIFY(KalshiBotDecision::family_trust(report, QStringLiteral("KXSILVERH")) == Trust::Fail);
+        // n=40 is NOT a verdict about the model — it is an absence of one.
+        QVERIFY(KalshiBotDecision::family_trust(report, QStringLiteral("KXWTIH")) ==
+                Trust::Unavailable);
+    }
+
+    // The property the pooled incident is named after: one family's trust must
+    // never reach another, and a pooled flag must never be a fallback.
+    void one_familys_trust_never_reaches_another() {
+        using Trust = KalshiBotDecision::FamilyTrust;
+        // The top level is a COMPLETE pooled PASS — every field signal_trusted
+        // demands — so that a fallback to it would return Pass and this test
+        // would fail. A partial fixture here would pass whether or not the
+        // fallback existed, which is worth nothing.
+        QJsonObject report = trusted_block();
+        report.insert(QStringLiteral("by_family"),
+                      QJsonObject{{QStringLiteral("KXGOLDH"), trusted_block()}});
+        QVERIFY2(KalshiBotDecision::signal_trusted(report),
+                 "fixture must be a full pooled PASS or the neuter cannot be detected");
+
+        QVERIFY(KalshiBotDecision::family_trust(report, QStringLiteral("KXGOLDH")) == Trust::Pass);
+        QVERIFY(KalshiBotDecision::family_trust(report, QStringLiteral("KXSILVERH")) ==
+                Trust::Unavailable);
+        QVERIFY(KalshiBotDecision::family_trust(report, QStringLiteral("KXWTIH")) ==
+                Trust::Unavailable);
+    }
+
+    // A report with no by_family is readable ONLY if it declares itself to be
+    // about this one family. A pooled report must never be read as any of them.
+    void a_report_without_by_family_is_readable_only_when_it_is_that_family() {
+        using Trust = KalshiBotDecision::FamilyTrust;
+
+        QJsonObject solo = trusted_block();
+        solo.insert(QStringLiteral("families"), QJsonArray{QStringLiteral("KXBTC")});
+        QVERIFY(KalshiBotDecision::family_trust(solo, QStringLiteral("KXBTC")) == Trust::Pass);
+        QVERIFY(KalshiBotDecision::family_trust(solo, QStringLiteral("KXGOLDH")) ==
+                Trust::Unavailable);
+
+        QJsonObject pooled = trusted_block();
+        pooled.insert(QStringLiteral("families"),
+                      QJsonArray{QStringLiteral("KXGOLDH"), QStringLiteral("KXSILVERH")});
+        QVERIFY(KalshiBotDecision::family_trust(pooled, QStringLiteral("KXGOLDH")) ==
+                Trust::Unavailable);
+
+        QVERIFY(KalshiBotDecision::family_trust(QJsonObject{}, QStringLiteral("KXGOLDH")) ==
+                Trust::Unavailable);
+        QVERIFY(KalshiBotDecision::family_trust(solo, QString()) == Trust::Unavailable);
+    }
+
 };
 
 QTEST_APPLESS_MAIN(TestKalshiBotDecision)
