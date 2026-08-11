@@ -122,6 +122,10 @@ class KalshiBotDecision {
     static constexpr auto kSizeCapBlocksBid = "SIZE_CAP_BLOCKS_BID";
     static constexpr auto kEdgeClearsThreshold = "EDGE_CLEARS_THRESHOLD";
     static constexpr auto kSignalUntrusted = "SIGNAL_UNTRUSTED";
+    /// Distinct from SIGNAL_UNTRUSTED: this family has not been measured on
+    /// enough of its OWN evidence to have a verdict. Both refuse the bid; only
+    /// one of them is a statement about the model.
+    static constexpr auto kSignalUnmeasured = "SIGNAL_UNMEASURED";
     static constexpr auto kBotStopped = "BOT_STOPPED";
     /// Legacy journal code: lifetime gate FAIL used to pause paper. Paper now
     /// pauses only on *current-generation* drawdown and auto-rotates; live
@@ -462,6 +466,63 @@ class KalshiBotDecision {
                report.value(QStringLiteral("adds_value_on_bet_eligible")).toBool() &&
                report.value(QStringLiteral("brier_eligible_full")).isDouble() &&
                report.value(QStringLiteral("brier_eligible_market_mid_raw")).isDouble();
+    }
+
+    /// Trust for ONE series family. THREE states, not two.
+    ///
+    /// A boolean collapses the distinction that matters most after evidence is
+    /// split per family: a family with too little evidence is UNAVAILABLE, not
+    /// FAIL. Rendering "not yet measured" the same as "measured and lost to the
+    /// mid" invites the conclusion "commodities do not work, drop them" when
+    /// the truth is "we have not looked at gold yet". Gold at n=40 and gold at
+    /// n=200 that lost are different facts and must not print the same.
+    enum class FamilyTrust {
+        Pass,         ///< this family's OWN evidence clears its own bar
+        Fail,         ///< measured on enough of its own evidence, and it lost
+        Unavailable,  ///< not measured yet, or no evidence belonging to it
+    };
+
+    /// Reads `by_family[family]` and NEVER falls back to a pooled flag.
+    ///
+    /// Pooled evidence once authorised bids in three underlyings from a single
+    /// flag none of them had earned; a fallback here would quietly restore
+    /// exactly that. A family absent from the report is Unavailable, which
+    /// refuses — the same fail-closed shape as an unnamed family in
+    /// KalshiBotLive::permit().
+    ///
+    /// A report with no `by_family` is only readable when it declares itself to
+    /// be about this one family and nothing else.
+    static FamilyTrust family_trust(const QJsonObject& report, const QString& family) {
+        if (family.trimmed().isEmpty()) return FamilyTrust::Unavailable;
+
+        const QJsonValue by_family = report.value(QStringLiteral("by_family"));
+        if (by_family.isObject()) {
+            const QJsonObject block = by_family.toObject().value(family).toObject();
+            if (block.isEmpty()) return FamilyTrust::Unavailable;
+            return family_trust_of_block(block);
+        }
+
+        // No by_family: readable only if the whole report IS this family.
+        const QJsonArray families = report.value(QStringLiteral("families")).toArray();
+        if (families.size() == 1 && families.first().toString() == family)
+            return family_trust_of_block(report);
+        return FamilyTrust::Unavailable;
+    }
+
+    /// Whether a family's own numbers were measured against enough of its own
+    /// contracts to render a verdict at all. Below the floor there is no
+    /// verdict — only an absence.
+    static bool family_evidence_measured(const QJsonObject& block) {
+        const int scored = block.value(QStringLiteral("eligible_scored_contracts")).toInt();
+        const int floor = block.value(QStringLiteral("min_eligible_contracts")).toInt(100);
+        return scored >= floor &&
+               block.value(QStringLiteral("brier_eligible_full")).isDouble() &&
+               block.value(QStringLiteral("brier_eligible_market_mid_raw")).isDouble();
+    }
+
+    static FamilyTrust family_trust_of_block(const QJsonObject& block) {
+        if (signal_trusted(block)) return FamilyTrust::Pass;
+        return family_evidence_measured(block) ? FamilyTrust::Fail : FamilyTrust::Unavailable;
     }
 
     /// The bet-eligible measurement, in the report's OWN numbers, for screens.
