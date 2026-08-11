@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 namespace openmarketterminal::services::prediction::kalshi_ns {
@@ -24,6 +25,21 @@ class KalshiEvidenceEngine {
         const QVector<PredictionMarket>& markets,
         const QHash<QString, PredictionOrderBook>& books,
         const QString& event_ticker);
+
+    /// Runs analyze_ladder over each event in `events`, or over every event
+    /// present in `markets` when `events` is empty, and merges the results:
+    /// {"events", "diagnostics", "actionable_count", "contracts_examined"}.
+    /// Each diagnostic carries an "event_ticker" so a merged array stays
+    /// attributable. Read-only: no order is submitted, amended, or cancelled.
+    ///
+    /// The relationships analyze_ladder tests for hold BETWEEN strikes, so its
+    /// answer is only as good as the caller's coverage. Callers should hand it
+    /// the complete fetched ladder — a partial one reports "no violation" for a
+    /// violation it simply cannot see.
+    static QJsonObject ladder_sweep(
+        const QVector<PredictionMarket>& markets,
+        const QHash<QString, PredictionOrderBook>& books,
+        const QStringList& events);
 
     static int reconcile_forward_labels(const QString& features_path,
                                         const QString& labels_path);

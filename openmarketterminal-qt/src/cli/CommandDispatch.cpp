@@ -19732,7 +19732,19 @@ static int kalshi_auto_run_command(const GlobalOpts& opts, QStringList args) {
                     limits.minimum_net_edge).eligible)
                 ++micro_eligible_legs;
         }
+        // The ladder relationships hold BETWEEN strikes, so they can only be
+        // seen by a caller holding the whole ladder. The live WS path calls
+        // analyze_ladder over its bounded subscription set (ServeCommand.cpp,
+        // deliberately capped) and so sees a slice — 17 of 395 strikes when
+        // measured. This fetch is the complete ladder for the planned events
+        // (188 strikes in one hourly event, same measurement), so record what
+        // the checks say about it. Advisory: the sweep is read-only and no
+        // caller turns a diagnostic into an order.
+        const QJsonObject ladder =
+            services::prediction::kalshi_ns::KalshiEvidenceEngine::ladder_sweep(
+                markets, books, events);
         const QJsonObject row{{"event", "kalshi_auto_plan"},
+                              {"ladder", ladder},
                               {"model_version", QString::fromLatin1(
                                    services::edge_radar::kKalshiSettlementModelVersion)},
                               {"event_ticker", event_scope},
