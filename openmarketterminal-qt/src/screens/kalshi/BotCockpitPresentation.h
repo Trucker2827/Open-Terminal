@@ -264,6 +264,20 @@ inline QString commodities_15m_scoreboard_line(const QJsonObject& report) {
     return line;
 }
 
+/// Commodities 1h threshold scoreboard. Hourly GOLD/SILVER/WTI contracts are
+/// strike books, not 15-minute directional races, but they carry the same
+/// scored/Delta-Brier/trust evidence and optional Pyth settlement parity.
+inline QString commodities_hourly_scoreboard_line(const QJsonObject& report) {
+    if (report.isEmpty()) {
+        return QStringLiteral("NO %1 — GOLD/SILVER/WTI 1h calibrator has not published here yet")
+            .arg(QString::fromLatin1(kKalshiCommoditiesHourlyCalibratorFile));
+    }
+    QString line = kxbtc15m_scoreboard_line(report);
+    const QString parity = settlement_parity_line(report);
+    if (!parity.isEmpty()) line += QStringLiteral(" · %1").arg(parity);
+    return line;
+}
+
 /// Threshold / KXBTCD strike scoreboard — same measurement shape as the 15m
 /// line, worded for the strike calibrator (`calibrator.json`). Paper ambition
 /// pins this family above FLOW while 15m stays an observe/KPI scoreboard.
@@ -1410,7 +1424,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         scene.nodes << node;
     };
 
-    // CALIBRATOR — the threshold report's OWN track record (issue #171). The
+    // BTC 1H — the threshold report's OWN track record (issue #171). The
     // gate's brier_beats_market scores the bot's settled bids — a different
     // measure; both stay on this scene with labels that say which is which.
     const QJsonValue brier_full = report.value(QStringLiteral("brier_full"));
@@ -1418,7 +1432,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     if (is_number(brier_full) && is_number(brier_mid_raw)) {
         const bool adds_value = KalshiBotDecision::signal_trusted(report);
         add_node(QStringLiteral("calibrator"),
-                 QStringLiteral("CALIBRATOR — THRESHOLD TRACK RECORD"),
+                 QStringLiteral("BTC 1H — THRESHOLD SCOREBOARD · click"),
                  // Same seam as kxbtc15m_scoreboard_line: on this deployment
                  // brier_full < brier_market_mid_raw while the node read "NO
                  // EDGE YET", because the refusal comes from the bet-eligible
@@ -1430,9 +1444,11 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                      .arg(report.value(QStringLiteral("scored_contracts")).toInt())
                      .arg(KalshiBotDecision::bet_eligible_evidence_text(report),
                           KalshiBotDecision::trust_badge_text(report)),
-                 adds_value ? QStringLiteral("green") : QStringLiteral("amber"), true);
+                 adds_value ? QStringLiteral("green") : QStringLiteral("amber"), true,
+                 outside_info_inspect_detail(report));
     } else {
-        add_node(QStringLiteral("calibrator"), QStringLiteral("CALIBRATOR — THRESHOLD"),
+        add_node(QStringLiteral("calibrator"),
+                 QStringLiteral("BTC 1H — THRESHOLD SCOREBOARD"),
                  report.isEmpty()
                      ? QStringLiteral("MISSING · no %1")
                            .arg(QString::fromLatin1(kKalshiCalibratorFile))
@@ -1440,7 +1456,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                  QStringLiteral("grey"), false);
     }
 
-    // KXBTC15M — directional scoreboard; BTC daily folds into detail (no 9th node).
+    // KXBTC15M — directional scoreboard; BTC daily folds into detail.
     {
         QString line = kxbtc15m_scoreboard_line(kxbtc15m_report);
         line += QStringLiteral(" · D %1").arg(family_cadence_chip(kxbtc_daily_report));
@@ -1460,21 +1476,16 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                  known, detail);
     }
 
-    // Commodities 15m — GOLD/SILVER/WTI races; hourly/daily fold into detail.
+    // Commodities 15m — GOLD/SILVER/WTI races; daily folds into detail.
     {
         QString line = commodities_15m_scoreboard_line(commodities_15m_report);
-        line += QStringLiteral(" · H %1 · D %2")
-                    .arg(family_cadence_chip(commodities_hourly_report),
-                         family_cadence_chip(commodities_daily_report));
+        line += QStringLiteral(" · D %1").arg(family_cadence_chip(commodities_daily_report));
         const bool known = !commodities_15m_report.isEmpty() &&
                            commodities_15m_report.value(QStringLiteral("brier_full")).isDouble() &&
                            commodities_15m_report.value(QStringLiteral("brier_market_mid_raw"))
                                .isDouble();
         const bool adds_value = KalshiBotDecision::signal_trusted(commodities_15m_report);
         QString detail = outside_info_inspect_detail(commodities_15m_report);
-        if (!commodities_hourly_report.isEmpty())
-            detail += QStringLiteral("\n── commodities hourly ──\n") +
-                      outside_info_inspect_detail(commodities_hourly_report);
         if (!commodities_daily_report.isEmpty())
             detail += QStringLiteral("\n── commodities daily ──\n") +
                       outside_info_inspect_detail(commodities_daily_report);
@@ -1484,6 +1495,27 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                  : adds_value ? QStringLiteral("green")
                               : QStringLiteral("amber"),
                  known, detail);
+    }
+
+    // Commodities 1h — GOLD/SILVER/WTI strike books. This cadence has its own
+    // report and trust verdict, so it gets its own visible scoreboard instead
+    // of being hidden behind the 15-minute panel's detail affordance.
+    {
+        const QString line = commodities_hourly_scoreboard_line(commodities_hourly_report);
+        const bool known = !commodities_hourly_report.isEmpty() &&
+                           commodities_hourly_report.value(QStringLiteral("brier_full"))
+                               .isDouble() &&
+                           commodities_hourly_report
+                               .value(QStringLiteral("brier_market_mid_raw"))
+                               .isDouble();
+        const bool adds_value =
+            KalshiBotDecision::signal_trusted(commodities_hourly_report);
+        add_node(QStringLiteral("commodities_hourly"),
+                 QStringLiteral("COMMODITIES 1H — THRESHOLD SCOREBOARD · click"), line,
+                 !known       ? QStringLiteral("grey")
+                 : adds_value ? QStringLiteral("green")
+                              : QStringLiteral("amber"),
+                 known, outside_info_inspect_detail(commodities_hourly_report));
     }
 
     // MODEL vs BOT-SETTLED Brier — the split that decides whether paper may
