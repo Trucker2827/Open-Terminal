@@ -144,7 +144,10 @@ class TrustGateTest(unittest.TestCase):
 
     def test_beating_mid_with_enough_contracts_is_value(self):
         report = cal.build_report(self.scored_state(0.10, 0.11, 200), {}, 0)
-        self.assertTrue(report["adds_value_over_market"])
+        # Trust is COMPUTED the same way; it is WITHHELD from the authorising
+        # field because this producer is still pooled across 3 series. The
+        # computation is what this test is about, so it reads the diagnostic.
+        self.assertTrue(report["pooled_adds_value_over_market"])
         self.assertEqual(report["trusted_variant"], "physics")
         self.assertEqual(report["family"], "COMMODITIES15M")
         self.assertIn("KXGOLD15M", report["families"])
@@ -160,7 +163,10 @@ class TrustGateTest(unittest.TestCase):
         state["contract_scores_physics_tape_confirm_near_close"] = [0.09] * 120
         state["contract_scores_physics_vol_regime_confirm"] = [0.18] * 120
         report = cal.build_report(state, {}, 0)
-        self.assertTrue(report["adds_value_over_market"])
+        # Trust is COMPUTED the same way; it is WITHHELD from the authorising
+        # field because this producer is still pooled across 3 series. The
+        # computation is what this test is about, so it reads the diagnostic.
+        self.assertTrue(report["pooled_adds_value_over_market"])
         self.assertEqual(report["trusted_variant"], "physics_tape_confirm_near_close")
 
 
@@ -391,7 +397,10 @@ class BetEligibleTrustTest(unittest.TestCase):
         state = self._state(0.2130, 0.2576, 100)
         self.assertIsNotNone(cal.select_trusted_variant_eligible(state))
         r = cal.build_report(state, {}, 1_700_000_000_000)
-        self.assertTrue(r["adds_value_on_bet_eligible"])
+        # Trust is COMPUTED the same way; it is WITHHELD from the authorising
+        # field because this producer is still pooled across 3 series. The
+        # computation is what this test is about, so it reads the diagnostic.
+        self.assertTrue(r["pooled_adds_value_on_bet_eligible"])
 
     def test_below_the_eligible_floor_is_untrusted(self):
         self.assertIsNone(cal.select_trusted_variant_eligible(self._state(0.2130, 0.2576, 99)))
@@ -466,7 +475,10 @@ class BetEligibleTrustTest(unittest.TestCase):
         self.assertEqual(cal.select_trusted_variant_eligible(state), "physics")
         r = cal.build_report(state, {}, 1_700_000_000_000)
         # adds_value_over_market is untouched -- it is the full-population flag.
-        self.assertTrue(r["adds_value_over_market"])
+        # Trust is COMPUTED the same way; it is WITHHELD from the authorising
+        # field because this producer is still pooled across 3 series. The
+        # computation is what this test is about, so it reads the diagnostic.
+        self.assertTrue(r["pooled_adds_value_over_market"])
         # ... but the eligible evidence is about a DIFFERENT predictor than
         # the one live_p is priced from, so it authorises nothing.
         self.assertFalse(r["adds_value_on_bet_eligible"])
@@ -490,7 +502,10 @@ class BetEligibleTrustTest(unittest.TestCase):
         self.assertEqual(
             cal.select_trusted_variant_eligible(state), "physics_tape_confirm_near_close")
         r = cal.build_report(state, {}, 1_700_000_000_000)
-        self.assertTrue(r["adds_value_on_bet_eligible"])
+        # Trust is COMPUTED the same way; it is WITHHELD from the authorising
+        # field because this producer is still pooled across 3 series. The
+        # computation is what this test is about, so it reads the diagnostic.
+        self.assertTrue(r["pooled_adds_value_on_bet_eligible"])
         self.assertAlmostEqual(r["brier_eligible_full"], 0.15)
         self.assertAlmostEqual(r["brier_eligible_market_mid_raw"], 0.26)
 
@@ -510,6 +525,37 @@ class BetEligibleTrustTest(unittest.TestCase):
         r = cal.build_report(state, {}, 1_700_000_000_000)
         self.assertEqual(r["eligible_scored_contracts"], 0)
         self.assertFalse(r["adds_value_on_bet_eligible"])
+
+
+class PooledTrustWithheldTest(unittest.TestCase):
+    """This producer is standalone — it does NOT share strike_threshold_family,
+    so the withhold rule had to be stated here separately. KXGOLD15M,
+    KXSILVER15M and KXWTI15M are three prediction problems; a combined score
+    cannot say which model works.
+
+    This report has only ever read false, which is luck rather than design —
+    its hourly sibling published a pooled true and drove bids in all three
+    underlyings on 2026-08-10.
+    """
+
+    def test_pooled_evidence_never_authorises_a_bid(self):
+        self.assertGreater(len(cal.FAMILIES), 1, "fixture assumes a pooled producer")
+        n = 200
+        state = cal.default_state()
+        state["contract_scores_full"] = [0.02] * n
+        state["contract_scores_market_mid_raw"] = [0.30] * n
+        state["contract_scores_eligible_full"] = [0.02] * n
+        state["contract_scores_eligible_market_mid_raw"] = [0.30] * n
+        report = cal.build_report(state, {}, 1_700_000_000_000)
+
+        # Whatever the pooled computation concluded, it must not authorise.
+        self.assertFalse(report["adds_value_over_market"])
+        self.assertFalse(report["adds_value_on_bet_eligible"])
+        # ...and it is recorded as WITHHELD, not as "measured to have no edge",
+        # so the later per-family split is not misread as a regression.
+        self.assertTrue(report["pooled_trust_withheld"])
+        self.assertEqual(report["pooled_families"], sorted(cal.FAMILIES.keys()))
+        self.assertIn("pooled_adds_value_on_bet_eligible", report)
 
 
 if __name__ == "__main__":

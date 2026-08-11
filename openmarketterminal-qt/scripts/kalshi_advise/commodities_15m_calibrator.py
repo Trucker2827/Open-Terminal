@@ -979,7 +979,28 @@ def build_report(state, predictions, now_ms):
         and b_eligible_mid is not None
         and len(eligible) >= ce.MIN_ELIGIBLE_CONTRACTS
     )
-    return {
+    # POOLED EVIDENCE MUST NOT AUTHORISE A BID (same rule as
+    # strike_threshold_family.build_report; this producer is standalone and
+    # does NOT share that module, so the rule has to be stated here too).
+    #
+    # KXGOLD15M + KXSILVER15M + KXWTI15M are three different prediction
+    # problems. A combined "226 contracts scored, model passes" cannot say
+    # WHICH model works: gold could beat the market while silver and oil lose.
+    # The hourly sibling published exactly such a pooled true and drove bids in
+    # all three underlyings on 2026-08-10; this one has only ever read false,
+    # which is luck, not design.
+    #
+    # Until this producer fits and scores per family, the authorising flags read
+    # false and the real values are kept under pooled_* as diagnostics.
+    # `pooled_trust_withheld` marks this as "not authorised", NOT "measured to
+    # have no edge".
+    pooled = len(FAMILIES) > 1
+    pooled_over_market = trusted is not None
+    pooled_on_eligible = adds_value_on_bet_eligible
+    if pooled:
+        adds_value_on_bet_eligible = False
+
+    report = {
         "schema": STATE_SCHEMA,
         "event": "commodities_15m_calibrator",
         "advisory_only": True,
@@ -1012,7 +1033,7 @@ def build_report(state, predictions, now_ms):
         "brier_market_mid_raw": b_mid,
         "ablations": ablations,
         "trusted_variant": trusted,
-        "adds_value_over_market": trusted is not None,
+        "adds_value_over_market": False if pooled else pooled_over_market,
         "phase4_tilt": {
             "status": "scored_only",
             "key": PHASE4_TILT_KEY,
@@ -1037,6 +1058,17 @@ def build_report(state, predictions, now_ms):
         "adds_value_on_bet_eligible": adds_value_on_bet_eligible,
         "predictions": predictions,
     }
+    if pooled:
+        report["pooled_trust_withheld"] = True
+        report["pooled_families"] = sorted(FAMILIES.keys())
+        report["pooled_adds_value_over_market"] = pooled_over_market
+        report["pooled_adds_value_on_bet_eligible"] = pooled_on_eligible
+        report["pooled_note"] = (
+            "evidence is pooled across %d series, so it cannot authorise a bid in any one of "
+            "them; the pooled_* values are diagnostics only. Split this producer per family "
+            "before reading them as trust." % len(FAMILIES)
+        )
+    return report
 
 
 def run_once(now_ms=None):
