@@ -1855,6 +1855,88 @@ class TestKalshiBotDecision : public QObject {
         }
     }
 
+
+    // ---- per-family risk budgets ------------------------------------------
+    // One shared pool lets the first family to trade consume the whole book and
+    // starve the families being measured beside it. Observed live:
+    // EXPOSURE_CAP_BLOCKS_BID fired 2,947 times in a day while capital sat
+    // trapped in positions that could not be exited. Per-family promotion is
+    // meaningless if one family can deny the others the chance to earn
+    // evidence.
+    static QJsonObject two_family_report() {
+        QJsonObject r = report(0.95, 0.83, 10.0);
+        r.remove(QStringLiteral("families"));
+        QJsonObject block = r;
+        r.insert(QStringLiteral("by_family"),
+                 QJsonObject{{QStringLiteral("KXBTC15M"), block},
+                             {QStringLiteral("KXBTCD"), block}});
+        return r;
+    }
+
+    void a_family_that_spends_its_allocation_does_not_touch_another(  ) {
+        QJsonObject r = two_family_report();
+        r.insert(QStringLiteral("predictions"),
+                 QJsonObject{{QStringLiteral("KXBTC15M-A"), prediction(0.95, 0.55, 10.0)},
+                             {QStringLiteral("KXBTCD-A"), prediction(0.95, 0.55, 10.0)}});
+
+        KalshiBotDecision::Exposure ex;
+        // KXBTC15M has already spent its whole family allocation; KXBTCD none.
+        ex.session_opened_by_family = QJsonObject{{QStringLiteral("KXBTC15M"), 40.0}};
+        ex.at_risk_by_family = QJsonObject{{QStringLiteral("KXBTC15M"), 0.0}};
+
+        const QJsonArray rows =
+            KalshiBotDecision::decide(r, {}, {}, kNow, {}, {}, ex);
+        QString spent_reason, fresh_reason;
+        for (const auto& v : rows) {
+            const QJsonObject row = v.toObject();
+            const QString t = row.value(QStringLiteral("ticker")).toString();
+            if (t.startsWith(QStringLiteral("KXBTC15M")))
+                spent_reason = row.value(QStringLiteral("reason_code")).toString();
+            if (t.startsWith(QStringLiteral("KXBTCD")))
+                fresh_reason = row.value(QStringLiteral("reason_code")).toString();
+        }
+        QCOMPARE(spent_reason, QStringLiteral("FAMILY_BUDGET_BLOCKS_BID"));
+        // The other family is untouched by its sibling's spending.
+        QVERIFY2(fresh_reason != QStringLiteral("FAMILY_BUDGET_BLOCKS_BID"),
+                 "one family's spending must not block another's");
+        QVERIFY2(fresh_reason != QStringLiteral("SESSION_BUDGET_BLOCKS_BID"),
+                 "and must not consume the global budget on its behalf");
+    }
+
+    // The family limit is a PARTITION of the ceiling, never a raise: the global
+    // cap still binds even when the family has allocation left.
+    void the_global_ceiling_still_binds_over_a_family_allocation() {
+        QJsonObject r = two_family_report();
+        r.insert(QStringLiteral("predictions"),
+                 QJsonObject{{QStringLiteral("KXBTC15M-A"), prediction(0.95, 0.55, 10.0)}});
+
+        KalshiBotDecision::Config cfg;
+        cfg.family_session_budget_usd = 1000.0;  // family has plenty...
+        cfg.session_budget_usd = 0.0;            // ...but the book is closed
+        KalshiBotDecision::Exposure ex;
+
+        const QJsonArray rows =
+            KalshiBotDecision::decide(r, {}, {}, kNow, cfg, {}, ex);
+        QCOMPARE(reason(rows), QStringLiteral("SESSION_BUDGET_BLOCKS_BID"));
+    }
+
+    // Turning the family budget off restores the previous behaviour exactly,
+    // so the partition can be disabled without touching the global caps.
+    void family_budgets_can_be_disabled() {
+        QJsonObject r = two_family_report();
+        r.insert(QStringLiteral("predictions"),
+                 QJsonObject{{QStringLiteral("KXBTC15M-A"), prediction(0.95, 0.55, 10.0)}});
+
+        KalshiBotDecision::Config cfg;
+        cfg.enforce_family_budget = false;
+        KalshiBotDecision::Exposure ex;
+        ex.session_opened_by_family = QJsonObject{{QStringLiteral("KXBTC15M"), 9999.0}};
+
+        const QJsonArray rows =
+            KalshiBotDecision::decide(r, {}, {}, kNow, cfg, {}, ex);
+        QVERIFY(reason(rows) != QStringLiteral("FAMILY_BUDGET_BLOCKS_BID"));
+    }
+
 };
 
 QTEST_APPLESS_MAIN(TestKalshiBotDecision)
