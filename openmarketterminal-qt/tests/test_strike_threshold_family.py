@@ -96,6 +96,52 @@ class TrustReportTest(unittest.TestCase):
         self.assertEqual(report["family"], "COMMODITIES_DAILY")
         self.assertIn("KXWTI", report["families"])
 
+    def test_pooled_evidence_never_authorises_a_bid(self):
+        """A multi-series profile must not publish an authorising trust flag.
+
+        Measured 2026-08-11: commodities-hourly pooled KXGOLDH + KXSILVERH +
+        KXWTIH over 500 contracts, published adds_value_on_bet_eligible=true,
+        and authorised bids in all three underlyings from evidence no single
+        one of them had earned. Numbers here are chosen so the POOLED verdict
+        would be true -- the point is that it is withheld anyway.
+        """
+        state = stf.default_state()
+        state["contract_scores_full"] = [0.05] * 500
+        state["contract_scores_market_mid_raw"] = [0.30] * 500
+        state["contract_scores_eligible_full"] = [0.05] * 500
+        state["contract_scores_eligible_market_mid_raw"] = [0.30] * 500
+        report = stf.build_report(state, {}, 1, stf.COMMODITIES_HOURLY)
+
+        self.assertGreater(len(report["families"]), 1, "fixture must be a pooled profile")
+        # The pooled computation genuinely says "adds value"...
+        self.assertTrue(report["pooled_adds_value_over_market"])
+        self.assertTrue(report["pooled_adds_value_on_bet_eligible"])
+        # ...and it is withheld from every authorising field.
+        self.assertFalse(report["adds_value_over_market"])
+        self.assertFalse(report["adds_value_on_bet_eligible"])
+        # Withheld is not the same claim as "measured to have no edge".
+        self.assertTrue(report["pooled_trust_withheld"])
+        self.assertEqual(report["pooled_families"], report["families"])
+
+    def test_single_series_profile_still_earns_trust(self):
+        """The rule must bite only on POOLED evidence.
+
+        Withholding trust from a single-series profile would be a different
+        bug -- it would stop a family that legitimately earned its own
+        evidence, and would make the pooled fix look like a global kill.
+        """
+        state = stf.default_state()
+        state["contract_scores_full"] = [0.05] * 500
+        state["contract_scores_market_mid_raw"] = [0.30] * 500
+        state["contract_scores_eligible_full"] = [0.05] * 500
+        state["contract_scores_eligible_market_mid_raw"] = [0.30] * 500
+        report = stf.build_report(state, {}, 1, stf.KXBTC_DAILY)
+
+        self.assertEqual(len(report["families"]), 1, "fixture must be a single-series profile")
+        self.assertTrue(report["adds_value_over_market"])
+        self.assertTrue(report["adds_value_on_bet_eligible"])
+        self.assertNotIn("pooled_trust_withheld", report)
+
 
 if __name__ == "__main__":
     unittest.main()

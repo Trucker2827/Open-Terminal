@@ -502,7 +502,28 @@ def build_report(state: dict, predictions: dict, now_ms: int, profile: Profile) 
     eligible = state.get("contract_scores_eligible_full") or []
     eligible_mid = state.get("contract_scores_eligible_market_mid_raw") or []
     enough = len(scored) >= MIN_SCORED_CONTRACTS
-    return {
+
+    # POOLED EVIDENCE MUST NOT AUTHORIZE BIDS.
+    #
+    # A profile covering more than one series pools genuinely different
+    # prediction problems into one model, one Brier and one trust flag.
+    # Measured 2026-08-11: commodities-hourly pooled KXGOLDH + KXSILVERH +
+    # KXWTIH over 500 contracts and published adds_value_on_bet_eligible=true,
+    # which authorised bids in all three underlyings (KXGOLDH 58, KXSILVERH 41,
+    # KXWTIH 1 on 08-10) from evidence that no single one of them had earned.
+    #
+    # Until this producer fits and scores per family, the pooled numbers are
+    # DIAGNOSTICS: they are still published, under `pooled_*` names so nothing
+    # mistakes them for a verdict, and the authorising flags read false. Note
+    # false here means "not authorised", not "measured to have no edge" —
+    # `pooled_trust_withheld` says which, so a later split is not read as a
+    # regression.
+    pooled = len(profile.series) > 1
+    pooled_over_market = (
+        b_full is not None and b_mid_raw is not None and enough and b_full < b_mid_raw
+    )
+    pooled_on_eligible = ce.adds_value(eligible, eligible_mid)
+    report = {
         "schema": 2,
         "event": profile.event,
         "family": profile.family,
@@ -517,17 +538,26 @@ def build_report(state: dict, predictions: dict, now_ms: int, profile: Profile) 
         "brier_full": b_full,
         "brier_market_mid_raw": b_mid_raw,
         "brier_market_trained_logit": b_logit,
-        "adds_value_over_market": (
-            b_full is not None and b_mid_raw is not None and enough and b_full < b_mid_raw
-        ),
+        "adds_value_over_market": False if pooled else pooled_over_market,
         "eligible_scored_contracts": len(eligible),
         "brier_eligible_full": sc.mean_or_none(eligible),
         "brier_eligible_market_mid_raw": sc.mean_or_none(eligible_mid),
         "min_eligible_contracts": ce.MIN_ELIGIBLE_CONTRACTS,
-        "adds_value_on_bet_eligible": ce.adds_value(eligible, eligible_mid),
+        "adds_value_on_bet_eligible": False if pooled else pooled_on_eligible,
         "predictions": predictions,
         "probability_source": profile.probability_source,
     }
+    if pooled:
+        report["pooled_trust_withheld"] = True
+        report["pooled_families"] = sorted(profile.series.keys())
+        report["pooled_adds_value_over_market"] = pooled_over_market
+        report["pooled_adds_value_on_bet_eligible"] = pooled_on_eligible
+        report["pooled_note"] = (
+            "evidence is pooled across %d series, so it cannot authorise a bid in any one of "
+            "them; the pooled_* values are diagnostics only. Split this producer per family "
+            "before reading them as trust." % len(profile.series)
+        )
+    return report
 
 
 def run_once(profile: Profile, now_ms: Optional[int] = None, rest_markets=None) -> dict:
