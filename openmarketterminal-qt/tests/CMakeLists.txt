@@ -823,6 +823,14 @@ add_test(NAME tst_kalshi_edge_lessons COMMAND tst_kalshi_edge_lessons)
 
 # Sealed promotion gate (rung 2): preregistered criteria, mechanical verdict,
 # and a seal that is verified through the disk, not just in memory.
+# Resampling statistics behind the gate's significance criterion and drawdown
+# noise floor: pure numbers in, numbers out, so they can be checked against
+# synthetic records with a KNOWN edge instead of against themselves.
+add_executable(tst_kalshi_bot_gate_stats tst_kalshi_bot_gate_stats.cpp)
+target_include_directories(tst_kalshi_bot_gate_stats PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_bot_gate_stats PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_bot_gate_stats COMMAND tst_kalshi_bot_gate_stats)
+
 add_executable(tst_kalshi_bot_gate tst_kalshi_bot_gate.cpp)
 target_include_directories(tst_kalshi_bot_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_bot_gate PRIVATE openterminal_core Qt6::Core Qt6::Test)

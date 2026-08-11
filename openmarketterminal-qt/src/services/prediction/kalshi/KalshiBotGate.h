@@ -4,6 +4,8 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
+
+#include <cstdint>
 #include <QStringList>
 
 namespace openmarketterminal::services::prediction::kalshi_ns {
@@ -63,6 +65,10 @@ class KalshiBotGate {
     static constexpr auto kCriterionNetPnl = "net_pnl_usd";
     static constexpr auto kCriterionBrier = "brier_beats_market";
     static constexpr auto kCriterionDrawdown = "max_drawdown_usd";
+    /// The edge is distinguishable from zero, not merely positive. `net_pnl_usd`
+    /// alone is a coin flip for a no-edge family (50.4% measured), and six
+    /// preregistered families make "at least one passes by luck" 84.8%.
+    static constexpr auto kCriterionPnlSignificant = "net_pnl_significant";
 
     static constexpr auto kParamsFile = "kalshi-bot-gate-params.json";
     static constexpr auto kVerdictFile = "kalshi-bot-gate.json";
@@ -83,6 +89,13 @@ class KalshiBotGate {
     /// far beyond any real calibrator/market gap, so larger is refused as a
     /// typo rather than sealed.
     static constexpr double kMaxBrierMargin = 0.25;
+    /// Confidence for the per-bid P&L interval. Preregisterable UPWARD only: a
+    /// gate may demand more evidence than the ladder's floor, never less.
+    static constexpr double kMinPnlConfidence = 0.90;
+    /// Fixed so a re-run over the same record yields the same verdict. A sealed
+    /// gate whose answer moved between runs would be worse than no gate.
+    static constexpr std::uint64_t kBootstrapSeed = 20260811ULL;
+    static constexpr int kBootstrapSamples = 4000;
 
     /// SHA-256 over every field of `record` except the seal itself, computed
     /// over compact JSON (Qt emits object keys sorted, so this is canonical).

@@ -1,6 +1,7 @@
 #include "services/prediction/kalshi/KalshiBotGate.h"
 
 #include "services/prediction/kalshi/KalshiBotLive.h"
+#include "services/prediction/kalshi/KalshiBotGateStats.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -96,7 +97,8 @@ QJsonObject KalshiBotGate::parse_params(const QJsonObject& raw, QString* error) 
                                           QStringLiteral("min_net_pnl_usd"),
                                           QStringLiteral("max_drawdown_usd"),
                                           QStringLiteral("min_brier_margin"),
-                                          QStringLiteral("families")};
+                                          QStringLiteral("families"),
+                                          QStringLiteral("pnl_confidence")};
     QStringList unknown;
     for (auto it = raw.constBegin(); it != raw.constEnd(); ++it)
         if (!allowed.contains(it.key())) unknown.append(it.key());
@@ -151,6 +153,17 @@ QJsonObject KalshiBotGate::parse_params(const QJsonObject& raw, QString* error) 
     // one passes by luck. Absent means NO family is eligible — fail-closed, so
     // per-family admission is something an operator preregisters deliberately
     // rather than something that switches on the moment this code ships.
+    double pnl_confidence = kMinPnlConfidence;
+    const QJsonValue confidence_raw = raw.value(QStringLiteral("pnl_confidence"));
+    if (!confidence_raw.isUndefined()) {
+        if (!is_number(confidence_raw) || confidence_raw.toDouble() < kMinPnlConfidence ||
+            confidence_raw.toDouble() >= 1.0)
+            return fail(QStringLiteral("gate param 'pnl_confidence' must be a number in [%1, 1); "
+                                       "a gate may demand more evidence, never less")
+                            .arg(kMinPnlConfidence, 0, 'f', 2));
+        pnl_confidence = confidence_raw.toDouble();
+    }
+
     // Present in the normalized params ONLY when the operator preregistered it.
     // Emitting `families: []` for every gate would change the sealed bytes of
     // params files sealed before this existed, and every one of them would then
@@ -181,7 +194,8 @@ QJsonObject KalshiBotGate::parse_params(const QJsonObject& raw, QString* error) 
     QJsonObject normalized{{QStringLiteral("min_settled_bids"), min_settled},
                            {QStringLiteral("min_net_pnl_usd"), min_net_pnl},
                            {QStringLiteral("max_drawdown_usd"), max_drawdown},
-                           {QStringLiteral("min_brier_margin"), margin}};
+                           {QStringLiteral("min_brier_margin"), margin},
+                           {QStringLiteral("pnl_confidence"), pnl_confidence}};
     if (has_families) normalized.insert(QStringLiteral("families"), families);
     return normalized;
 }
@@ -406,8 +420,11 @@ QJsonObject KalshiBotGate::evaluate_scoped(const QJsonValue& params_record,
     int scored = 0;
     int unscored = 0;
 
+    std::vector<double> per_bid_pnl;
+    per_bid_pnl.reserve(settled.size());
     for (const QJsonObject& row : settled) {
         const double pnl = row.value(QStringLiteral("realized_pnl")).toDouble();
+        per_bid_pnl.push_back(pnl);
         net_pnl += pnl;
         fees += row.value(QStringLiteral("fee_usd")).toDouble();
         stake += row.value(QStringLiteral("stake_usd")).toDouble();
@@ -486,6 +503,40 @@ QJsonObject KalshiBotGate::evaluate_scoped(const QJsonValue& params_record,
                            "it was measured against — nothing to score, so nothing is claimed"));
     }
 
+    // Is the edge distinguishable from zero, or just a positive coin flip?
+    const double pnl_confidence = params.value(QStringLiteral("pnl_confidence"))
+                                      .toDouble(kMinPnlConfidence);
+    const MeanInterval edge = bootstrap_mean_interval(per_bid_pnl, pnl_confidence,
+                                                      kBootstrapSeed, kBootstrapSamples);
+    QJsonObject significance_criterion =
+        criterion(kCriterionPnlSignificant,
+                  QStringLiteral("per-bid edge is distinguishable from zero, not merely positive"),
+                  edge.available && edge.lo > 0.0);
+    significance_criterion.insert(QStringLiteral("interval_available"), edge.available);
+    if (edge.available) {
+        significance_criterion.insert(QStringLiteral("observed"), round_cents(edge.lo));
+        significance_criterion.insert(QStringLiteral("mean_per_bid_usd"), edge.mean);
+        significance_criterion.insert(QStringLiteral("ci_low_per_bid_usd"), edge.lo);
+        significance_criterion.insert(QStringLiteral("ci_high_per_bid_usd"), edge.hi);
+        significance_criterion.insert(QStringLiteral("confidence"), pnl_confidence);
+        significance_criterion.insert(QStringLiteral("required"), 0.0);
+        significance_criterion.insert(QStringLiteral("comparison"),
+                                      QStringLiteral("ci_low_per_bid_usd > 0"));
+    } else {
+        // Never a 0.0 that would read as a measured zero edge.
+        significance_criterion.insert(
+            QStringLiteral("note"),
+            QStringLiteral("fewer than two settled bids — nothing to resample, so no claim is made "
+                           "about whether an edge exists"));
+    }
+
+    // What drawdown would pure noise produce over a record this size? Reported,
+    // never enforced: it is the yardstick that tells an operator whether the
+    // cap they are about to seal sits above or below the noise floor. A $20 cap
+    // over 300 bids at this volatility is tripped by 70.8% of NO-edge records.
+    const DrawdownNoise noise =
+        bootstrap_drawdown_noise(per_bid_pnl, settled_bids, kBootstrapSeed, kBootstrapSamples);
+
     QJsonObject drawdown_criterion =
         criterion(kCriterionDrawdown,
                   QStringLiteral("worst peak-to-trough realized drawdown <= preregistered limit"),
@@ -493,8 +544,21 @@ QJsonObject KalshiBotGate::evaluate_scoped(const QJsonValue& params_record,
     drawdown_criterion.insert(QStringLiteral("observed"), max_drawdown);
     drawdown_criterion.insert(QStringLiteral("required"), max_drawdown_limit);
     drawdown_criterion.insert(QStringLiteral("comparison"), QStringLiteral("observed <= required"));
+    drawdown_criterion.insert(QStringLiteral("noise_floor_available"), noise.available);
+    if (noise.available) {
+        drawdown_criterion.insert(QStringLiteral("noise_implied_p50_usd"), round_cents(noise.p50));
+        drawdown_criterion.insert(QStringLiteral("noise_implied_p95_usd"), round_cents(noise.p95));
+        if (max_drawdown_limit < noise.p50)
+            drawdown_criterion.insert(
+                QStringLiteral("note"),
+                QStringLiteral("the preregistered limit sits BELOW the median drawdown a no-edge "
+                               "record of this size would produce (%1) — this criterion is "
+                               "measuring volatility, not skill")
+                    .arg(round_cents(noise.p50)));
+    }
 
-    const QJsonArray criteria{settled_criterion, pnl_criterion, brier_criterion, drawdown_criterion};
+    const QJsonArray criteria{settled_criterion, pnl_criterion, significance_criterion,
+                              brier_criterion, drawdown_criterion};
     bool all_met = true;
     for (const auto& value : criteria)
         if (!value.toObject().value(QStringLiteral("met")).toBool()) all_met = false;
