@@ -130,7 +130,7 @@ Paper cashout is **ON by default** (`--no-paper-cashout` to disable):
 
 New settlements also embed the bid snapshot (`calibrated_p`, `market_mid`, …)
 plus optional `market_mid_at_settle`. `kalshi bot status` prints a POSTMORTEM
-line; the cockpit KPI strip ends with `PM …` (pin: 8 nodes / 6 KPI).
+line; the cockpit KPI strip ends with `PM …` (pin: 9 nodes / 6 KPI).
 
 ## Outside-info edge backlog
 

@@ -765,7 +765,7 @@ class KalshiBotCockpitTest : public QObject {
         // Whose track record it is, said on the label: the gate's
         // brier_beats_market criterion is a different measure over different
         // contracts and sits three boxes away on the same scene.
-        QCOMPARE(node->label, QStringLiteral("CALIBRATOR — THRESHOLD TRACK RECORD"));
+        QCOMPARE(node->label, QStringLiteral("BTC 1H — THRESHOLD SCOREBOARD · click"));
         // Issue #171: the opponent is named (the RAW MID, not the gate's own
         // settled bids), and the count beside the score is the Brier's actual
         // denominator. `resolved_contracts` is a lifetime total; printing it
@@ -775,6 +775,7 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(node->value.contains(QStringLiteral("318 scored contracts")));
         QVERIFY(!node->value.contains(QStringLiteral("537")));
         QVERIFY(node->value.contains(QStringLiteral("ADDS VALUE")));
+        QVERIFY(!node->detail.isEmpty());
 
         // A report with no track record is not scored as zero.
         QJsonObject unscored = report;
@@ -947,6 +948,17 @@ class KalshiBotCockpitTest : public QObject {
                       QJsonObject{{QStringLiteral("checked"), 4},
                                   {QStringLiteral("matched"), 3},
                                   {QStringLiteral("match_rate"), 0.75}});
+        QJsonObject commod_hourly = kxbtc15m_calibrator_report(
+            kNow - 7'000,
+            QJsonObject{{"KXGOLDH-26AUG0712-T2500", prediction(0.61, 0.48)}},
+            /*adds_value=*/true, /*scored=*/250, /*brier_full=*/0.12,
+            /*brier_mid=*/0.20);
+        commod_hourly.insert(QStringLiteral("event"),
+                             QStringLiteral("commodities_hourly_calibrator"));
+        commod_hourly.insert(QStringLiteral("settlement_parity"),
+                             QJsonObject{{QStringLiteral("checked"), 8},
+                                         {QStringLiteral("matched"), 8},
+                                         {QStringLiteral("match_rate"), 1.0}});
         const QJsonObject threshold =
             calibrator_report(kNow - 10'000,
                               QJsonObject{{"KXBTCD-26AUG0712-T64000", prediction(0.80, 0.40)}});
@@ -956,14 +968,17 @@ class KalshiBotCockpitTest : public QObject {
         const QJsonArray ledger = passing_ledger();
         const BotCockpitScene scene =
             present_bot_cockpit(panel_for(ledger), threshold, {}, ledger, {}, kNow, QByteArray(),
-                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, dir15, commod);
-        QCOMPARE(scene.columns.size(), 4);
+                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, dir15, commod, {},
+                                {}, commod_hourly);
+        QCOMPARE(scene.columns.size(), 5);
         QCOMPARE(scene.columns.at(0).signal_source, QStringLiteral("threshold"));
         QCOMPARE(scene.columns.at(1).signal_source, QStringLiteral("kxbtc15m"));
         QCOMPARE(scene.columns.at(2).signal_source, QStringLiteral("commodities15m"));
         QCOMPARE(scene.columns.at(3).signal_source, QStringLiteral("commodities15m"));
+        QCOMPARE(scene.columns.at(4).signal_source, QStringLiteral("commodities_hourly"));
         QCOMPARE(bot_cockpit_source_tag(QStringLiteral("commodities15m")), QStringLiteral("COM"));
         QVERIFY(scene.census.contains(QStringLiteral("2 commodities15m")));
+        QVERIFY(scene.census.contains(QStringLiteral("1 commodities_hourly")));
         QVERIFY(scene.census.contains(QStringLiteral("threshold first")));
         // Commodities races use the open glyph (same directional features as BTC 15m).
         QStringList labels;
@@ -977,6 +992,19 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(node->detail.contains(QStringLiteral("ablations")));
         QVERIFY(node->detail.contains(QStringLiteral("parity Pyth↔Kalshi 3/4 (75%)")));
         QVERIFY(node->label.contains(QStringLiteral("click")));
+        QVERIFY(!node->value.contains(QStringLiteral(" · H ")));
+
+        // The 1-hour commodities report is a first-class scoreboard. It must
+        // not disappear into the 15-minute panel's chip or inspect detail.
+        const BotCockpitNode* hourly = scene.node(QStringLiteral("commodities_hourly"));
+        QVERIFY(hourly != nullptr);
+        QVERIFY(hourly->known);
+        QCOMPARE(hourly->label,
+                 QStringLiteral("COMMODITIES 1H — THRESHOLD SCOREBOARD · click"));
+        QVERIFY(hourly->value.contains(QStringLiteral("250/100 scored")));
+        QVERIFY(hourly->value.contains(QStringLiteral("ΔBrier −0.0800 vs mid")));
+        QVERIFY(hourly->value.contains(QStringLiteral("parity Pyth↔Kalshi 8/8 (100%)")));
+        QVERIFY(!hourly->detail.isEmpty());
     }
 
     void outside_info_inspect_detail_lists_sorted_ablations() {
@@ -1739,12 +1767,13 @@ class KalshiBotCockpitTest : public QObject {
                  QStringLiteral("1 watched contracts · all drawn · L→R · threshold first · ambition "
                                 "KXBTCD · 1 threshold · 0 kxbtc15m · 0 commodities15m · 0 "
                                 "commodities_hourly · 0 commodities_daily · 0 kxbtc_daily"));
-        QCOMPARE(baseline.nodes.size(), 8);
+        QCOMPARE(baseline.nodes.size(), 9);
         QVERIFY(!baseline.node(QStringLiteral("kxbtc15m"))->detail.isEmpty());
         QVERIFY(!baseline.node(QStringLiteral("commodities15m"))->detail.isEmpty());
         QVERIFY(baseline.node(QStringLiteral("calibrator")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("kxbtc15m")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("commodities15m")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("commodities_hourly")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("brier_split")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("settlements")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("gate")) != nullptr);
@@ -1762,7 +1791,7 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(baseline.kpi.at(baseline.kpi.size() - 3).startsWith(QStringLiteral("COM 15m|H|D")));
         QVERIFY(baseline.kpi.at(baseline.kpi.size() - 2).startsWith(QStringLiteral("BRIER model")));
         QVERIFY(baseline.kpi.last().startsWith(QStringLiteral("PM ")));
-        // PM KPI inspect body is always present (even UNAVAILABLE) — no 9th node.
+        // PM KPI inspect body is always present (even UNAVAILABLE) — no 10th node.
         QVERIFY(!baseline.postmortem_detail.isEmpty());
         QVERIFY(baseline.postmortem_detail.contains(QStringLiteral("Inspect only")) ||
                 baseline.postmortem_detail.contains(QStringLiteral("inspect only")));
