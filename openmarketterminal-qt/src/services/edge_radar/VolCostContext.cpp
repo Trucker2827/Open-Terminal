@@ -3,6 +3,8 @@
 #include "services/edge_radar/KalshiAutoEngine.h"
 #include "storage/repositories/EdgePredictionModelRepository.h"
 
+#include <algorithm>
+
 namespace openmarketterminal::services::edge_radar {
 
 CryptoMicrostructureCostContext vol_cost_context_for(const QString& base_symbol,
@@ -31,6 +33,18 @@ CryptoMicrostructureCostContext vol_cost_context_for(const QString& base_symbol,
         ctx.realized_vol_samples = vol.sample_count;
     }
     return ctx;
+}
+
+CryptoMicrostructureCostContext with_fee_context(CryptoMicrostructureCostContext base,
+                                                 const CryptoFeeInputs& fees) {
+    // No profile means UNKNOWN, and the radar must keep saying so. Treating a
+    // missing rate as zero would let a gross move read as net-of-cost.
+    if (fees.one_way_fee_bps < 0.0) return base;
+    base.fee_available = true;
+    base.venue_key = fees.venue_key;
+    base.round_trip_fee_bps = fees.one_way_fee_bps * 2.0;
+    base.slippage_bps = std::max(0.0, fees.slippage_bps);
+    return base;
 }
 
 }  // namespace openmarketterminal::services::edge_radar

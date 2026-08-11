@@ -15,6 +15,7 @@
 #include "core/result/Result.h"
 #include "services/crypto/CryptoFees.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
+#include "services/edge_radar/VolCostContext.h"
 
 #include <QSqlQuery>
 #include "services/notifications/NotificationService.h"
@@ -259,7 +260,12 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args);
 int edge_decision_cockpit_command(const GlobalOpts& opts, QStringList args);
 int edge_equity_cockpit_command(const GlobalOpts& opts, QStringList args);
 int edge_context_command(const GlobalOpts& opts, QStringList args);
+/// `fees` arms the radar's round-trip veto (see VolCostContext.h). Callers that
+/// have not resolved a venue fee profile must leave it defaulted so the snapshot
+/// reports cost as UNKNOWN rather than as zero.
 services::edge_radar::CryptoMicrostructureSnapshot edge_capture_microstructure(
-    const QString& symbol, const QStringList& sources, int duration_ms, bool store_raw_ticks = false);
+    const QString& symbol, const QStringList& sources, int duration_ms,
+    bool store_raw_ticks = false,
+    const services::edge_radar::CryptoFeeInputs& fees = {});
 
 } // namespace openmarketterminal::cli
