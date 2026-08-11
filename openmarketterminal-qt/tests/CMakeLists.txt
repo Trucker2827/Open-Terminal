@@ -760,6 +760,11 @@ target_include_directories(tst_sql_error_context PRIVATE ${CMAKE_SOURCE_DIR}/src
 target_link_libraries(tst_sql_error_context PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_sql_error_context COMMAND tst_sql_error_context)
 
+add_executable(tst_job_process_error tst_job_process_error.cpp)
+target_include_directories(tst_job_process_error PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_job_process_error PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_job_process_error COMMAND tst_job_process_error)
+
 add_executable(tst_job_health tst_job_health.cpp)
 target_include_directories(tst_job_health PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_job_health PRIVATE openterminal_core Qt6::Core Qt6::Test)
