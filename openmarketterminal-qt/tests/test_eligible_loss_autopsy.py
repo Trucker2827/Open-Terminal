@@ -187,5 +187,86 @@ def _summary_row(thesis: str, correct: bool, baseline: float) -> dict:
     }
 
 
+class DecompositionBlockTest(unittest.TestCase):
+    """The WHY block must render, and must carry its own caveat.
+
+    A decomposition printed without the selection note would be read as an
+    unbiased score of the model. It is not: the eligible slice is chosen by the
+    model's own disagreement with the market.
+    """
+
+    def _summary(self):
+        return {
+            "resolved_contracts_replayed": 2, "state_eligible_scored": 0,
+            "eligible_contracts": 2, "min_eligible_for_trust": 100,
+            "model_loses_n": 1, "model_beats_n": 1,
+            "mean_brier_eligible_model": 0.19, "mean_brier_eligible_mid": 0.14,
+            "mean_brier_delta_losses": 0.05, "mean_edge_losses": 0.2,
+            "mean_minutes_left_losses": 20.0,
+            "thesis_correct_n": 1, "thesis_correct_rate": 0.5,
+            "thesis_baseline_rate": 0.5, "thesis_excess_rate": 0.0,
+            "by_edge_bucket": {}, "by_minutes_bucket": {},
+            "by_thesis": {}, "worst_losses": [], "note": "n",
+            "decomposition": {
+                "eligible": {"observations": 4249,
+                             "brier_model": 0.1646, "brier_mid": 0.1372,
+                             "log_score_model": 0.5713, "log_score_mid": 0.4540,
+                             "reliability_model": 0.0144, "resolution_model": 0.0753,
+                             "reliability_mid": 0.0042, "resolution_mid": 0.1062,
+                             "uncertainty": 0.2494,
+                             "information_gain_bits": -0.1693},
+                "not_eligible": {"observations": 9609, "brier_model": 0.0554,
+                                 "brier_mid": 0.0550, "log_score_model": 0.2,
+                                 "log_score_mid": 0.2, "reliability_model": 0.0,
+                                 "resolution_model": 0.0, "reliability_mid": 0.0,
+                                 "resolution_mid": 0.0, "uncertainty": 0.0,
+                                 "information_gain_bits": 0.0},
+                "brier_delta_ci_95": {"point": 0.0032, "lo": -0.0145, "hi": 0.0220,
+                                      "note": "n"},
+                "selection_note": "selected by |model_p - yes_mid| >= 0.1, i.e. by the model's OWN output",
+                "reads_gates": False,
+            },
+        }
+
+    def _render(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ela.print_human(self._summary())
+        return buf.getvalue()
+
+    def test_both_murphy_terms_are_shown_for_model_and_mid(self):
+        out = self._render()
+        self.assertIn("reliability", out)
+        self.assertIn("resolution", out)
+        self.assertIn("0.0144", out)   # model reliability
+        self.assertIn("0.0042", out)   # mid reliability
+        self.assertIn("0.0753", out)   # model resolution
+        self.assertIn("0.1062", out)   # mid resolution
+
+    def test_the_worse_side_is_marked(self):
+        # Higher reliability error and lower resolution are BOTH worse; a reader
+        # should not have to remember which direction each one runs.
+        out = self._render()
+        rel_line = [l for l in out.splitlines() if "reliability" in l and "model" in l]
+        self.assertTrue(rel_line)
+        self.assertIn("(worse)", rel_line[0])
+
+    def test_information_gain_and_ci_are_shown(self):
+        out = self._render()
+        self.assertIn("-0.1693", out)          # bits/obs, negative
+        self.assertIn("95% CI", out)
+
+    def test_the_contrast_slice_is_shown(self):
+        # Population Brier looking fine while the tradeable slice is bad is the
+        # whole reason the eligible split exists -- show both or the point is lost.
+        out = self._render()
+        self.assertIn("NOT-eligible", out)
+        self.assertIn("9609", out)
+
+    def test_the_selection_caveat_is_printed(self):
+        out = self._render()
+        self.assertIn("OWN output", out)
+
+
 if __name__ == "__main__":
     unittest.main()

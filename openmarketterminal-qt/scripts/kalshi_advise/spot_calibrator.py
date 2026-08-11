@@ -55,6 +55,7 @@ import urllib.request
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from openterminal_paths import evidence_file
 import calibrator_eligibility as ce
+import calibrator_scores as cscore
 
 EVIDENCE_PATH = evidence_file("kalshi-ws-books.json")
 STATE_PATH = evidence_file("spot-calibrator-state.json")
@@ -956,6 +957,94 @@ def settle_cycle(state, now_ms, resolver=resolve_outcome_kalshi):
     state["market"] = market.to_json()
 
 
+def eligible_observation_pairs(resolved_record):
+    """Walk-forward per-OBSERVATION pairs, split by bet-eligibility.
+
+    Returns `(eligible_model, eligible_mid, other_model, other_mid)`, each a
+    list of `(probability, outcome)`.
+
+    Same discipline as `_ablation_walk_forward`: every contract is scored with
+    `predict()` BEFORE the model trains on it, so nothing here can see its own
+    outcome. Per-observation, not per-contract, because the Murphy decomposition
+    bins individual forecasts -- a per-contract mean cannot be binned.
+
+    The non-eligible split is returned for contrast. Population scores can look
+    respectable while the slice the bot would actually bet is the bad one, and
+    that comparison is only visible with both.
+    """
+    full = OnlineLogit(FULL_FEATURES)
+    eligible_model, eligible_mid, other_model, other_mid = [], [], [], []
+    for record in resolved_record or []:
+        observations = record.get("observations") or []
+        outcome = bool(record.get("outcome"))
+        if not observations:
+            continue
+        for features in observations:
+            p = full.predict(features)
+            mid = float(features.get("yes_mid") or 0.0)
+            if ce.is_eligible(p, mid):
+                eligible_model.append((p, outcome))
+                eligible_mid.append((mid, outcome))
+            else:
+                other_model.append((p, outcome))
+                other_mid.append((mid, outcome))
+        for features in observations:
+            full.update(features, outcome, l2=L2)
+    return eligible_model, eligible_mid, other_model, other_mid
+
+
+# Fixed so a report regenerated on a schedule does not wander between runs.
+DIAGNOSTIC_BOOTSTRAP_SEED = 20260811
+
+
+def eligible_diagnostics(state):
+    """Additive scoring diagnostics. READ BY NO GATE.
+
+    Says WHY, where `adds_value_on_bet_eligible` says only whether: Murphy
+    reliability/resolution separates "honest but useless" from "sharp but
+    miscalibrated", log score exposes overconfidence that Brier understates, and
+    information gain is a single signed number whose zero means something.
+    """
+    elig_m, elig_d, other_m, other_d = eligible_observation_pairs(
+        state.get("resolved_record") or [])
+
+    def slice_scores(model_pairs, mid_pairs):
+        if not model_pairs:
+            return None
+        m_murphy = cscore.murphy_decomposition(model_pairs)
+        d_murphy = cscore.murphy_decomposition(mid_pairs)
+        return {
+            "observations": len(model_pairs),
+            "brier_model": brier(model_pairs),
+            "brier_mid": brier(mid_pairs),
+            "log_score_model": cscore.log_score(model_pairs),
+            "log_score_mid": cscore.log_score(mid_pairs),
+            "reliability_model": m_murphy[0], "resolution_model": m_murphy[1],
+            "reliability_mid": d_murphy[0], "resolution_mid": d_murphy[1],
+            "uncertainty": m_murphy[2],
+            "information_gain_bits": cscore.information_gain_bits(model_pairs, mid_pairs),
+        }
+
+    ci = cscore.paired_bootstrap_ci(
+        state.get("contract_scores_eligible_full") or [],
+        state.get("contract_scores_eligible_market_mid_raw") or [],
+        seed=DIAGNOSTIC_BOOTSTRAP_SEED)
+    return {
+        "eligible": slice_scores(elig_m, elig_d),
+        "not_eligible": slice_scores(other_m, other_d),
+        "brier_delta_ci_95": None if ci is None else {
+            "point": ci[0], "lo": ci[1], "hi": ci[2],
+            "note": "per-contract paired bootstrap; positive means the model is worse",
+        },
+        "selection_note": (
+            "the eligible slice is selected by |model_p - yes_mid| >= "
+            f"{ce.BET_EDGE_THRESHOLD}, i.e. by the model's OWN output. These "
+            "scores are conditioned on the model's own disagreement with the "
+            "market and are not a random sample of opportunities."),
+        "reads_gates": False,
+    }
+
+
 def build_report(state, predictions, now_ms):
     """The report every consumer reads. Contracts and observations never share
     a field: `scored_contracts` is the Brier's denominator, `resolved_contracts`
@@ -1002,6 +1091,9 @@ def build_report(state, predictions, now_ms):
         # resolved-contract record, plus its own beats-market verdict. Does
         # not touch or gate any field above -- see ablation_report's docstring
         # for the walk-forward discipline and the delta sign convention.
+        # Additive diagnostics: WHY, beside the whether above. Gates never read
+        # this key -- see eligible_diagnostics' docstring.
+        "eligible_diagnostics": eligible_diagnostics(state),
         "ablation": ablation_report(
             [(r["observations"], r["outcome"]) for r in (state.get("resolved_record") or [])]),
     }

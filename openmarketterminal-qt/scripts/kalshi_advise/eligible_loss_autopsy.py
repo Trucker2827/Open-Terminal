@@ -196,6 +196,7 @@ def run_autopsy(state: dict) -> Dict[str, Any]:
     summary["state_eligible_scored"] = len(state.get("contract_scores_eligible_full") or [])
     stored_model = _mean(state.get("contract_scores_eligible_full") or [])
     stored_mid = _mean(state.get("contract_scores_eligible_market_mid_raw") or [])
+    summary["decomposition"] = sc.eligible_diagnostics(state)
     summary["state_mean_brier_eligible_model"] = stored_model
     summary["state_mean_brier_eligible_mid"] = stored_mid
     return summary
@@ -230,6 +231,31 @@ def print_human(summary: Dict[str, Any]) -> None:
         f"mean |edge| {_fmt(summary['mean_edge_losses'], 3)} · "
         f"mean minutes left {_fmt(summary['mean_minutes_left_losses'], 1)}"
     )
+    decomp = summary.get("decomposition") or {}
+    elig = decomp.get("eligible")
+    if elig:
+        worse = lambda a, b: " (worse)" if a is not None and b is not None and a > b else ""
+        better = lambda a, b: " (worse)" if a is not None and b is not None and a < b else ""
+        print("  decomposition (eligible slice, %d obs) — Brier = reliability - resolution + uncertainty:"
+              % elig["observations"])
+        print("    model  reliability %s%s   resolution %s%s   log %s"
+              % (_fmt(elig["reliability_model"]), worse(elig["reliability_model"], elig["reliability_mid"]),
+                 _fmt(elig["resolution_model"]), better(elig["resolution_model"], elig["resolution_mid"]),
+                 _fmt(elig["log_score_model"])))
+        print("    mid    reliability %s          resolution %s          log %s"
+              % (_fmt(elig["reliability_mid"]), _fmt(elig["resolution_mid"]),
+                 _fmt(elig["log_score_mid"])))
+        gain = elig.get("information_gain_bits")
+        ci = decomp.get("brier_delta_ci_95")
+        ci_txt = ("" if not ci else "   Brier delta %+.4f [95%% CI %+.4f, %+.4f]"
+                  % (ci["point"], ci["lo"], ci["hi"]))
+        print("    information gain vs mid: %s bits/obs%s"
+              % (_fmt(gain) if gain is None else "%+.4f" % gain, ci_txt))
+        other = decomp.get("not_eligible")
+        if other:
+            print("    for contrast, NOT-eligible slice (%d obs): model %s vs mid %s"
+                  % (other["observations"], _fmt(other["brier_model"]), _fmt(other["brier_mid"])))
+        print("    NOTE %s" % decomp.get("selection_note", ""))
     print("  by edge:")
     for bucket, counts in summary["by_edge_bucket"].items():
         print(f"    {bucket}: lose {counts['model_loses']}/{counts['eligible']}")
