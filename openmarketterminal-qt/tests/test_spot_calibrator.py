@@ -1002,5 +1002,59 @@ class BetEligibleTrustTest(unittest.TestCase):
         self.assertEqual(state["resolved"], 1)
 
 
+class EligibleObservationPairsTest(unittest.TestCase):
+    """The walk that feeds the scoring diagnostics."""
+
+    @staticmethod
+    def _obs(mid, minutes=30.0):
+        return {"signed_distance_bps": 0.0, "per_min_vol_bps": 3.0,
+                "sqrt_minutes_left": minutes ** 0.5, "required_move_sigma": 1.0,
+                "realized_move_bps": 0.0, "yes_mid": mid, "book_imbalance": 0.0,
+                "trade_flow": 0.0, "spot_drift": 0.0, "news_forecast": 0.0,
+                "event_pressure": 0.0}
+
+    def test_splits_by_eligibility_and_keeps_both_sides(self):
+        # Cold model predicts ~0.5: mid 0.30 is eligible (edge 0.20),
+        # mid 0.48 is not (edge 0.02). Every observation lands in exactly one
+        # split, and none is dropped.
+        record = [{"observations": [self._obs(0.30), self._obs(0.48)], "outcome": True}]
+        em, ed, om, od = cal.eligible_observation_pairs(record)
+        self.assertEqual(len(em), 1)
+        self.assertEqual(len(om), 1)
+        self.assertEqual(len(em), len(ed))
+        self.assertEqual(len(om), len(od))
+        self.assertAlmostEqual(ed[0][0], 0.30)   # mid side keeps the MID
+        self.assertAlmostEqual(od[0][0], 0.48)
+
+    def test_scores_a_contract_before_training_on_it(self):
+        # The no-look-ahead invariant. If the model trained first, the second
+        # identical contract would score differently from the first.
+        one = {"observations": [self._obs(0.30)], "outcome": True}
+        first, _, _, _ = cal.eligible_observation_pairs([one])
+        both, _, _, _ = cal.eligible_observation_pairs([one, dict(one)])
+        self.assertAlmostEqual(first[0][0], both[0][0], places=12)
+        self.assertNotAlmostEqual(both[0][0], both[1][0], places=12)
+
+    def test_empty_record_is_empty_not_an_error(self):
+        self.assertEqual(cal.eligible_observation_pairs([]), ([], [], [], []))
+
+
+class EligibleDiagnosticsTest(unittest.TestCase):
+    def test_is_additive_and_reads_no_gate(self):
+        state = {"resolved_record": [],
+                 "contract_scores_eligible_full": [],
+                 "contract_scores_eligible_market_mid_raw": []}
+        d = cal.eligible_diagnostics(state)
+        self.assertFalse(d["reads_gates"])
+        self.assertIn("selection_note", d)
+        # empty state must not fabricate numbers
+        self.assertIsNone(d["eligible"])
+        self.assertIsNone(d["brier_delta_ci_95"])
+
+    def test_selection_note_states_the_conditioning(self):
+        d = cal.eligible_diagnostics({"resolved_record": []})
+        self.assertIn("model's OWN output", d["selection_note"])
+
+
 if __name__ == "__main__":
     unittest.main()

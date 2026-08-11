@@ -32,6 +32,9 @@ add_test(NAME test_ws_stream_account
 add_test(NAME test_spot_calibrator
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_spot_calibrator.py -v)
+add_test(NAME test_calibrator_scores
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_calibrator_scores.py -v)
 add_test(NAME test_calibrator_eligibility
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_calibrator_eligibility.py -v)
