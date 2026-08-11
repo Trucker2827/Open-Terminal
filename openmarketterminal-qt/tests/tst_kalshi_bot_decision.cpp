@@ -67,6 +67,13 @@ QJsonObject report(double p_full, double market_mid, double minutes_left,
         {QStringLiteral("adds_value_on_bet_eligible"), trusted},
         {QStringLiteral("brier_eligible_full"), trusted ? 0.2130 : 0.2576},
         {QStringLiteral("brier_eligible_market_mid_raw"), trusted ? 0.2576 : 0.2130},
+        {QStringLiteral("eligible_scored_contracts"), 200},
+        {QStringLiteral("min_eligible_contracts"), 100},
+        // Trust is per family, so a report must SAY which family it speaks
+        // for. An undeclared report speaks for nobody and refuses -- that is
+        // the whole point, and a fixture that omitted this would be testing a
+        // shape production no longer produces.
+        {QStringLiteral("families"), QJsonArray{QStringLiteral("KXBTC15M")}},
         {QStringLiteral("predictions"),
          QJsonObject{{QStringLiteral("KXBTC15M-26JUL241015-15"),
                       prediction(p_full, market_mid, minutes_left)}}},
@@ -949,7 +956,7 @@ class TestKalshiBotDecision : public QObject {
     void malformed_predictions_are_skipped_never_guessed() {
         QJsonObject broken = report(0.95, 0.83, 10.0);
         broken.insert(QStringLiteral("predictions"),
-                      QJsonObject{{QStringLiteral("KXBAD-1"),
+                      QJsonObject{{QStringLiteral("KXBTC15M-BAD"),
                                    QJsonObject{{QStringLiteral("p_yes_full"), 0.0},
                                                {QStringLiteral("market_yes_mid"), 0.0}}}});
         const QJsonArray rows = KalshiBotDecision::decide(broken, {}, {}, kNow, {});
@@ -1753,6 +1760,99 @@ class TestKalshiBotDecision : public QObject {
         QVERIFY(KalshiBotDecision::family_trust(QJsonObject{}, QStringLiteral("KXGOLDH")) ==
                 Trust::Unavailable);
         QVERIFY(KalshiBotDecision::family_trust(solo, QString()) == Trust::Unavailable);
+    }
+
+
+    // ---- decide() asks per family ----------------------------------------
+    // A report covering several series pooled three prediction problems into
+    // one flag, and that flag authorised bids in all three. Each contract is
+    // now asked about its OWN family.
+    void one_trusted_family_never_carries_another() {
+        QJsonObject r = report(0.95, 0.83, 10.0);
+        r.remove(QStringLiteral("families"));
+        QJsonObject gold = r;   // a trusted block, reused per family
+        QJsonObject silver = r;
+        silver.insert(QStringLiteral("adds_value_on_bet_eligible"), false);
+        silver.insert(QStringLiteral("brier_eligible_full"), 0.99);
+        silver.insert(QStringLiteral("eligible_scored_contracts"), 200);
+
+        r.insert(QStringLiteral("by_family"),
+                 QJsonObject{{QStringLiteral("KXBTC15M"), gold},
+                             {QStringLiteral("KXSILVERH"), silver}});
+        r.insert(QStringLiteral("predictions"),
+                 QJsonObject{{QStringLiteral("KXBTC15M-26JUL241015-15"), prediction(0.95, 0.83, 10.0)},
+                             {QStringLiteral("KXSILVERH-26AUG1016-T1"), prediction(0.95, 0.83, 10.0)}});
+
+        const QJsonArray rows = KalshiBotDecision::decide(r, {}, {}, kNow, {});
+        QCOMPARE(rows.size(), 2);
+        QString trusted_reason, untrusted_reason;
+        bool trusted_was_priced = false;
+        for (const auto& v : rows) {
+            const QJsonObject row = v.toObject();
+            const QString t = row.value(QStringLiteral("ticker")).toString();
+            if (t.startsWith(QStringLiteral("KXBTC15M"))) {
+                trusted_reason = row.value(QStringLiteral("reason_code")).toString();
+                trusted_was_priced = row.contains(QStringLiteral("edge"));
+            }
+            if (t.startsWith(QStringLiteral("KXSILVERH")))
+                untrusted_reason = row.value(QStringLiteral("reason_code")).toString();
+        }
+        // The trusted family REACHES the edge maths. Asserting "bid" here would
+        // couple this test to pricing config it is not about — whether it then
+        // bids or rests is a different gate's business.
+        QVERIFY2(trusted_was_priced, "a trusted family must reach the edge maths");
+        QVERIFY(trusted_reason != QStringLiteral("SIGNAL_UNTRUSTED"));
+        QVERIFY(trusted_reason != QStringLiteral("SIGNAL_UNMEASURED"));
+        // Silver was MEASURED on its own evidence and lost — a statement about
+        // the model, and it never reaches pricing.
+        QCOMPARE(untrusted_reason, QStringLiteral("SIGNAL_UNTRUSTED"));
+    }
+
+    // The distinction a boolean destroys: too little evidence is UNMEASURED,
+    // and it must not print as "measured and lost".
+    void a_family_below_its_floor_is_unmeasured_not_untrusted() {
+        QJsonObject r = report(0.95, 0.83, 10.0);
+        r.remove(QStringLiteral("families"));
+        QJsonObject young = r;
+        young.insert(QStringLiteral("adds_value_on_bet_eligible"), false);
+        young.insert(QStringLiteral("eligible_scored_contracts"), 40);  // below the 100 floor
+        r.insert(QStringLiteral("by_family"), QJsonObject{{QStringLiteral("KXWTIH"), young}});
+        r.insert(QStringLiteral("predictions"),
+                 QJsonObject{{QStringLiteral("KXWTIH-A"), prediction(0.95, 0.83, 10.0)}});
+
+        const QJsonArray rows = KalshiBotDecision::decide(r, {}, {}, kNow, {});
+        QCOMPARE(reason(rows), QStringLiteral("SIGNAL_UNMEASURED"));
+    }
+
+    // A report that declares no family speaks for nobody. This is what stops a
+    // producer whose evidence cannot be attributed from authorising anything.
+    void an_undeclared_report_authorises_nothing() {
+        QJsonObject r = report(0.95, 0.83, 10.0);
+        r.remove(QStringLiteral("families"));
+        QVERIFY(!r.contains(QStringLiteral("by_family")));
+        const QJsonArray rows = KalshiBotDecision::decide(r, {}, {}, kNow, {});
+        QCOMPARE(reason(rows), QStringLiteral("SIGNAL_UNMEASURED"));
+    }
+
+    // The refusal happens BEFORE the contract is priced, exactly as the old
+    // report-level gate returned before any contract was: nothing downstream
+    // can reinstate a bid the family never earned.
+    void an_untrusted_family_is_refused_before_it_is_priced() {
+        QJsonObject r = report(0.95, 0.83, 10.0);
+        r.remove(QStringLiteral("families"));
+        QJsonObject lost = r;
+        lost.insert(QStringLiteral("adds_value_on_bet_eligible"), false);
+        lost.insert(QStringLiteral("brier_eligible_full"), 0.99);
+        lost.insert(QStringLiteral("eligible_scored_contracts"), 200);
+        r.insert(QStringLiteral("by_family"), QJsonObject{{QStringLiteral("KXBTC15M"), lost}});
+
+        const QJsonArray rows = KalshiBotDecision::decide(r, {}, {}, kNow, {});
+        for (const auto& v : rows) {
+            const QJsonObject row = v.toObject();
+            QCOMPARE(row.value(QStringLiteral("action")).toString(), QStringLiteral("pass"));
+            QVERIFY2(!row.contains(QStringLiteral("edge")),
+                     "a refused family must never reach the edge maths");
+        }
     }
 
 };

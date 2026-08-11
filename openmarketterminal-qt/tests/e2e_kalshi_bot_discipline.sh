@@ -83,6 +83,13 @@ json.dump({
     "brier_market_mid_raw": 0.1083,
     "brier_market_trained_logit": 0.1101,
     "adds_value_over_market": trusted == "True",
+    "families": ["KXBTC15M"],
+    # Measured on enough of its OWN evidence, so an untrusted report is a
+    # FAIL (a statement about the model) rather than UNMEASURED (an absence
+    # of one). The ternary distinguishes them and this test is about the
+    # former.
+    "eligible_scored_contracts": 200,
+    "min_eligible_contracts": 100,
     "adds_value_on_bet_eligible": trusted == "True",
     "brier_eligible_full": 0.2130 if trusted == "True" else 0.2576,
     "brier_eligible_market_mid_raw": 0.2576 if trusted == "True" else 0.2130,
