@@ -92,7 +92,9 @@ class RestObservationTest(unittest.TestCase):
         self.assertEqual(obs["features"]["spot_source"], "pyth:Metal.XAU/USD")
         self.assertEqual(obs["features"]["settlement_source"], "pyth:Metal.XAU/USD")
         self.assertIn("physics_tape_confirm_near_close", obs["p_ablations"])
+        self.assertIn(cal.PHASE4_TILT_KEY, obs["p_ablations"])
         self.assertIn("session_regime", obs["features"])
+        self.assertIn("p_mid_prior_tilt", obs["features"])
 
     def test_observation_from_rest_yahoo_fallback(self):
         market, now_ms = gold_market()
@@ -160,6 +162,64 @@ class TrustGateTest(unittest.TestCase):
         report = cal.build_report(state, {}, 0)
         self.assertTrue(report["adds_value_over_market"])
         self.assertEqual(report["trusted_variant"], "physics_tape_confirm_near_close")
+
+
+class MidPriorTiltTest(unittest.TestCase):
+    def test_enrich_emits_mid_prior_tilt(self):
+        features = {}
+        # Normal weekday RTH-ish: 2026-08-07 10:00 ET
+        import datetime, zoneinfo
+        eastern = zoneinfo.ZoneInfo("America/New_York")
+        now_ms = int(datetime.datetime(2026, 8, 7, 10, 0, tzinfo=eastern).timestamp() * 1000)
+        # Early window (not near close) + elevated vol → private=physics.
+        ablations = cal._enrich_phase3_features(
+            features, open_price=4350.0, spot=4360.0, yes_mid=0.55,
+            model_p=0.80, seconds_left=600, vol=8.0, now_ms=now_ms,
+            yahoo_series=[(now_ms - 60_000, 4355.0), (now_ms, 4360.0)])
+        self.assertIn(cal.PHASE4_TILT_KEY, ablations)
+        self.assertGreater(ablations[cal.PHASE4_TILT_KEY], 0.55)
+        self.assertLess(ablations[cal.PHASE4_TILT_KEY], 0.80)
+
+    def test_quiet_vol_keeps_tilt_at_mid(self):
+        features = {}
+        import datetime, zoneinfo
+        eastern = zoneinfo.ZoneInfo("America/New_York")
+        now_ms = int(datetime.datetime(2026, 8, 7, 10, 0, tzinfo=eastern).timestamp() * 1000)
+        ablations = cal._enrich_phase3_features(
+            features, open_price=4350.0, spot=4360.0, yes_mid=0.55,
+            model_p=0.80, seconds_left=600, vol=1.0, now_ms=now_ms,
+            yahoo_series=[])
+        self.assertAlmostEqual(ablations[cal.PHASE4_TILT_KEY], 0.55)
+
+    def test_tilt_cannot_become_trusted_variant(self):
+        state = cal.default_state()
+        state["contract_scores_full"] = [0.20] * 120
+        state["contract_scores_market_mid_raw"] = [0.12] * 120
+        state["contract_scores_physics_tape_confirm_near_close"] = [0.18] * 120
+        state["contract_scores_physics_vol_regime_confirm"] = [0.18] * 120
+        state["contract_scores_physics_mid_prior_tilt"] = [0.05] * 120
+        report = cal.build_report(state, {}, 0)
+        self.assertTrue(report["ablations"][cal.PHASE4_TILT_KEY]["beats_mid"])
+        self.assertNotEqual(report["trusted_variant"], cal.PHASE4_TILT_KEY)
+        self.assertNotEqual(cal.select_trusted_variant(state), cal.PHASE4_TILT_KEY)
+        self.assertEqual(report["phase4_tilt"]["status"], "scored_only")
+        self.assertFalse(report["phase4_tilt"]["in_trusted_selection"])
+
+    def test_settle_appends_tilt_scores(self):
+        state = cal.default_state()
+        market, now_ms = gold_market(seconds_left=600)
+        series = [(now_ms - (40 - i) * 60_000, 4358.0 + (0.1 if i % 2 else -0.05))
+                  for i in range(40)]
+        cal.observe_cycle(state, {}, now_ms, yahoo_cache={"GC=F": series},
+                          rest_markets=[market], refresh_pyth=False)
+        ticker = market["ticker"]
+        obs0 = state["pending"][ticker]["obs"][0]
+        self.assertIn(cal.PHASE4_TILT_KEY, obs0["p_ablations"])
+        state["pending"][ticker]["close_ms"] = now_ms
+        cal.settle_cycle(state, now_ms + 121_000, resolver=lambda t, o: True)
+        self.assertEqual(len(state["contract_scores_physics_mid_prior_tilt"]), 1)
+        board, _ = cal.ablation_scoreboard(state)
+        self.assertIn(cal.PHASE4_TILT_KEY, board)
 
 
 class ObservePredictTest(unittest.TestCase):

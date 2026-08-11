@@ -74,6 +74,7 @@ EASTERN = zoneinfo.ZoneInfo("America/New_York")
 CLOSE_FOLD = 0
 MONTHS = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
           "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12}
+# Trusted selection / live_p — Phase-4 tilt deliberately excluded.
 ABLATION_KEYS = (
     "physics",
     "physics_veto_on_conflict",
@@ -81,6 +82,9 @@ ABLATION_KEYS = (
     "physics_brti_avg60",
     "physics_vol_regime_confirm",
 )
+# Population + eligible boards score tilt; select_trusted_* still uses ABLATION_KEYS.
+SCORED_ABLATION_KEYS = ABLATION_KEYS + ("physics_mid_prior_tilt",)
+PHASE4_TILT_KEY = "physics_mid_prior_tilt"
 
 
 def clamp_probability(value):
@@ -205,7 +209,7 @@ def lag_flags_from_horizon(horizon, contract=None):
 
 def ablation_probabilities(p_physics, yes_mid, lead_confirms, lead_conflicts,
                            p_brti_avg60=None, per_min_vol_bps=None, now_ms=None):
-    """physics / veto / confirm / BRTI-avg60 / vol-regime probabilities."""
+    """physics / veto / confirm / BRTI-avg60 / vol-regime / mid-prior-tilt probs."""
     p_physics = float(p_physics)
     yes_mid = float(yes_mid)
     p_veto = yes_mid if lead_conflicts else p_physics
@@ -214,12 +218,23 @@ def ablation_probabilities(p_physics, yes_mid, lead_confirms, lead_conflicts,
     session = oif.session_regime_at(now_ms) if now_ms is not None else None
     p_vol = oif.ablation_vol_regime_confirm(
         p_physics, yes_mid, per_min_vol_bps, session=session)
+    # Confirm-gated private likelihood vs market mid prior (Phase-4 observe).
+    if lead_conflicts:
+        p_private = yes_mid
+    elif lead_confirms:
+        p_private = p_physics
+    else:
+        p_private = p_avg if p_brti_avg60 is not None else p_physics
+    p_tilt = oif.capped_mid_prior_tilt(yes_mid, p_private)
+    if p_tilt is None:
+        p_tilt = yes_mid
     return {
         "physics": p_physics,
         "physics_veto_on_conflict": p_veto,
         "physics_confirm_only": p_confirm,
         "physics_brti_avg60": p_avg,
         "physics_vol_regime_confirm": p_vol,
+        PHASE4_TILT_KEY: float(p_tilt),
     }
 
 
@@ -345,6 +360,7 @@ def extract_observation(ticker, snapshot, brti_avg60=None, now_ms=None):
         "session_regime": session,
         "vol_regime": oif.vol_regime(per_min_vol_bps),
         "p_vol_regime_confirm": ablations["physics_vol_regime_confirm"],
+        "p_mid_prior_tilt": ablations[PHASE4_TILT_KEY],
     }
     return {
         "p_model": model_p,
@@ -393,6 +409,7 @@ def default_state():
         "contract_scores_physics_confirm_only": [],
         "contract_scores_physics_brti_avg60": [],
         "contract_scores_physics_vol_regime_confirm": [],
+        "contract_scores_physics_mid_prior_tilt": [],
         # Same contracts, scored over ONLY the observations where the model's
         # edge over the mid reached the bot's bid threshold -- the population
         # the trust flag is actually used to authorise. See
@@ -403,6 +420,7 @@ def default_state():
         "contract_scores_eligible_physics_confirm_only": [],
         "contract_scores_eligible_physics_brti_avg60": [],
         "contract_scores_eligible_physics_vol_regime_confirm": [],
+        "contract_scores_eligible_physics_mid_prior_tilt": [],
         # Each variant's OWN eligible mid population -- a contract can be
         # eligible for one variant and not another, so the variant's Brier
         # must be paired against the mid observed on ITS eligible contracts,
@@ -412,6 +430,7 @@ def default_state():
         "contract_scores_eligible_mid_physics_confirm_only": [],
         "contract_scores_eligible_mid_physics_brti_avg60": [],
         "contract_scores_eligible_mid_physics_vol_regime_confirm": [],
+        "contract_scores_eligible_mid_physics_mid_prior_tilt": [],
         "resolved": 0,
         "observation_count": 0,
     }
@@ -437,6 +456,7 @@ def load_state(path=STATE_PATH):
     state.setdefault("contract_scores_physics_confirm_only", [])
     state.setdefault("contract_scores_physics_brti_avg60", [])
     state.setdefault("contract_scores_physics_vol_regime_confirm", [])
+    state.setdefault("contract_scores_physics_mid_prior_tilt", [])
     # Same hazard as the contract_scores_* keys above: an already-schema-4
     # state file predates these six keys, so a bare index/append below would
     # KeyError on the first settlement.
@@ -446,11 +466,13 @@ def load_state(path=STATE_PATH):
     state.setdefault("contract_scores_eligible_physics_confirm_only", [])
     state.setdefault("contract_scores_eligible_physics_brti_avg60", [])
     state.setdefault("contract_scores_eligible_physics_vol_regime_confirm", [])
+    state.setdefault("contract_scores_eligible_physics_mid_prior_tilt", [])
     # Same hazard again: each variant's own eligible-mid population.
     state.setdefault("contract_scores_eligible_mid_physics_veto_on_conflict", [])
     state.setdefault("contract_scores_eligible_mid_physics_confirm_only", [])
     state.setdefault("contract_scores_eligible_mid_physics_brti_avg60", [])
     state.setdefault("contract_scores_eligible_mid_physics_vol_regime_confirm", [])
+    state.setdefault("contract_scores_eligible_mid_physics_mid_prior_tilt", [])
     state.setdefault("resolved", 0)
     state.setdefault("observation_count", 0)
     return state
@@ -636,6 +658,7 @@ def observation_from_rest(market, brti_samples, now_ms):
         "session_regime": oif.session_regime_at(now_ms),
         "vol_regime": oif.vol_regime(per_min_vol_bps),
         "p_vol_regime_confirm": ablations["physics_vol_regime_confirm"],
+        "p_mid_prior_tilt": ablations[PHASE4_TILT_KEY],
         "source": "rest+brti",
     }
     return {
@@ -666,6 +689,7 @@ def _record_live_prediction(state, predictions, ticker, obs, now_ms, book=None):
             "physics_confirm_only": obs["p_model"],
             "physics_brti_avg60": obs["p_model"],
             "physics_vol_regime_confirm": obs["p_model"],
+            PHASE4_TILT_KEY: obs["yes_mid"],
         }
         entry["obs"].append({
             "p_model": obs["p_model"],
@@ -900,6 +924,7 @@ def settle_cycle(state, now_ms, resolver=None, brti_samples=None):
         confirm_pairs = []
         brti_pairs = []
         vol_pairs = []
+        tilt_pairs = []
         for obs in observations:
             ablations = obs.get("p_ablations") or {}
             veto_pairs.append((
@@ -910,19 +935,28 @@ def settle_cycle(state, now_ms, resolver=None, brti_samples=None):
                 ablations.get("physics_brti_avg60", obs["p_model"]), outcome))
             vol_pairs.append((
                 ablations.get("physics_vol_regime_confirm", obs["p_model"]), outcome))
+            # Pre-tilt observations fall back to mid (no invented private LR).
+            tilt_pairs.append((
+                ablations.get(PHASE4_TILT_KEY, obs["yes_mid"]), outcome))
         state["contract_scores_physics_veto_on_conflict"].append(brier(veto_pairs))
         state["contract_scores_physics_confirm_only"].append(brier(confirm_pairs))
         state["contract_scores_physics_brti_avg60"].append(brier(brti_pairs))
         state["contract_scores_physics_vol_regime_confirm"].append(brier(vol_pairs))
+        state["contract_scores_physics_mid_prior_tilt"].append(brier(tilt_pairs))
         eligible_rows = [(obs["p_model"], obs["yes_mid"]) for obs in observations]
         eligible_model, eligible_mid = ce.eligible_pairs(eligible_rows, outcome)
         if eligible_model:
             state["contract_scores_eligible_full"].append(brier(eligible_model))
             state["contract_scores_eligible_market_mid_raw"].append(brier(eligible_mid))
         for key in ("physics_veto_on_conflict", "physics_confirm_only",
-                    "physics_brti_avg60", "physics_vol_regime_confirm"):
-            rows = [((obs.get("p_ablations") or {}).get(key, obs["p_model"]), obs["yes_mid"])
-                    for obs in observations]
+                    "physics_brti_avg60", "physics_vol_regime_confirm",
+                    PHASE4_TILT_KEY):
+            rows = [
+                ((obs.get("p_ablations") or {}).get(
+                    key, obs["yes_mid"] if key == PHASE4_TILT_KEY else obs["p_model"]),
+                 obs["yes_mid"])
+                for obs in observations
+            ]
             v_model, v_mid = ce.eligible_pairs(rows, outcome)
             if v_model:
                 # Pair this variant's Brier against the mid observed on ITS
@@ -942,16 +976,19 @@ def settle_cycle(state, now_ms, resolver=None, brti_samples=None):
         "contract_scores_physics_confirm_only",
         "contract_scores_physics_brti_avg60",
         "contract_scores_physics_vol_regime_confirm",
+        "contract_scores_physics_mid_prior_tilt",
         "contract_scores_eligible_full",
         "contract_scores_eligible_market_mid_raw",
         "contract_scores_eligible_physics_veto_on_conflict",
         "contract_scores_eligible_physics_confirm_only",
         "contract_scores_eligible_physics_brti_avg60",
         "contract_scores_eligible_physics_vol_regime_confirm",
+        "contract_scores_eligible_physics_mid_prior_tilt",
         "contract_scores_eligible_mid_physics_veto_on_conflict",
         "contract_scores_eligible_mid_physics_confirm_only",
         "contract_scores_eligible_mid_physics_brti_avg60",
         "contract_scores_eligible_mid_physics_vol_regime_confirm",
+        "contract_scores_eligible_mid_physics_mid_prior_tilt",
     ):
         state[key] = state[key][-SCORED_CONTRACT_WINDOW:]
 
@@ -969,6 +1006,8 @@ def ablation_scoreboard(state):
                 state.get("contract_scores_physics_brti_avg60") or [],
             "physics_vol_regime_confirm":
                 state.get("contract_scores_physics_vol_regime_confirm") or [],
+            PHASE4_TILT_KEY:
+                state.get("contract_scores_physics_mid_prior_tilt") or [],
         },
         state.get("contract_scores_market_mid_raw") or [],
         MIN_SCORED_CONTRACTS,
@@ -1012,6 +1051,8 @@ def eligible_ablation_scoreboard(state):
          "contract_scores_eligible_mid_physics_brti_avg60"),
         ("physics_vol_regime_confirm",
          "contract_scores_eligible_mid_physics_vol_regime_confirm"),
+        (PHASE4_TILT_KEY,
+         "contract_scores_eligible_mid_physics_mid_prior_tilt"),
     ):
         variant_board, _variant_mid = oif.paired_ablation_scoreboard(
             {key: state.get(f"contract_scores_eligible_{key}") or []},
@@ -1028,6 +1069,7 @@ def select_trusted_variant_eligible(state):
 
     Deliberately separate from select_trusted_variant: that one also selects
     live_p, the published probability. This one gates trust only.
+    Phase-4 mid-prior tilt is scored on the board but never selected here.
     """
     board, _b_mid = eligible_ablation_scoreboard(state)
     return oif.select_best_trusted(board, ABLATION_KEYS)
@@ -1084,13 +1126,27 @@ def build_report(state, predictions, now_ms):
                          "lag ablations veto/confirm vs sticky mid; "
                          "physics_brti_avg60 uses CF BRTI 60s average "
                          "(settlement underlier); physics_vol_regime_confirm "
-                         "clamps quiet/weekend to mid; market is raw yes mid"),
+                         "clamps quiet/weekend to mid; physics_mid_prior_tilt "
+                         "is mid prior × confirm-gated private LR (capped "
+                         "log-odds, scored only); market is raw yes mid"),
         "min_scored_contracts": MIN_SCORED_CONTRACTS,
         "brier_full": b_full,
         "brier_market_mid_raw": b_mid,
         "ablations": ablations,
         "trusted_variant": trusted_variant,
         "adds_value_over_market": adds_value,
+        "phase4_tilt": {
+            "status": "scored_only",
+            "key": PHASE4_TILT_KEY,
+            "max_abs_logit": oif.TILT_MAX_ABS_LOGIT,
+            "beats_mid": bool((ablations.get(PHASE4_TILT_KEY) or {}).get("beats_mid")),
+            "scored_contracts": int(
+                (ablations.get(PHASE4_TILT_KEY) or {}).get("scored_contracts") or 0),
+            "brier": (ablations.get(PHASE4_TILT_KEY) or {}).get("brier"),
+            "eligible_beats_mid": bool(
+                (eligible_ablations.get(PHASE4_TILT_KEY) or {}).get("beats_mid")),
+            "in_trusted_selection": False,
+        },
         "eligible_ablations": eligible_ablations,
         # Count of contracts with at least one eligible observation for the
         # physics population -- the deployment-observability number, kept as

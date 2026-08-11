@@ -1,15 +1,13 @@
 # Open-Terminal — Cursor scratchpad & lessons
 
-## Scratchpad — Scalp shadow proof bind (2026-08-09)
+## Scratchpad — Phase-4 mid-prior tilt observe (2026-08-10)
 
-Task: Bind SPOT/SCALP cockpit PAPER PROOF to crypto-scalp-qualification-v1
-(jsonl), remove edge crypto-recommend SQLite from this tab.
-
-[X] Scene proof fields from qualification
-[X] Cockpit bind + drop SQLite SELECT; SCALP SHADOW PROOF label
-[X] tst_crypto_cockpit pins + rebuild
-
-Prior (merged): #215 multi-cadence Kalshi families; crypto cockpit scene + right-rail polish.
+Task: market-prior × likelihood capped tilt (scored only; no live_p).
+[X] `capped_mid_prior_tilt` in outside_info_features + unit tests
+[X] KXBTC15M `physics_mid_prior_tilt` scored boards + `phase4_tilt` report; excluded from ABLATION_KEYS
+[X] commodities15m same wiring + tests
+[X] OUTSIDE_INFO_EDGE_BACKLOG Phase-4 status updated
+Promote later only when veto/confirm wins weeks *and* tilt beats mid at n≥100.
 
 ---
 
@@ -45,6 +43,7 @@ Prior (merged): #215 multi-cadence Kalshi families; crypto cockpit scene + right
 - **Kalshi category labels:** UI `"Weather"` must fetch `"Climate and Weather"`; commodities use the real API category `"Commodities"` (KXGOLD*, KXWTI*, …).
 - **Commodities 15m calibrator:** Own file `commodities-15m-calibrator.json`; reuses kxbtc15m Gaussian math; do not mix trust with BTC 15m or hourly threshold.
 - **Outside-info ladder:** Observe → ablation vs mid → veto/confirm → tiny tilt → trust at n≥100. Never retune Gaussian alone expecting profit. Phase 4 blocked while `adds_value_over_market` is false.
+- **Phase-4 mid-prior tilt is scored_only:** `physics_mid_prior_tilt` = mid prior × confirm-gated private LR via `capped_mid_prior_tilt` (`|Δlogit|≤0.20`). Lives in `SCORED_ABLATION_KEYS` / boards / `phase4_tilt` report on kxbtc15m + commodities15m — never in `ABLATION_KEYS` or `select_trusted_variant` until explicit promotion. Missing tilt on old obs falls back to mid (no invented LR).
 - **Pyth commodities feeds:** Prefer Hermes `Metal.XAU/USD`, `Metal.XAG/USD`, `Metal.XTI/USD` for GOLD/SILVER/WTI; Yahoo is cold fallback; report settlement-parity match rate, do not invent trust from it.
 - **Lag ablations are family-local:** `physics_veto_on_conflict` / `physics_confirm_only` score beside physics on kxbtc15m only; trust needs paired n≥100 vs mid; daemon persists `venue_lead_bps_30s` / `lead_conflicts` on horizon.
 - **BRTI settlement underlier:** KXBTC15M pays on CF BRTI **60s average**, not last print. Daemon must parse `avg_60s_data`; calibrator ablation `physics_brti_avg60` scores that spot separately from last-print physics. Fade-ban lift may use avg60 < open.

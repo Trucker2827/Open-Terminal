@@ -197,6 +197,55 @@ class BrtiAvg60Test(unittest.TestCase):
         self.assertEqual(obs["features"]["vol_regime"], "quiet")
 
 
+class MidPriorTiltTest(unittest.TestCase):
+    def test_ablation_emits_mid_prior_tilt(self):
+        ablations = cal.ablation_probabilities(
+            p_physics=0.80, yes_mid=0.55, lead_confirms=True, lead_conflicts=False)
+        self.assertIn(cal.PHASE4_TILT_KEY, ablations)
+        # Confirm → private=physics; capped pull toward physics from mid.
+        self.assertGreater(ablations[cal.PHASE4_TILT_KEY], 0.55)
+        self.assertLess(ablations[cal.PHASE4_TILT_KEY], 0.80)
+
+    def test_conflict_keeps_tilt_at_mid(self):
+        ablations = cal.ablation_probabilities(
+            p_physics=0.80, yes_mid=0.55, lead_confirms=False, lead_conflicts=True)
+        self.assertAlmostEqual(ablations[cal.PHASE4_TILT_KEY], 0.55)
+
+    def test_tilt_cannot_become_trusted_variant(self):
+        state = cal.default_state()
+        state["contract_scores_full"] = [0.20] * 120
+        state["contract_scores_market_mid_raw"] = [0.12] * 120
+        state["contract_scores_physics_veto_on_conflict"] = [0.18] * 120
+        state["contract_scores_physics_confirm_only"] = [0.18] * 120
+        state["contract_scores_physics_brti_avg60"] = [0.18] * 120
+        state["contract_scores_physics_vol_regime_confirm"] = [0.18] * 120
+        # Tilt "wins" the population board hard — must still be scored_only.
+        state["contract_scores_physics_mid_prior_tilt"] = [0.05] * 120
+        report = cal.build_report(state, {}, 0)
+        self.assertTrue(report["ablations"][cal.PHASE4_TILT_KEY]["beats_mid"])
+        self.assertNotEqual(report["trusted_variant"], cal.PHASE4_TILT_KEY)
+        self.assertNotEqual(cal.select_trusted_variant(state), cal.PHASE4_TILT_KEY)
+        self.assertEqual(report["phase4_tilt"]["status"], "scored_only")
+        self.assertFalse(report["phase4_tilt"]["in_trusted_selection"])
+        self.assertTrue(report["phase4_tilt"]["beats_mid"])
+
+    def test_settle_appends_tilt_scores(self):
+        state = cal.default_state()
+        ticker = OPEN_TICKER
+        close_at = 0
+        evidence = {"snapshots": {ticker: snapshot(
+            lead_confirms=True, lead_conflicts=False, yes_mid=0.55)}}
+        cal.observe_cycle(state, evidence, close_at, brti_samples=[])
+        self.assertIn(ticker, state["pending"])
+        obs0 = state["pending"][ticker]["obs"][0]
+        self.assertIn(cal.PHASE4_TILT_KEY, obs0["p_ablations"])
+        state["pending"][ticker]["close_ms"] = close_at
+        cal.settle_cycle(state, close_at + 121_000, resolver=lambda t, o: True)
+        self.assertEqual(len(state["contract_scores_physics_mid_prior_tilt"]), 1)
+        board, _ = cal.ablation_scoreboard(state)
+        self.assertIn(cal.PHASE4_TILT_KEY, board)
+
+
 class PerContractScoringTest(unittest.TestCase):
     def settle_one(self, state, ticker, n_obs, outcome, close_at=0):
         evidence = {"snapshots": {ticker: snapshot()}}

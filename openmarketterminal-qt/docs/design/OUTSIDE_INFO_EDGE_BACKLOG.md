@@ -28,7 +28,7 @@ Hard rules:
 | 3 | BRTI 60s-average predictor (match payout) | kxbtc15m | Phase 2 shipped |
 | 4 | Commodity futures tape into candle close | commodities15m | Phase 3 shipped |
 | 5 | Session / event vol-regime priors | both | Phase 3 shipped |
-| 6 | Tiny probability tilts after veto/confirm wins | both | Phase 4 |
+| 6 | Tiny probability tilts after veto/confirm wins | both | Phase 4 observe (scored_only) |
 
 ## Phase 1 feed map (Pyth Hermes Core)
 
@@ -78,8 +78,15 @@ KXBTC15M ablation (schema 4):
 
 ## Later phases
 
-- **Phase 4:** Tiny tilts only after veto/confirm wins ablation for 2+ weeks
-  (currently blocked: kxbtc15m `adds_value_over_market` is still false)
+- **Phase 4 (observe shipped):** `physics_mid_prior_tilt` =
+  mid prior × confirm-gated private likelihood, capped in log-odds
+  (`outside_info_features.capped_mid_prior_tilt`, default `|Δlogit|≤0.20`).
+  Scored on KXBTC15M + commodities15m population/eligible boards and
+  reported as `phase4_tilt.status=scored_only`. **Not** in
+  `ABLATION_KEYS` / `select_trusted_variant` / `live_p` / decide.
+  Promote to trusted only after veto/confirm wins ablation for 2+ weeks
+  *and* tilt itself beats mid at n≥100 (kxbtc15m `adds_value_over_market`
+  is still false today).
 
 ## Measurement (do not skip)
 
