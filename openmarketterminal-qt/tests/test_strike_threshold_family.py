@@ -206,6 +206,33 @@ class PerFamilySplitTest(unittest.TestCase):
             self.assertEqual(state[family]["contract_scores_full"], [], family)
             self.assertNotEqual(state[family]["full"].get("n_seen"), 33709, family)
 
+    def test_a_single_family_state_is_adopted_not_reset(self):
+        """A profile that was never pooled must keep its history.
+
+        Its flat state already IS that family's own evidence. Resetting it
+        would destroy legitimate history to fix a problem it never had —
+        measured the hard way: kxbtc-daily (KXBTC only) lost resolved=4 /
+        n_seen=167 to exactly this before the guard existed.
+        """
+        tmp = tempfile.mkdtemp()
+        solo = stf.Profile(
+            event="test_solo",
+            family="TEST_SOLO",
+            series={"KXBTC": stf.SeriesSpec(yahoo="BTC=F", label="btc", spot_mode="yahoo")},
+            state_path=os.path.join(tmp, "state.json"),
+            output_path=os.path.join(tmp, "out.json"),
+            probability_source="test",
+        )
+        flat = stf.default_state()
+        flat["resolved"] = 4
+        flat["contract_scores_full"] = [0.11] * 4
+        flat["full"]["n_seen"] = 167
+
+        state = stf.split_state(flat, solo)
+        self.assertEqual(state["KXBTC"]["resolved"], 4)
+        self.assertEqual(len(state["KXBTC"]["contract_scores_full"]), 4)
+        self.assertEqual(state["KXBTC"]["full"]["n_seen"], 167)
+
     def test_per_family_totals_reconcile_with_the_pooled_diagnostic(self):
         profile = self._profile()
         state = stf.split_state({}, profile)
