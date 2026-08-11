@@ -11,6 +11,7 @@
 #include "services/crypto/CryptoFees.h"
 #include "services/daemon/JobRunFinish.h"
 #include "services/daemon/JobHealth.h"
+#include "services/daemon/JobProcessError.h"
 #include "services/crypto_latency/CryptoLatencyService.h"
 #include "services/crypto_scalp/CryptoAutoScalp.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
@@ -5559,18 +5560,35 @@ void launch_scheduled_job(const QString& profile, const QJsonObject& job) {
         append_job_log(profile, QStringLiteral("scheduled-timeout id=%1 timeout=%2s").arg(id).arg(timeout_sec));
         p->kill();
     });
-    QObject::connect(p, &QProcess::errorOccurred, qApp, [profile, id, p, run_id](QProcess::ProcessError) {
+    QObject::connect(p, &QProcess::errorOccurred, qApp,
+                     [profile, id, p, run_id](QProcess::ProcessError error) {
+        const QString detail = p ? p->errorString() : QString();
+        // Only FailedToStart arrives without a finished() to follow it. Every
+        // other ProcessError -- notably the Crashed that this daemon's own
+        // timeout kill produces -- IS followed by finished(), which knows the
+        // exit code and whether we killed it. Recording here as well used to
+        // stamp all of them "process start error" and set
+        // daemon_history_recorded, suppressing the finished() handler: a job
+        // killed at its 45s deadline was filed as a failure to spawn, and the
+        // accurate `timeout` verdict was thrown away.
+        if (!services::daemon::job_process_error_is_terminal(error)) {
+            append_job_log(profile,
+                           QStringLiteral("scheduled-process-error id=%1 %2 "
+                                          "(finished() will record the verdict)")
+                               .arg(id, services::daemon::job_process_error_label(error, detail)));
+            return;
+        }
+        const QString label = services::daemon::job_process_error_label(error, detail);
         p->setProperty("daemon_history_recorded", true);
-        update_job_by_id(profile, id, [](QJsonObject& j) {
+        update_job_by_id(profile, id, [&label](QJsonObject& j) {
             j["running"] = false;
             j["last_status"] = QStringLiteral("failed");
-            j["last_error"] = QStringLiteral("process start error");
+            j["last_error"] = label;
             j["fail_count"] = j.value("fail_count").toInt() + 1;
             j["current_run_id"] = QString();
         });
-        record_job_run_finish(profile, run_id, QStringLiteral("failed"), -1, {}, {},
-                              QStringLiteral("process start error"));
-        append_job_log(profile, QStringLiteral("scheduled-error id=%1").arg(id));
+        record_job_run_finish(profile, run_id, QStringLiteral("failed"), -1, {}, {}, label);
+        append_job_log(profile, QStringLiteral("scheduled-error id=%1 %2").arg(id, label));
         p->deleteLater();
     });
     QObject::connect(p, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
