@@ -54,10 +54,18 @@ QJsonObject armed_status() {
 }
 
 /// A PASS verdict published minutes ago, in KalshiBotGate::evaluate()'s shape.
-QJsonObject passing_gate(qint64 ts_ms = kNow - 60'000) {
-    return QJsonObject{{QStringLiteral("verdict"), QStringLiteral("PASS")},
-                       {QStringLiteral("evaluated"), true},
-                       {QStringLiteral("ts_ms"), static_cast<double>(ts_ms)}};
+/// Admission is per family, so a usable gate fixture must carry `by_family`.
+/// The top-level verdict is deliberately the POOLED answer and is NOT what
+/// admits: these fixtures leave it FAIL to prove admission never reads it.
+QJsonObject passing_gate(qint64 ts_ms = kNow - 60'000,
+                         const QString& family = QStringLiteral("KXBTC15M")) {
+    return QJsonObject{
+        {QStringLiteral("verdict"), QStringLiteral("FAIL")},
+        {QStringLiteral("evaluated"), true},
+        {QStringLiteral("by_family_eligible"), true},
+        {QStringLiteral("by_family"),
+         QJsonObject{{family, QJsonObject{{QStringLiteral("verdict"), QStringLiteral("PASS")}}}}},
+        {QStringLiteral("ts_ms"), static_cast<double>(ts_ms)}};
 }
 
 /// One bid row exactly as KalshiBotDecision::decide() writes it.
@@ -89,7 +97,7 @@ QJsonObject bid_row() {
 }
 
 KalshiBotLive::Permission permitted() {
-    return KalshiBotLive::permit(armed_status(), passing_gate(), {}, kNow);
+    return KalshiBotLive::permit(armed_status(), passing_gate(), {}, kNow, QStringLiteral("KXBTC15M"));
 }
 
 } // namespace
@@ -118,14 +126,14 @@ class TstKalshiBotLive : public QObject {
         stop.engaged = true;
         // Everything else is perfect; only the switch is thrown.
         const KalshiBotLive::Permission permission =
-            KalshiBotLive::permit(armed_status(), passing_gate(), stop, kNow);
+            KalshiBotLive::permit(armed_status(), passing_gate(), stop, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY(!permission.permitted);
         QCOMPARE(permission.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedStopped));
     }
 
     void unreadable_status_is_neither_armed_nor_disarmed() {
         const KalshiBotLive::Permission permission =
-            KalshiBotLive::permit(QJsonObject{}, passing_gate(), {}, kNow);
+            KalshiBotLive::permit(QJsonObject{}, passing_gate(), {}, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY(!permission.permitted);
         QCOMPARE(permission.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedStatusUnknown));
     }
@@ -146,7 +154,7 @@ class TstKalshiBotLive : public QObject {
         QJsonObject status = armed_status();
         status.insert(flag, value);
         const KalshiBotLive::Permission permission =
-            KalshiBotLive::permit(status, passing_gate(), {}, kNow);
+            KalshiBotLive::permit(status, passing_gate(), {}, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY2(!permission.permitted, qPrintable(flag + " alone must refuse live mode"));
         QCOMPARE(permission.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedNotArmed));
     }
@@ -156,7 +164,7 @@ class TstKalshiBotLive : public QObject {
         status.insert(QStringLiteral("session"),
                       QJsonObject{{QStringLiteral("ends_at"), iso(kNow + 3'600'000)}});
         const KalshiBotLive::Permission permission =
-            KalshiBotLive::permit(status, passing_gate(), {}, kNow);
+            KalshiBotLive::permit(status, passing_gate(), {}, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY(!permission.permitted);
         QCOMPARE(permission.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedNotArmed));
     }
@@ -173,7 +181,7 @@ class TstKalshiBotLive : public QObject {
                       QJsonObject{{QStringLiteral("session_id"), QStringLiteral("sess-247")},
                                   {QStringLiteral("ends_at"), QString()}});
         const KalshiBotLive::Permission permission =
-            KalshiBotLive::permit(status, passing_gate(), {}, kNow);
+            KalshiBotLive::permit(status, passing_gate(), {}, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY2(!permission.permitted, "a 24/7 arm reads active — it must still be refused");
         QCOMPARE(permission.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedUnbounded));
     }
@@ -184,7 +192,7 @@ class TstKalshiBotLive : public QObject {
                       QJsonObject{{QStringLiteral("session_id"), QStringLiteral("sess-old")},
                                   {QStringLiteral("ends_at"), iso(kNow - 1)}});
         const KalshiBotLive::Permission permission =
-            KalshiBotLive::permit(status, passing_gate(), {}, kNow);
+            KalshiBotLive::permit(status, passing_gate(), {}, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY(!permission.permitted);
         QCOMPARE(permission.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedUnbounded));
     }
@@ -193,7 +201,7 @@ class TstKalshiBotLive : public QObject {
 
     void no_gate_file_refuses() {
         const KalshiBotLive::Permission permission =
-            KalshiBotLive::permit(armed_status(), QJsonObject{}, {}, kNow);
+            KalshiBotLive::permit(armed_status(), QJsonObject{}, {}, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY(!permission.permitted);
         QCOMPARE(permission.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedGateMissing));
     }
@@ -206,23 +214,45 @@ class TstKalshiBotLive : public QObject {
                         {QStringLiteral("evaluated"), false},
                         {QStringLiteral("reason"), QStringLiteral("seal check failed")},
                         {QStringLiteral("ts_ms"), static_cast<double>(kNow)}},
-            {}, kNow);
+            {}, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY(!permission.permitted);
         QCOMPARE(permission.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedGateRefused));
     }
 
+    // A FAIL for the family being asked refuses. Note this now turns on the
+    // FAMILY's verdict, not the pooled top-level one: `passing_gate()` already
+    // carries a top-level FAIL and still admits, which is the whole point of
+    // the change — pooling must not decide admission either way.
     void a_fail_verdict_refuses() {
         QJsonObject gate = passing_gate();
-        gate.insert(QStringLiteral("verdict"), QString::fromLatin1(KalshiBotGate::kVerdictFail));
+        gate.insert(QStringLiteral("by_family"),
+                    QJsonObject{{QStringLiteral("KXBTC15M"),
+                                 QJsonObject{{QStringLiteral("verdict"),
+                                              QString::fromLatin1(KalshiBotGate::kVerdictFail)}}}});
         const KalshiBotLive::Permission permission =
-            KalshiBotLive::permit(armed_status(), gate, {}, kNow);
+            KalshiBotLive::permit(armed_status(), gate, {}, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY(!permission.permitted);
         QCOMPARE(permission.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedGateFail));
     }
 
+    // The pooled verdict must not admit on its own. This is the regression that
+    // would silently restore the old behaviour: a top-level PASS with the asked
+    // family failing must still refuse.
+    void a_pooled_pass_never_admits_a_failing_family() {
+        QJsonObject gate = passing_gate();
+        gate.insert(QStringLiteral("verdict"), QString::fromLatin1(KalshiBotGate::kVerdictPass));
+        gate.insert(QStringLiteral("by_family"),
+                    QJsonObject{{QStringLiteral("KXBTC15M"),
+                                 QJsonObject{{QStringLiteral("verdict"),
+                                              QString::fromLatin1(KalshiBotGate::kVerdictFail)}}}});
+        QVERIFY2(!KalshiBotLive::permit(armed_status(), gate, {}, kNow,
+                                        QStringLiteral("KXBTC15M")).permitted,
+                 "a pooled PASS must never override a family's own FAIL");
+    }
+
     void a_stale_pass_refuses() {
         const KalshiBotLive::Permission permission = KalshiBotLive::permit(
-            armed_status(), passing_gate(kNow - KalshiBotLive::kMaxGateAgeMs - 1), {}, kNow);
+            armed_status(), passing_gate(kNow - KalshiBotLive::kMaxGateAgeMs - 1), {}, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY2(!permission.permitted, "a PASS older than the freshness bound is a stale opinion");
         QCOMPARE(permission.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedGateStale));
     }
@@ -230,9 +260,9 @@ class TstKalshiBotLive : public QObject {
     void an_undated_or_future_pass_refuses() {
         QJsonObject undated = passing_gate();
         undated.remove(QStringLiteral("ts_ms"));
-        QCOMPARE(KalshiBotLive::permit(armed_status(), undated, {}, kNow).reason_code,
+        QCOMPARE(KalshiBotLive::permit(armed_status(), undated, {}, kNow, QStringLiteral("KXBTC15M")).reason_code,
                  QString::fromLatin1(KalshiBotLive::kRefusedGateStale));
-        QCOMPARE(KalshiBotLive::permit(armed_status(), passing_gate(kNow + 1), {}, kNow).reason_code,
+        QCOMPARE(KalshiBotLive::permit(armed_status(), passing_gate(kNow + 1), {}, kNow, QStringLiteral("KXBTC15M")).reason_code,
                  QString::fromLatin1(KalshiBotLive::kRefusedGateStale));
     }
 
@@ -272,7 +302,7 @@ class TstKalshiBotLive : public QObject {
         status.insert(QStringLiteral("experiment_cap"), 5000.0);
         status.insert(QStringLiteral("max_orders_per_hour"), 900);
         const KalshiBotLive::Permission permission =
-            KalshiBotLive::permit(status, passing_gate(), {}, kNow);
+            KalshiBotLive::permit(status, passing_gate(), {}, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY(permission.permitted);
         QCOMPARE(permission.max_stake_usd, 2.0);
         QCOMPARE(permission.max_all_in_usd, 3.0);
@@ -284,7 +314,7 @@ class TstKalshiBotLive : public QObject {
         QJsonObject status = armed_status();
         status.remove(QStringLiteral("per_bet_all_in_tolerance"));
         const KalshiBotLive::Permission permission =
-            KalshiBotLive::permit(status, passing_gate(), {}, kNow);
+            KalshiBotLive::permit(status, passing_gate(), {}, kNow, QStringLiteral("KXBTC15M"));
         QVERIFY(!permission.permitted);
         QCOMPARE(permission.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedStatusUnknown));
     }
@@ -485,6 +515,73 @@ class TstKalshiBotLive : public QObject {
         live.insert(QStringLiteral("mode"), QStringLiteral("live"));
         QVERIFY(KalshiBotLive::is_live_row(live));
     }
+
+    // ---- per-family admission -------------------------------------------
+    // THE safety property: one family's paper record authorises that family and
+    // nothing else. Gold with a clean record must not admit BTC, whose own
+    // record has a blown drawdown. Before this existed, admission was a single
+    // pooled PASS and a winning family would have carried a losing one live.
+    void a_passing_family_never_admits_a_failing_one() {
+        QJsonObject gate{
+            {QStringLiteral("verdict"), QStringLiteral("FAIL")},  // pooled: still FAIL
+            {QStringLiteral("evaluated"), true},
+            {QStringLiteral("by_family_eligible"), true},
+            {QStringLiteral("ts_ms"), static_cast<double>(kNow - 60'000)},
+            {QStringLiteral("by_family"),
+             QJsonObject{
+                 {QStringLiteral("KXGOLDH"),
+                  QJsonObject{{QStringLiteral("verdict"), QStringLiteral("PASS")}}},
+                 {QStringLiteral("KXBTCD"),
+                  QJsonObject{{QStringLiteral("verdict"), QStringLiteral("FAIL")}}}}}};
+
+        const auto gold = KalshiBotLive::permit(armed_status(), gate, {}, kNow,
+                                                QStringLiteral("KXGOLDH"));
+        QVERIFY2(gold.permitted, "a family whose own record passed must be admitted");
+
+        const auto btc = KalshiBotLive::permit(armed_status(), gate, {}, kNow,
+                                               QStringLiteral("KXBTCD"));
+        QVERIFY2(!btc.permitted, "gold's record must never authorise BTC");
+        QCOMPARE(btc.reason_code, QString::fromLatin1(KalshiBotLive::kRefusedGateFail));
+    }
+
+    // A family nobody preregistered cannot be admitted, even when another
+    // family passed. Otherwise pointing the bot at a new series would mint a
+    // fresh hypothesis after seeing the data.
+    void an_unpreregistered_family_is_refused() {
+        QJsonObject gate{
+            {QStringLiteral("verdict"), QStringLiteral("FAIL")},
+            {QStringLiteral("evaluated"), true},
+            {QStringLiteral("by_family_eligible"), true},
+            {QStringLiteral("ts_ms"), static_cast<double>(kNow - 60'000)},
+            {QStringLiteral("by_family"),
+             QJsonObject{{QStringLiteral("KXGOLDH"),
+                          QJsonObject{{QStringLiteral("verdict"), QStringLiteral("PASS")}}}}}};
+        const auto other = KalshiBotLive::permit(armed_status(), gate, {}, kNow,
+                                                 QStringLiteral("KXSILVERH"));
+        QVERIFY2(!other.permitted, "a family absent from the sealed gate is not admissible");
+    }
+
+    // Fail-closed: with no families preregistered, nothing is admissible — even
+    // if a by_family block somehow carries a PASS.
+    void no_preregistered_families_admits_nothing() {
+        QJsonObject gate{
+            {QStringLiteral("verdict"), QStringLiteral("PASS")},
+            {QStringLiteral("evaluated"), true},
+            {QStringLiteral("by_family_eligible"), false},
+            {QStringLiteral("ts_ms"), static_cast<double>(kNow - 60'000)},
+            {QStringLiteral("by_family"),
+             QJsonObject{{QStringLiteral("KXGOLDH"),
+                          QJsonObject{{QStringLiteral("verdict"), QStringLiteral("PASS")}}}}}};
+        QVERIFY(!KalshiBotLive::permit(armed_status(), gate, {}, kNow,
+                                       QStringLiteral("KXGOLDH")).permitted);
+    }
+
+    // An unnamed family is refused rather than treated as "any".
+    void an_unnamed_family_is_refused() {
+        QVERIFY(!KalshiBotLive::permit(armed_status(), passing_gate(), {}, kNow,
+                                       QString()).permitted);
+    }
+
 };
 
 QTEST_MAIN(TstKalshiBotLive)

@@ -154,6 +154,27 @@ class KalshiBotGate {
                                 const QJsonArray& settlement_rows,
                                 qint64 now_ms,
                                 const RecordIntegrity& record);
+
+    /// The Kalshi series ticker a row belongs to: everything before the first
+    /// '-' (`KXBTCD-26JUL2412-T63999.99` → `KXBTCD`). Returns an EMPTY string
+    /// for a ticker that is blank or carries no series prefix, so a malformed
+    /// row belongs to no family and can never be scored into one.
+    ///
+    /// Note the deliberate divergence: the bot's own postmortem groups by its
+    /// own taxonomy (`threshold`, `kxbtc15m`). This gate groups by the series
+    /// ticker, because that is derivable from the row itself and cannot drift
+    /// from a mapping table. The two spellings are NOT interchangeable.
+    static QString family_of(const QString& ticker);
+
+  private:
+    /// `evaluate()` with the per-family pass switched off, so scoring one
+    /// family cannot recurse into scoring families again.
+    static QJsonObject evaluate_scoped(const QJsonValue& params_record,
+                                       const QJsonArray& decision_rows,
+                                       const QJsonArray& settlement_rows,
+                                       qint64 now_ms,
+                                       const RecordIntegrity& record,
+                                       bool with_families);
 };
 
 } // namespace openmarketterminal::services::prediction::kalshi_ns
