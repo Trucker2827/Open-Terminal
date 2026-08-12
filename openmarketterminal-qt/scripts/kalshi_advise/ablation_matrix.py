@@ -60,6 +60,11 @@ FULL = tuple(sc.FULL_FEATURES)
 SIGNALS = tuple(sc.ENSEMBLE_FEATURES)
 
 # The six models, in the order they answer the question.
+# SCOPE: run over whatever families carry a `by_family` resolved_record. Today
+# that is the commodity producers only -- spot-calibrator (BTC) has no
+# by_family block and is SKIPPED, not judged. Any statement about what the
+# ensemble signals contribute is therefore about the families measured, never
+# about BTC, where four of the five columns are substantially populated.
 MODELS = (
     ("market_raw", None),                  # the actual baseline: p = yes_mid
     ("market_logit", MARKET),              # does fitting/calibrating the mid alone change it?

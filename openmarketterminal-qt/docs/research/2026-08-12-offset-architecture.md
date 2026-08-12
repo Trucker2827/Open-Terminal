@@ -4,6 +4,40 @@
 
 Snapshot 2026-08-12 10:16. Regenerate: `python3 scripts/kalshi_advise/offset_model.py`
 
+## SCOPE — what these numbers cover, and what they do not
+
+Every result below was established on **KXGOLDH, KXSILVERH and KXWTIH only**.
+**BTC was outside this experiment** (`spot-calibrator-state.json` carries no
+`by_family` block, so it was skipped, not judged).
+
+That bounds one claim in particular. `market_physics` and
+`market_physics_signals` scored identically to four decimals **for those three
+commodity families**, because those producers populate **none** of the five
+ensemble columns — `strike_threshold_family` never reads the aux sources and
+never extracts a book. It is a fact about the commodity producers, not a fact
+about the signals.
+
+BTC is different, measured directly:
+
+| signal | BTC non-zero | note |
+|---|---|---|
+| `book_imbalance` | 100.0% | |
+| `news_forecast` | 94.8% | |
+| `trade_flow` | 29.5% | |
+| `spot_drift` | 28.3% | |
+| `event_pressure` | **0.0%** | source file missing — the one confirmed unwired |
+
+**Four BTC columns contain non-zero values and their incremental value over the
+market is UNMEASURED.** Nothing here licenses the claim that the ensemble
+signals contribute nothing in general; it was never tested where they exist.
+
+A terminology caution that applies to that table: **a non-zero rate is not an
+availability rate.** A measured neutral may legitimately be zero, and rows
+stored without availability metadata cannot retrospectively separate
+*unavailable*, *stale*, *available-but-empty* and *available-and-neutral*. For
+commodities it is the CODE PATH that establishes non-availability; the all-zero
+table alone would not.
+
 ## Verdict: no family x horizon qualifies
 
 The offset architecture is **safer** than the unconstrained form, but **no predictive model
@@ -156,7 +190,12 @@ improvement.
 
 ## Research conclusion
 
-Rearranging existing physics variables is unlikely to create meaningful edge. The next
+Rearranging existing **physics** variables is unlikely to create meaningful edge. The next
 useful effort is collecting genuinely **independent, time-valid signals** — not fitting
 another mapping to substantially the same information.
+
+This conclusion is drawn from the commodity families, where the physics variables are all
+that exist. It does **not** extend to BTC's four populated ensemble signals, whose residual
+value over the market has never been measured and remains an open question requiring its
+own preregistered experiment.
 
