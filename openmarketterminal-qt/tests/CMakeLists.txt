@@ -22,6 +22,32 @@ target_link_libraries(tst_provenance_commands PRIVATE openterminal_core Qt6::Cor
 set_target_properties(tst_provenance_commands PROPERTIES UNITY_BUILD OFF)
 add_test(NAME tst_provenance_commands COMMAND tst_provenance_commands)
 
+# Read-only Bot Cockpit presentation for the disposable provenance index. It
+# must show absence/corruption/staleness and never paint indexed data as an
+# authority-green trading signal.
+add_executable(tst_context_index_cockpit
+    tst_context_index_cockpit.cpp
+    ${CMAKE_SOURCE_DIR}/src/screens/kalshi/ContextIndexCockpitReader.cpp)
+target_include_directories(tst_context_index_cockpit PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_context_index_cockpit PRIVATE openterminal_core Qt6::Core Qt6::Test)
+set_target_properties(tst_context_index_cockpit PROPERTIES UNITY_BUILD OFF)
+add_test(NAME tst_context_index_cockpit COMMAND tst_context_index_cockpit)
+
+# Actual QWidget reload + offscreen paint. This catches a presenter that is
+# correct but never wired into the cockpit scene.
+add_executable(tst_context_index_cockpit_widget
+    tst_context_index_cockpit_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/screens/kalshi/KalshiBotCockpitView.cpp
+    ${CMAKE_SOURCE_DIR}/src/screens/kalshi/ContextIndexCockpitReader.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme/Theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme/ThemeManager.cpp)
+target_include_directories(tst_context_index_cockpit_widget PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_context_index_cockpit_widget PRIVATE
+    openterminal_core Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
+set_target_properties(tst_context_index_cockpit_widget PROPERTIES UNITY_BUILD OFF)
+add_test(NAME tst_context_index_cockpit_widget COMMAND tst_context_index_cockpit_widget)
+set_tests_properties(tst_context_index_cockpit_widget PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 add_test(NAME test_crypto_fast_router
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_crypto_fast_router.py -v)

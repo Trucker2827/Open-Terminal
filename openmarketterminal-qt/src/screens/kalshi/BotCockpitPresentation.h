@@ -1,5 +1,7 @@
 #pragma once
 
+#include "screens/kalshi/ContextIndexCockpitPresentation.h"
+
 // Presentation for the BOT COCKPIT — the decision-rain scene the Predictions
 // screen opens over the BOT tab while `kalshi bot` is trading (ladder rung 7).
 //
@@ -762,6 +764,9 @@ struct BotCockpitScene {
     QList<BotCockpitHealthStage> health_stages;
     QString health_banner;                       ///< the health-first headline (worst stage)
     QString health_role = QStringLiteral("grey");///< colour of the headline
+
+    // ── disposable provenance index (read-only, never a trading stage) ─────
+    ContextIndexCockpitCard context_index;
 
     // ── THRESHOLD / KXBTCD scoreboard hero (pinned above the rain) ─────────
     // Paper ambition family. Same facts as the CALIBRATOR orbit node / KPI,

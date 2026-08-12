@@ -1847,6 +1847,7 @@ set(SCREEN_SOURCES
     src/screens/weather/WeatherScreen.cpp
     src/screens/kalshi/KalshiScreen.cpp
     src/screens/kalshi/KalshiBotCockpitView.cpp
+    src/screens/kalshi/ContextIndexCockpitReader.cpp
     src/screens/kalshi/CategoryPlaceholderPage.cpp
     src/screens/polymarket/PolymarketScreen.cpp
     src/screens/polymarket/PolymarketCommandBar.cpp
