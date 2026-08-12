@@ -95,21 +95,61 @@ class MetricsTest(unittest.TestCase):
         self.assertAlmostEqual(ab.calibration_error(rows), 40.0, places=6)
 
     def test_identical_models_produce_an_interval_containing_zero(self):
-        rows = [{"p": 0.4, "outcome": float(i % 2)} for i in range(60)]
-        ci = ab.paired_bootstrap(rows, list(rows))
+        rows = [{"p": 0.4, "outcome": float(i % 2), "event": ("E", i)} for i in range(60)]
+        ci = ab.paired_bootstrap(rows, [dict(r) for r in rows])
         self.assertAlmostEqual(ci["delta"], 0.0, places=9)
         self.assertLessEqual(ci["lo"], 0.0)
         self.assertGreaterEqual(ci["hi"], 0.0)
 
-    def test_a_strictly_worse_model_excludes_zero(self):
-        good = [{"p": 0.95, "outcome": 1.0} for _ in range(60)]
-        bad = [{"p": 0.05, "outcome": 1.0} for _ in range(60)]
-        ci = ab.paired_bootstrap(bad, good)
-        self.assertGreater(ci["lo"], 0.0, "a strictly worse model must be distinguishable")
+    def test_the_sign_convention_is_positive_means_improvement(self):
+        """delta = Brier(baseline) - Brier(model).
+
+        A rule written in one sign and computed in the other is a contradiction
+        that survives every review, so the direction is pinned here rather than
+        left to prose.
+        """
+        good = [{"p": 0.95, "outcome": 1.0, "event": ("E", i)} for i in range(60)]
+        bad = [{"p": 0.05, "outcome": 1.0, "event": ("E", i)} for i in range(60)]
+        better = ab.paired_bootstrap(good, bad)      # model good, baseline bad
+        self.assertGreater(better["delta"], 0.0, "an improvement must read POSITIVE")
+        self.assertGreater(better["lo"], 0.0, "and promotion needs the whole interval above zero")
+        worse = ab.paired_bootstrap(bad, good)
+        self.assertLess(worse["delta"], 0.0, "a deterioration must read NEGATIVE")
+        self.assertLess(worse["hi"], 0.0)
+
+    def test_the_bootstrap_resamples_events_not_contracts(self):
+        """Contracts in one event are strikes on ONE price path. Resampling
+        them individually treats correlated evidence as independent and reports
+        intervals several times too narrow."""
+        # Ten events, every contract inside an event agreeing.
+        rows, base = [], []
+        for e in range(10):
+            right = e % 2 == 0
+            for _ in range(20):
+                rows.append({"p": 0.9 if right else 0.1, "outcome": 1.0, "event": ("E", e)})
+                base.append({"p": 0.5, "outcome": 1.0, "event": ("E", e)})
+        clustered = ab.paired_bootstrap(rows, base)
+        flat_rows = [dict(r, event=("X", i)) for i, r in enumerate(rows)]
+        flat_base = [dict(r, event=("X", i)) for i, r in enumerate(base)]
+        naive = ab.paired_bootstrap(flat_rows, flat_base)
+        self.assertEqual(clustered["n_events"], 10)
+        self.assertGreater(clustered["hi"] - clustered["lo"],
+                           2.0 * (naive["hi"] - naive["lo"]),
+                           "clustering correlated evidence must WIDEN the interval")
+
+    def test_too_few_events_is_unbounded_not_a_tight_interval(self):
+        """One event cannot bound anything. Returning a narrow interval from a
+        single cluster would be the most dangerous possible output."""
+        rows = [{"p": 0.9, "outcome": 1.0, "event": ("E", 0)} for _ in range(30)]
+        base = [{"p": 0.5, "outcome": 1.0, "event": ("E", 0)} for _ in range(30)]
+        ci = ab.paired_bootstrap(rows, base)
+        self.assertEqual(ci["n_events"], 1)
+        self.assertIsNone(ci["lo"])
+        self.assertIn("too few", ci["note"])
 
     def test_the_bootstrap_is_deterministic(self):
-        rows = [{"p": 0.4, "outcome": float(i % 3 == 0)} for i in range(50)]
-        base = [{"p": 0.5, "outcome": float(i % 3 == 0)} for i in range(50)]
+        rows = [{"p": 0.4, "outcome": float(i % 3 == 0), "event": ("E", i // 5)} for i in range(50)]
+        base = [{"p": 0.5, "outcome": float(i % 3 == 0), "event": ("E", i // 5)} for i in range(50)]
         self.assertEqual(ab.paired_bootstrap(rows, base), ab.paired_bootstrap(rows, base))
 
 

@@ -91,6 +91,26 @@ def _slices(mid, z):
     return out
 
 
+def event_key(obs):
+    """A proxy for "same settlement event", used to CLUSTER the bootstrap.
+
+    Contracts in one hourly event are different strikes on ONE price path. They
+    are not independent draws, and resampling them individually treats 264
+    correlated contracts as 264 independent observations -- which makes every
+    confidence interval far too narrow. Measured: gold's 264 contracts span 81
+    groups, silver's 264 span 45, WTI's 55 span SEVEN.
+
+    Contracts observed at the same spot and the same time-to-close belong to the
+    same event. That is a proxy -- resolved_record carries no event id -- and it
+    is deliberately conservative: if it merges two genuinely distinct events the
+    interval only gets wider.
+    """
+    spot = obs.get("spot")
+    left = obs.get("sqrt_minutes_left")
+    return (round(float(spot), 2) if isinstance(spot, (int, float)) else None,
+            round(float(left), 3) if isinstance(left, (int, float)) else None)
+
+
 def _clip(p, eps=1e-6):
     return min(1.0 - eps, max(eps, p))
 
@@ -119,6 +139,7 @@ def walk_forward(records, features):
             "outcome": outcome,
             "mid": float(mid),
             "z": obs.get("required_move_sigma"),
+            "event": event_key(obs),
         })
         if model is not None:
             model.update(obs, outcome)
@@ -158,26 +179,51 @@ def calibration_error(rows, bins=10):
 
 
 def paired_bootstrap(model_rows, base_rows, seed=BOOTSTRAP_SEED, samples=BOOTSTRAP_SAMPLES):
-    """CI on the PAIRED per-contract Brier delta (model - baseline).
+    """CI on the paired Brier delta, resampling EVENTS not contracts.
 
     Paired because both models scored the identical rows in the identical
-    order. Negative means the model beat the baseline. An interval containing
-    zero means no established difference, whatever the point estimate says.
+    order. delta = Brier(baseline) - Brier(model), so POSITIVE means the model
+    improved on the baseline. An interval containing zero means no established
+    difference, whatever the point estimate says.
+
+    CLUSTERED: the resampling unit is the settlement event, because contracts
+    within one event are strikes on a single price path and carry one draw's
+    worth of information between them. Resampling contracts individually would
+    treat silver's 45 real events as 264 independent observations and report
+    intervals several times too narrow. `n_events` is published beside every
+    interval so a reader can see the evidence actually behind it.
     """
     n = len(model_rows)
     if n < 2 or n != len(base_rows):
         return None
-    deltas = [(m["p"] - m["outcome"]) ** 2 - (b["p"] - b["outcome"]) ** 2
+    # SIGN CONVENTION, frozen: delta = Brier(baseline) - Brier(model).
+    # POSITIVE means the model IMPROVED on the baseline. Promotion therefore
+    # requires the whole interval ABOVE zero. Stated here once and used
+    # everywhere, because a rule written in one sign and computed in the other
+    # is a contradiction that survives every review.
+    deltas = [(b["p"] - b["outcome"]) ** 2 - (m["p"] - m["outcome"]) ** 2
               for m, b in zip(model_rows, base_rows)]
+    clusters = {}
+    for i, row in enumerate(model_rows):
+        clusters.setdefault(row.get("event"), []).append(deltas[i])
+    groups = list(clusters.values())
+    if len(groups) < 2:
+        return {"delta": sum(deltas) / n, "lo": None, "hi": None,
+                "n_events": len(groups),
+                "note": "too few independent events to bound"}
     rng = random.Random(seed)
     means = []
     for _ in range(samples):
-        means.append(sum(deltas[rng.randrange(n)] for _ in range(n)) / n)
+        drawn = []
+        for _ in range(len(groups)):
+            drawn.extend(groups[rng.randrange(len(groups))])
+        means.append(sum(drawn) / len(drawn))
     means.sort()
     return {
         "delta": sum(deltas) / n,
         "lo": means[int(0.025 * samples)],
         "hi": means[int(0.975 * samples)],
+        "n_events": len(groups),
     }
 
 
