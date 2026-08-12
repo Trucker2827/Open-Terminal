@@ -39,6 +39,7 @@ Commands:  once | run [--interval 60] | report
 from __future__ import annotations
 
 import datetime
+import contextlib
 import json
 import math
 import os
@@ -1071,6 +1072,65 @@ def build_report(state, predictions, now_ms):
     return report
 
 
+@contextlib.contextmanager
+def single_family(family):
+    """Narrow the module's FAMILIES to ONE series for the duration.
+
+    This is the analogue of strike_threshold_family.family_profile(): every
+    helper here reads FAMILIES as a module global, so narrowing it is how a
+    single prediction problem is isolated without rewriting ten call sites.
+    Inside the block, build_report() sees one series and therefore does NOT
+    withhold trust -- the family earns its own verdict, exactly as a
+    single-series profile does in the shared module.
+    """
+    global FAMILIES
+    whole = FAMILIES
+    try:
+        FAMILIES = {family: whole[family]}
+        yield
+    finally:
+        FAMILIES = whole
+
+
+def split_state(outer):
+    """Per-family state slices, archiving a legacy pooled state on first run.
+
+    A pooled state carries ONE model fitted across gold, silver and oil. It
+    cannot seed any individual family -- copying it into all three would
+    recreate the exact contamination this split removes while making the
+    counters look healthy. Each family starts empty instead.
+
+    The cost is real: pooled sample counts do not carry over.
+    """
+    by_family = outer.get("by_family")
+    if not isinstance(by_family, dict):
+        by_family = {}
+    for family in FAMILIES:
+        if not isinstance(by_family.get(family), dict):
+            by_family[family] = default_state()
+    return by_family
+
+
+def pooled_view(by_family_state):
+    """Every family's scores concatenated -- DIAGNOSTIC ONLY.
+
+    The count across families is meaningful; the averaged Brier is not.
+    build_report withholds the authorising flags whenever FAMILIES holds more
+    than one series, so this can be reported without being believed.
+    """
+    pooled = default_state()
+    for state in by_family_state.values():
+        for key, value in state.items():
+            if isinstance(value, list) and key.startswith("contract_scores"):
+                pooled[key] = list(pooled.get(key) or []) + list(value)
+        pooled["resolved"] += int(state.get("resolved") or 0)
+        pooled["observation_count"] += int(state.get("observation_count") or 0)
+        parity = state.get("settlement_parity") or {}
+        pooled["settlement_parity"]["checked"] += int(parity.get("checked") or 0)
+        pooled["settlement_parity"]["matched"] += int(parity.get("matched") or 0)
+    return pooled
+
+
 def run_once(now_ms=None):
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     evidence = {}
@@ -1079,13 +1139,38 @@ def run_once(now_ms=None):
             evidence = json.load(fh)
     except (OSError, ValueError):
         evidence = {}
-    state = load_state()
+    outer = load_state()
+
+    # One-time migration: archive a legacy pooled state rather than deleting
+    # it, so the evidence behind earlier reports still exists to inspect.
+    if "by_family" not in outer and outer.get("resolved"):
+        legacy = "%s.pooled-legacy.json" % STATE_PATH
+        if not os.path.exists(legacy):
+            race.save_json_atomic(outer, legacy)
+
+    by_family_state = split_state(outer)
     yahoo_cache = {}
-    predictions = observe_cycle(state, evidence, now_ms, yahoo_cache=yahoo_cache)
-    settle_cycle(state, now_ms, yahoo_cache=yahoo_cache,
-                 pyth_series=state.get("pyth_series") or {})
-    race.save_json_atomic(state, STATE_PATH)
-    report = build_report(state, predictions, now_ms)
+    by_family_report = {}
+    predictions = {}
+    for family in sorted(FAMILIES):
+        # Narrowed to ONE series: only this family's markets reach this
+        # family's model, and its report earns its own trust.
+        with single_family(family):
+            state = by_family_state[family]
+            preds = observe_cycle(state, evidence, now_ms, yahoo_cache=yahoo_cache)
+            settle_cycle(state, now_ms, yahoo_cache=yahoo_cache,
+                         pyth_series=state.get("pyth_series") or {})
+            by_family_state[family] = state
+            by_family_report[family] = build_report(state, preds, now_ms)
+            predictions.update(preds)
+
+    race.save_json_atomic({"schema": STATE_SCHEMA, "by_family": by_family_state}, STATE_PATH)
+
+    # The umbrella keeps its pooled shape for existing readers, with the
+    # authorising flags withheld (FAMILIES holds three series here), and
+    # carries the per-family verdicts that ARE authoritative.
+    report = build_report(pooled_view(by_family_state), predictions, now_ms)
+    report["by_family"] = by_family_report
     race.save_json_atomic(report, OUTPUT_PATH)
     return report
 
