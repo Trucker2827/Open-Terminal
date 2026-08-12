@@ -196,7 +196,14 @@ def fetch_pyth_spot(pyth_id: str, fetcher=None) -> Optional[float]:
         price_obj = parsed.get("price") or {}
         price = float(price_obj.get("price"))
         expo = int(price_obj.get("expo") or 0)
-        return price * (10 ** expo)
+        spot = price * (10 ** expo)
+        # ZERO IS NOT A PRICE. Pyth published 0.0 for Metal.XTI/USD, and because
+        # that is not None it satisfied resolve_spot's `if spot is None` test and
+        # BLOCKED the Yahoo fallback -- which had a perfectly good CL=F quote the
+        # whole time. Result: KXWTIH skipped 9,520 markets as unmodelled, trained
+        # on nothing, and could never earn promotion. Returning None hands the
+        # decision back to the fallback instead of poisoning it.
+        return spot if spot > 0.0 else None
     except (OSError, ValueError, TypeError, IndexError, KeyError):
         return None
 
@@ -239,10 +246,10 @@ def resolve_spot(spec: SeriesSpec, yahoo_cache: dict) -> Tuple[Optional[float], 
                 yahoo_cache[spec.yahoo] = fetch_yahoo_series(spec.yahoo)
             series = yahoo_cache[spec.yahoo]
             vol = per_min_vol_bps_from_series(series)
-            if spot is None and series:
+            if (spot is None or spot <= 0.0) and series:
                 spot = series[-1][1]
                 return spot, vol, "yahoo:%s" % spec.yahoo
-        if spot is not None:
+        if spot is not None and spot > 0.0:
             return spot, vol if vol is not None else DEFAULT_VOL_BPS, "brti"
         return None, None, "missing"
 
@@ -250,8 +257,10 @@ def resolve_spot(spec: SeriesSpec, yahoo_cache: dict) -> Tuple[Optional[float], 
     source = "missing"
     if spec.pyth_id:
         spot = fetch_pyth_spot(spec.pyth_id)
-        if spot is not None:
+        if spot is not None and spot > 0.0:
             source = "pyth:%s" % spec.pyth_symbol
+        else:
+            spot = None  # let the fallback below decide
     vol = None
     if spec.yahoo:
         if spec.yahoo not in yahoo_cache:
