@@ -38,6 +38,21 @@ class ReadOnlyKalshiClient:
     def get_market(self, ticker: str) -> Market:
         return self.client.get_market(ticker)
 
+    def get_events(
+        self,
+        *,
+        status: str = "open",
+        limit: int = 200,
+        cursor: str | None = None,
+        with_nested_markets: bool = True,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        return self.client.get_events(
+            status=status,
+            limit=limit,
+            cursor=cursor,
+            with_nested_markets=with_nested_markets,
+        )
+
     def get_series(self, ticker: str) -> dict[str, Any]:
         return self.client.get_series(ticker)
 
@@ -243,6 +258,97 @@ def load_certificate(path: Path) -> PayoffCertificate:
     if not isinstance(payload, dict):
         raise ValueError("certificate root must be an object")
     return PayoffCertificate.from_payload(payload)
+
+
+def _canonical_digest(payload: Mapping[str, Any]) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def discovery_row(event: Mapping[str, Any], *, observed_at: str) -> dict[str, object]:
+    """Preserve an event as a candidate, never as an executable certificate.
+
+    Kalshi's ``mutually_exclusive`` flag is useful discovery metadata, but it
+    does not prove exhaustive binary settlement. Individual rules may permit
+    scalar/non-standard payouts. Accordingly every row remains blocked on
+    manual rules review even when the exchange marks the event exclusive.
+    """
+    raw_markets = event.get("markets")
+    markets = [market for market in raw_markets if isinstance(market, Mapping)] \
+        if isinstance(raw_markets, list) else []
+    active = [
+        market for market in markets
+        if str(market.get("status") or "").lower() in {"active", "open"}
+    ]
+    tickers = [str(market.get("ticker") or "") for market in active]
+    tickers = [ticker for ticker in tickers if ticker]
+    exclusive = event.get("mutually_exclusive") is True
+    reasons = [
+        "settlement rules have not been manually reviewed",
+        "scalar, cancellation, DNP, last-fair-price, and other non-standard payouts are not enumerated",
+    ]
+    if not exclusive:
+        reasons.append("event is not machine-declared mutually exclusive")
+    if len(active) < 2:
+        reasons.append("fewer than two open child markets")
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "event": "kalshi_structural_arb_candidate",
+        "observed_at": observed_at,
+        "event_ticker": str(event.get("event_ticker") or ""),
+        "series_ticker": str(event.get("series_ticker") or ""),
+        "title": str(event.get("title") or ""),
+        "machine_claims": {
+            "mutually_exclusive": exclusive,
+            "collateral_return_type": event.get("collateral_return_type"),
+        },
+        "open_market_tickers": tickers,
+        "open_market_count": len(tickers),
+        "candidate": exclusive and len(tickers) >= 2,
+        "certified": False,
+        "review_status": "manual_rules_review_required",
+        "certification_blockers": reasons,
+        "event_sha256": _canonical_digest(event),
+        "raw_event": dict(event),
+    }
+
+
+def discover_candidates(
+    client: Any,
+    *,
+    out: Path,
+    max_pages: int = 0,
+    page_size: int = 20,
+) -> dict[str, int]:
+    """Record open structural candidates without manufacturing certificates."""
+    if max_pages < 0:
+        raise ValueError("max_pages cannot be negative")
+    if not 1 <= page_size <= 200:
+        raise ValueError("page_size must be between 1 and 200")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cursor: str | None = None
+    pages = events = candidates = 0
+    seen_cursors: set[str] = set()
+    with out.open("a", encoding="utf-8") as handle:
+        while True:
+            batch, next_cursor = client.get_events(
+                status="open", limit=page_size, cursor=cursor, with_nested_markets=True
+            )
+            observed_at = datetime.now(timezone.utc).isoformat()
+            pages += 1
+            for event in batch:
+                row = discovery_row(event, observed_at=observed_at)
+                handle.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
+                events += 1
+                candidates += int(bool(row["candidate"]))
+            handle.flush()
+            if not next_cursor or (max_pages and pages >= max_pages):
+                break
+            if next_cursor in seen_cursors:
+                raise RuntimeError("Kalshi event pagination repeated a cursor")
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+    return {"pages": pages, "events": events, "candidates": candidates, "certified": 0}
 
 
 def _ask_levels(book: BinaryBook, side: str) -> tuple[tuple[Decimal, Decimal], ...]:

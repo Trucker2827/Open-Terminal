@@ -53,6 +53,21 @@ similar wording, or shared underliers are insufficient.
 
 ## Commands
 
+Discover machine-declared event candidates for manual settlement-rule review:
+
+```bash
+python3 scripts/kalshi_structural_arb.py discover \
+  --out logs/kalshi-structural-arb-candidates.jsonl
+```
+
+Discovery stores Kalshi's full event and child-market metadata plus a canonical
+digest. It **never** emits a payoff certificate. In particular,
+`mutually_exclusive=true` does not establish exhaustive binary settlement:
+Kalshi documents that some contracts can receive scalar, last-fair-price, or
+other non-standard payouts. Every discovered row therefore remains
+`manual_rules_review_required` until those states are explicitly represented
+in a reviewed certificate.
+
 One authenticated read-only snapshot:
 
 ```bash

@@ -12,6 +12,7 @@ from kalshi_microstructure.auth import DEFAULT_KEYS_PATH, load_credentials
 from kalshi_microstructure.kalshi import KalshiRestClient
 from kalshi_microstructure.structural_arb import (
     collect_snapshot,
+    discover_candidates,
     load_certificate,
     ReadOnlyKalshiClient,
     record_snapshots,
@@ -59,14 +60,43 @@ def main(argv: list[str] | None = None) -> int:
     replay = commands.add_parser("replay", help="Recompute and audit recorded evidence.")
     replay.add_argument("path")
 
+    discover = commands.add_parser(
+        "discover",
+        help="Record open event candidates for manual rules review; certifies nothing.",
+    )
+    discover.add_argument("--out", required=True)
+    discover.add_argument("--max-pages", type=int, default=0, help="0 means all pages.")
+    discover.add_argument(
+        "--page-size", type=int, default=20,
+        help="Events per response; nested rule payloads are large (default: 20).",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "replay":
         report = replay_evidence(Path(args.path))
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report["valid"] else 1
 
-    # Only three read methods are exposed to the scanner. There is no facade
-    # method for create_order/cancel_order and no bot/execution module import.
+    if args.command == "discover":
+        # Kalshi documents event/market discovery as public market data. Keep
+        # this command independent of account credentials as well as orders.
+        client = ReadOnlyKalshiClient(KalshiRestClient(env=args.env))
+        try:
+            report = discover_candidates(
+                client, out=Path(args.out), max_pages=args.max_pages, page_size=args.page_size
+            )
+        except Exception as exc:  # noqa: BLE001 - CLI boundary, no false success.
+            print(json.dumps({
+                "status": "unavailable",
+                "error": f"{type(exc).__name__}: {exc}",
+                "candidates": 0,
+                "certified": 0,
+            }, indent=2, sort_keys=True))
+            return 2
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+    # Only read methods are exposed to the scanner. There is no facade method
+    # for create_order/cancel_order and no bot/execution module import.
     client = ReadOnlyKalshiClient(
         KalshiRestClient(env=args.env, credentials=load_credentials(args.keys))
     )

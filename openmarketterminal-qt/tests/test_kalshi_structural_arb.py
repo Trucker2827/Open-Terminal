@@ -16,6 +16,8 @@ from scripts.kalshi_microstructure.structural_arb import (
     PayoffCertificate,
     ReadOnlyKalshiClient,
     collect_snapshot,
+    discover_candidates,
+    discovery_row,
     evaluate_bundle,
     replay_evidence,
 )
@@ -34,6 +36,54 @@ def book(ticker: str, *, yes_bids=(), no_bids=()) -> BinaryBook:
 
 
 class StructuralArbitrageTest(unittest.TestCase):
+    def test_mutually_exclusive_metadata_never_auto_certifies_an_event(self) -> None:
+        row = discovery_row(
+            {
+                "event_ticker": "EV",
+                "series_ticker": "SERIES",
+                "title": "Exactly one ordinary outcome, subject to official rules",
+                "mutually_exclusive": True,
+                "markets": [
+                    {"ticker": "A", "status": "active", "rules_primary": "rule A"},
+                    {"ticker": "B", "status": "active", "rules_primary": "rule B"},
+                ],
+            },
+            observed_at="2026-08-12T00:00:00+00:00",
+        )
+        self.assertTrue(row["candidate"])
+        self.assertFalse(row["certified"])
+        self.assertEqual(row["review_status"], "manual_rules_review_required")
+        self.assertIn("non-standard payouts", " ".join(row["certification_blockers"]))
+        self.assertEqual(row["raw_event"]["markets"][0]["rules_primary"], "rule A")
+
+    def test_discovery_pages_and_records_candidates_without_a_payoff_matrix(self) -> None:
+        class DiscoveryProbe:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def get_events(self, **kwargs):
+                self.calls.append(kwargs)
+                suffix = "1" if kwargs["cursor"] is None else "2"
+                return ([{
+                    "event_ticker": f"EV{suffix}",
+                    "mutually_exclusive": True,
+                    "markets": [
+                        {"ticker": f"A{suffix}", "status": "active"},
+                        {"ticker": f"B{suffix}", "status": "active"},
+                    ],
+                }], "next" if kwargs["cursor"] is None else None)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "candidates.jsonl"
+            probe = DiscoveryProbe()
+            report = discover_candidates(probe, out=path)
+            rows = [json.loads(line) for line in path.read_text().splitlines()]
+        self.assertEqual(report, {"pages": 2, "events": 2, "candidates": 2, "certified": 0})
+        self.assertEqual([call["cursor"] for call in probe.calls], [None, "next"])
+        self.assertTrue(all(call["limit"] == 20 for call in probe.calls))
+        self.assertTrue(all(row["certified"] is False for row in rows))
+        self.assertTrue(all("certificate" not in row for row in rows))
+
     def test_same_market_yes_no_uses_reciprocal_asks_not_bid_sum(self) -> None:
         cert = certificate(
             {
@@ -276,7 +326,7 @@ class BatchOrderbooksTest(unittest.TestCase):
         self.assertFalse(hasattr(facade, "cancel_order"))
         self.assertEqual(
             {name for name in dir(facade) if name.startswith("get_")},
-            {"get_market", "get_orderbooks", "get_series"},
+            {"get_events", "get_market", "get_orderbooks", "get_series"},
         )
 
     def test_client_parses_one_batch_snapshot(self) -> None:
@@ -305,6 +355,63 @@ class BatchOrderbooksTest(unittest.TestCase):
         self.assertEqual(client.calls, [("/markets/orderbooks", {"tickers": ["A"]})])
         self.assertEqual(books["A"].best_yes_ask.price, 0.45)
         self.assertEqual(books["A"].best_yes_ask.size, 3.0)
+
+    def test_client_pages_raw_event_metadata_for_review(self) -> None:
+        class FakeClient:
+            get_events = KalshiRestClient.get_events
+
+            def __init__(self) -> None:
+                self.calls = []
+
+            def get_json(self, path, params):
+                self.calls.append((path, params))
+                return {"events": [{"event_ticker": "EV", "rules_primary": "keep me"}],
+                        "cursor": "next"}
+
+        client = FakeClient()
+        events, cursor = client.get_events(cursor="before")
+        self.assertEqual(cursor, "next")
+        self.assertEqual(events[0]["rules_primary"], "keep me")
+        self.assertEqual(client.calls[0][0], "/events")
+        self.assertEqual(client.calls[0][1]["with_nested_markets"], "true")
+
+    def test_discover_cli_does_not_load_account_credentials(self) -> None:
+        from unittest.mock import patch
+        scripts_dir = pathlib.Path(__file__).resolve().parents[1] / "scripts"
+        sys.path.insert(0, str(scripts_dir))
+        try:
+            import kalshi_structural_arb as cli
+        finally:
+            sys.path.remove(str(scripts_dir))
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(cli, "load_credentials", side_effect=AssertionError("secret read")), \
+             patch.object(cli, "discover_candidates", return_value={
+                 "pages": 1, "events": 0, "candidates": 0, "certified": 0
+             }):
+            rc = cli.main(["discover", "--out", str(pathlib.Path(tmp) / "rows.jsonl")])
+        self.assertEqual(rc, 0)
+
+    def test_discover_cli_reports_transport_failure_as_unavailable(self) -> None:
+        from unittest.mock import patch
+        import contextlib
+        import io
+
+        scripts_dir = pathlib.Path(__file__).resolve().parents[1] / "scripts"
+        sys.path.insert(0, str(scripts_dir))
+        try:
+            import kalshi_structural_arb as cli
+        finally:
+            sys.path.remove(str(scripts_dir))
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(cli, "discover_candidates", side_effect=TimeoutError("offline")), \
+             contextlib.redirect_stdout(output):
+            rc = cli.main(["discover", "--out", str(pathlib.Path(tmp) / "rows.jsonl")])
+        payload = json.loads(output.getvalue())
+        self.assertEqual(rc, 2)
+        self.assertEqual(payload["status"], "unavailable")
+        self.assertEqual(payload["certified"], 0)
 
 
 if __name__ == "__main__":

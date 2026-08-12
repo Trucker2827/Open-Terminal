@@ -124,6 +124,34 @@ class KalshiRestClient:
         payload = self.get_json(f"/markets/{ticker}")
         return Market.from_api(payload["market"])
 
+    def get_events(
+        self,
+        *,
+        status: str = "open",
+        limit: int = 200,
+        cursor: str | None = None,
+        with_nested_markets: bool = True,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """Return raw event metadata for read-only candidate discovery.
+
+        Raw dictionaries are intentional: certification review needs every
+        settlement/rule field Kalshi supplied, including fields this client
+        does not yet model. Discovery never converts these rows into payoff
+        certificates.
+        """
+        if not 1 <= limit <= 200:
+            raise ValueError("get_events limit must be between 1 and 200")
+        params: dict[str, Any] = {
+            "status": status,
+            "limit": limit,
+            "with_nested_markets": str(with_nested_markets).lower(),
+        }
+        if cursor:
+            params["cursor"] = cursor
+        payload = self.get_json("/events", params)
+        events = [event for event in payload.get("events", []) if isinstance(event, dict)]
+        return events, payload.get("cursor")
+
     def get_series(self, ticker: str) -> dict[str, Any]:
         payload = self.get_json(f"/series/{ticker}")
         series = payload.get("series")
