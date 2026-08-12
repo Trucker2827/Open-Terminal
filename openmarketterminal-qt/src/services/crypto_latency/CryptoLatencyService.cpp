@@ -1,6 +1,8 @@
 #include <QSet>
 #include "services/crypto_latency/CryptoLatencyService.h"
 
+#include "services/crypto_latency/FeedReconnect.h"
+
 #include "datahub/DataHub.h"
 #include "services/crypto_latency/FeedReconnect.h"
 #include "services/crypto/CoinbaseEndpoints.h"
@@ -285,6 +287,12 @@ void CryptoLatencyService::start(const QString& symbol, const QStringList& sourc
     running_ = true;
     sequence_ = 0;
 
+    if (!silence_watchdog_) {
+        silence_watchdog_ = new QTimer(this);
+        connect(silence_watchdog_, &QTimer::timeout, this, [this]() { sweep_silent_feeds(); });
+    }
+    silence_watchdog_->start(kSilenceSweepMs);
+
     QStringList wanted = sources;
     if (wanted.isEmpty())
         wanted = default_sources();
@@ -310,6 +318,7 @@ void CryptoLatencyService::stop() {
     // (which check running_) cannot re-schedule a reconnect after stop.
     running_ = false;
     wanted_sources_.clear();
+    if (silence_watchdog_) silence_watchdog_->stop();
     for (auto it = reconnect_timers_.begin(); it != reconnect_timers_.end(); ++it) {
         if (it.value()) {
             it.value()->stop();
@@ -991,6 +1000,21 @@ CryptoLatencySnapshot CryptoLatencyService::snapshot() const {
             s.cross_source_spread_bps = ((s.max_price - s.min_price) / s.mid_price) * 10000.0;
     }
     return s;
+}
+
+void CryptoLatencyService::sweep_silent_feeds() {
+    if (!running_) return;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    for (auto it = states_.begin(); it != states_.end(); ++it) {
+        const bool connected = it->status == QLatin1String("connected");
+        if (!feed_is_silently_stale(it->last_message_ms, now, connected, kSilentFeedLimitMs))
+            continue;
+        // Say WHY. The whole reason this feed sat dead for 74 minutes is that
+        // its status carried no reason at all -- "FEED DOWN, no reason given".
+        const QString why = QStringLiteral("silent %1s while connected (no error reported)")
+                                .arg((now - it->last_message_ms) / 1000);
+        schedule_reconnect(it.key(), why);
+    }
 }
 
 } // namespace openmarketterminal::services::crypto_latency
