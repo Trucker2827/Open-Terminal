@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for the commodities 15m directional calibrator."""
+import json
 import math
 import os
 import sys
@@ -556,6 +557,74 @@ class PooledTrustWithheldTest(unittest.TestCase):
         self.assertTrue(report["pooled_trust_withheld"])
         self.assertEqual(report["pooled_families"], sorted(cal.FAMILIES.keys()))
         self.assertIn("pooled_adds_value_on_bet_eligible", report)
+
+
+class PerFamilySplit15mTest(unittest.TestCase):
+    """This producer is standalone — #237 split only strike_threshold_family,
+    so the 15m board stayed one pooled model behind a per-underlying display.
+    Gold 15m, Silver 15m and Oil 15m are three prediction problems.
+    """
+
+    def test_single_family_narrows_and_restores(self):
+        whole = sorted(cal.FAMILIES)
+        self.assertGreater(len(whole), 1)
+        with cal.single_family("KXGOLD15M"):
+            self.assertEqual(sorted(cal.FAMILIES), ["KXGOLD15M"])
+        self.assertEqual(sorted(cal.FAMILIES), whole, "FAMILIES must be restored")
+
+    def test_it_restores_even_when_the_body_raises(self):
+        whole = sorted(cal.FAMILIES)
+        with self.assertRaises(RuntimeError):
+            with cal.single_family("KXGOLD15M"):
+                raise RuntimeError("boom")
+        self.assertEqual(sorted(cal.FAMILIES), whole,
+                         "a raising body must not leave FAMILIES narrowed")
+
+    def test_each_family_gets_its_own_state_slice(self):
+        st = cal.split_state({})
+        self.assertEqual(sorted(st), sorted(cal.FAMILIES))
+        self.assertIsNot(st["KXGOLD15M"], st["KXSILVER15M"])
+
+    def test_updating_gold_cannot_change_silver(self):
+        st = cal.split_state({})
+        before = json.dumps(st["KXSILVER15M"], sort_keys=True)
+        st["KXGOLD15M"]["contract_scores_full"] = [0.01] * 40
+        st["KXGOLD15M"]["resolved"] = 40
+        self.assertEqual(json.dumps(st["KXSILVER15M"], sort_keys=True), before)
+
+    def test_a_legacy_pooled_state_never_seeds_a_family(self):
+        pooled = cal.default_state()
+        pooled["resolved"] = 226
+        pooled["contract_scores_full"] = [0.02] * 226
+        st = cal.split_state(pooled)
+        for family in cal.FAMILIES:
+            self.assertEqual(st[family]["resolved"], 0, family)
+            self.assertEqual(st[family]["contract_scores_full"], [], family)
+
+    def test_per_family_totals_reconcile_with_the_pooled_diagnostic(self):
+        st = cal.split_state({})
+        st["KXGOLD15M"]["contract_scores_full"] = [0.1] * 30
+        st["KXGOLD15M"]["resolved"] = 30
+        st["KXSILVER15M"]["contract_scores_full"] = [0.2] * 70
+        st["KXSILVER15M"]["resolved"] = 70
+        pooled = cal.pooled_view(st)
+        self.assertEqual(len(pooled["contract_scores_full"]), 100)
+        self.assertEqual(pooled["resolved"], 100)
+
+    def test_a_single_family_report_earns_its_own_trust(self):
+        """Narrowed to one series the report is no longer pooled, so its
+        verdict is its own — the entire point of the split."""
+        n = 200
+        state = cal.default_state()
+        state["contract_scores_full"] = [0.02] * n
+        state["contract_scores_market_mid_raw"] = [0.30] * n
+        state["contract_scores_eligible_full"] = [0.02] * n
+        state["contract_scores_eligible_market_mid_raw"] = [0.30] * n
+        with cal.single_family("KXGOLD15M"):
+            report = cal.build_report(state, {}, 1_700_000_000_000)
+        self.assertEqual(report["families"], ["KXGOLD15M"])
+        self.assertTrue(report["adds_value_over_market"])
+        self.assertNotIn("pooled_trust_withheld", report)
 
 
 if __name__ == "__main__":
