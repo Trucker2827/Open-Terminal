@@ -1,6 +1,7 @@
 #include "screens/kalshi/KalshiBotCockpitView.h"
 
 #include "screens/kalshi/BotCockpitFeedHealthReader.h"
+#include "screens/kalshi/ContextIndexCockpitReader.h"
 #include "screens/kalshi/BotCockpitRainLabels.h"
 #include "ui/theme/Theme.h"
 
@@ -47,6 +48,8 @@ constexpr int kHealthHeadlineHeight = 16;
 constexpr int kHealthStageRowHeight = 16;
 constexpr int kHealthStripGap = 6;
 constexpr int kHealthStripHeight = kHealthHeadlineHeight + kHealthStageRowHeight;
+constexpr int kContextIndexStripHeight = 32;
+constexpr int kContextIndexStripGap = 6;
 constexpr int kBannerHeight = 46;
 constexpr int kCensusHeight = 20;
 // Pinned KXBTCD (threshold) scoreboard above the flow — paper ambition family.
@@ -177,10 +180,21 @@ void KalshiBotCockpitView::set_live_status_provider(std::function<QJsonObject()>
     live_status_provider_ = std::move(provider);
 }
 
+void KalshiBotCockpitView::set_context_index_provider(
+    std::function<ContextIndexCockpitInput()> provider) {
+    context_index_provider_ = std::move(provider);
+}
+
 void KalshiBotCockpitView::reload() {
     const QJsonObject live_status = live_status_provider_ ? live_status_provider_() : QJsonObject();
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-    apply_scene(load_bot_cockpit_scene(live_status, now_ms, read_bot_cockpit_feed_health(now_ms)));
+    BotCockpitScene scene =
+        load_bot_cockpit_scene(live_status, now_ms, read_bot_cockpit_feed_health(now_ms));
+    const ContextIndexCockpitInput context_index = context_index_provider_
+                                                       ? context_index_provider_()
+                                                       : read_default_context_index_cockpit();
+    scene.context_index = present_context_index_cockpit(context_index, now_ms);
+    apply_scene(scene);
 }
 
 void KalshiBotCockpitView::apply_scene(const BotCockpitScene& scene) {
@@ -654,8 +668,32 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
         }
     }
 
+    // ── provenance context index ───────────────────────────────────────────
+    // Outside the health ladder by design: this disposable index explains
+    // decisions but never authorizes or blocks one.
+    const QRect context_strip(kMargin, health_strip.bottom() + kContextIndexStripGap,
+                              width() - (2 * kMargin), kContextIndexStripHeight);
+    {
+        const QColor ink = role_color(scene_.context_index.role);
+        painter.fillRect(context_strip,
+                         with_alpha(QColor(colors::BG_RAISED()), dormant ? 65 : 115));
+        painter.setPen(QPen(with_alpha(ink, 155), 1));
+        painter.drawRect(context_strip);
+        painter.setFont(small_font);
+        painter.setPen(ink);
+        painter.drawText(context_strip.adjusted(8, 1, -8, -15),
+                         Qt::AlignVCenter | Qt::AlignLeft,
+                         elide(small_metrics, scene_.context_index.headline,
+                               context_strip.width() - 16));
+        painter.setPen(QColor(colors::TEXT_SECONDARY()));
+        painter.drawText(context_strip.adjusted(8, 15, -8, -1),
+                         Qt::AlignVCenter | Qt::AlignLeft,
+                         elide(small_metrics, scene_.context_index.detail,
+                               context_strip.width() - 16));
+    }
+
     // ── banner ─────────────────────────────────────────────────────────────
-    const QRect banner(kMargin, health_strip.bottom() + kHealthStripGap,
+    const QRect banner(kMargin, context_strip.bottom() + kHealthStripGap,
                        width() - (2 * kMargin), kBannerHeight);
     painter.fillRect(banner, with_alpha(mood, dormant ? 20 : 46));
     painter.setPen(QPen(mood, scene_.live ? 3 : 1));

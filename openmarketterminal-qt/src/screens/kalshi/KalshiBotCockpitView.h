@@ -54,6 +54,11 @@ class KalshiBotCockpitView : public QWidget {
     /// UNKNOWN / FAIL CLOSED by the model, never as disarmed.
     void set_live_status_provider(std::function<QJsonObject()> provider);
 
+    /// Read-only provenance-index input. The default reads the application
+    /// index; injection exists so the real widget reload/render path can be
+    /// tested without touching a user's application directory.
+    void set_context_index_provider(std::function<ContextIndexCockpitInput()> provider);
+
     /// Re-reads the four evidence files and repaints.
     void reload();
 
@@ -116,6 +121,7 @@ class KalshiBotCockpitView : public QWidget {
 
     BotCockpitScene scene_;
     std::function<QJsonObject()> live_status_provider_;
+    std::function<ContextIndexCockpitInput()> context_index_provider_;
     QTimer* data_timer_ = nullptr;
     QTimer* frame_timer_ = nullptr;
     /// Advances one step per frame; frozen columns ignore it, which is what
