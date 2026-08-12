@@ -1,0 +1,67 @@
+{
+  "id": "fixture-foundation-v1",
+  "capture_started_at_ms": "1000",
+  "capture_finished_at_ms": "1100",
+  "producer_version": "foundation-v1",
+  "source_snapshot": {
+    "app_db_watermark": 42
+  },
+  "nodes": [
+    {
+      "id": "family:KXBTC15M",
+      "kind": "contract_family",
+      "canonical_key": "KXBTC15M",
+      "authority_ref": "gate-family:KXBTC15M",
+      "content_hash": "",
+      "observed_at_ms": "1001",
+      "effective_at_ms": "900",
+      "scope": "legacy-shared",
+      "schema_version": 1,
+      "metadata": {"family": "KXBTC15M"}
+    },
+    {
+      "id": "decision:d-1",
+      "kind": "decision",
+      "canonical_key": "d-1",
+      "authority_ref": "decision_envelopes:d-1",
+      "content_hash": "sha256:decision",
+      "observed_at_ms": "1002",
+      "effective_at_ms": "950",
+      "scope": "profile:paper",
+      "schema_version": 1,
+      "metadata": {"mode": "paper"}
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge:d-1-family",
+      "from_node_id": "decision:d-1",
+      "to_node_id": "family:KXBTC15M",
+      "relation": "belongs_to_family",
+      "evidence_ref": "decision_envelopes:d-1#family",
+      "observed_at_ms": "1003",
+      "effective_at_ms": "950",
+      "scope": "profile:paper",
+      "producer_version": "foundation-v1",
+      "metadata": {}
+    }
+  ],
+  "source_cursors": [
+    {
+      "source_name": "application-db",
+      "source_identity": "sqlite:data_version:42",
+      "cursor": {"max_decision_id": "d-1"}
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "unresolved:legacy-report",
+      "code": "missing_report_hash",
+      "authority_ref": "legacy-report.json",
+      "detail": "historical report predates hash stamps",
+      "observed_at_ms": "1004",
+      "metadata": {}
+    }
+  ],
+  "invariant_failures": []
+}
