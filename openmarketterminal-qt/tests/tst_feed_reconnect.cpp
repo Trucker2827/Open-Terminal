@@ -296,6 +296,49 @@ class TstFeedReconnect : public QObject {
         QVERIFY(five.coverage_ms >= 5000);
         QVERIFY(fifteen.coverage_ms < 15000);
     }
+
+    // ---- silent-feed watchdog ---------------------------------------------
+    // Measured failure this exists for: a Coinbase socket delivered nothing for
+    // 74 minutes while reporting error = none. The reconnect path only fires on
+    // an error, and a half-open socket never produces one, so nothing tore it
+    // down. A router reset did not help either — the app was not retrying,
+    // it believed it was fine.
+    void a_connected_feed_that_stops_delivering_is_stale() {
+        const qint64 now = 1'000'000'000;
+        // 74 minutes of silence, exactly the observed outage.
+        QVERIFY(feed_is_silently_stale(now - 4'453'000, now, /*connected=*/true, 120'000));
+        // A feed delivering every second is not.
+        QVERIFY(!feed_is_silently_stale(now - 1'000, now, true, 120'000));
+        // Right at the bound is not yet stale; one ms past it is.
+        QVERIFY(!feed_is_silently_stale(now - 120'000, now, true, 120'000));
+        QVERIFY(feed_is_silently_stale(now - 120'001, now, true, 120'000));
+    }
+
+    // A feed already known to be down belongs to the existing backoff path.
+    // Reporting it stale too would race two reconnect drivers against one
+    // socket.
+    void a_disconnected_feed_is_not_this_watchdogs_business() {
+        const qint64 now = 1'000'000'000;
+        QVERIFY(!feed_is_silently_stale(now - 4'453'000, now, /*connected=*/false, 120'000));
+    }
+
+    // "Never delivered" is a CONNECT problem, not a staleness one. Treating it
+    // as stale would fight the backoff on a venue that is refusing us.
+    void a_feed_that_never_delivered_is_not_stale() {
+        const qint64 now = 1'000'000'000;
+        QVERIFY(!feed_is_silently_stale(0, now, true, 120'000));
+        QVERIFY(!feed_is_silently_stale(-1, now, true, 120'000));
+    }
+
+    // Degenerate inputs must not manufacture a teardown: a zero bound disables
+    // the watchdog, and a clock that moved backwards is not evidence of
+    // silence.
+    void degenerate_inputs_never_force_a_reconnect() {
+        const qint64 now = 1'000'000'000;
+        QVERIFY(!feed_is_silently_stale(now - 4'453'000, now, true, 0));
+        QVERIFY(!feed_is_silently_stale(now + 5'000, now, true, 120'000));
+    }
+
 };
 
 QTEST_GUILESS_MAIN(TstFeedReconnect)

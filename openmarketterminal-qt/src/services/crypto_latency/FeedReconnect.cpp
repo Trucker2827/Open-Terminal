@@ -32,4 +32,14 @@ int reconnect_jitter_ms(const QString& symbol, const QString& source, bool rate_
     return static_cast<int>(hash % static_cast<quint32>(span_ms));
 }
 
+bool feed_is_silently_stale(qint64 last_message_ms, qint64 now_ms, bool connected,
+                            qint64 silence_limit_ms) {
+    if (!connected) return false;
+    if (last_message_ms <= 0) return false;
+    if (silence_limit_ms <= 0) return false;
+    // A clock that moved backwards is not evidence of silence.
+    if (now_ms < last_message_ms) return false;
+    return now_ms - last_message_ms > silence_limit_ms;
+}
+
 } // namespace openmarketterminal::services::crypto_latency

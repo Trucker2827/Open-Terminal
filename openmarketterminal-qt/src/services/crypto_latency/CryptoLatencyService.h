@@ -139,6 +139,10 @@ class CryptoLatencyService : public QObject {
     // Backoff-driven reconnect scheduling off the socket lifecycle. Dedups the
     // errorOccurred+disconnected pair via the per-source timer's active state.
     void schedule_reconnect(const QString& source, const QString& error_string);
+    /// Tears down any socket that BELIEVES it is connected but has delivered
+    /// nothing for kSilentFeedLimitMs, so a half-open connection self-heals
+    /// instead of sitting silent until someone restarts the daemon.
+    void sweep_silent_feeds();
     void handle_text(const QString& source, const QString& venue_symbol, const QString& text);
     void handle_tcp_bytes(const QString& source, const QString& venue_symbol, const QByteArray& bytes);
     void apply_terminal_escape(TerminalState& term, const QString& seq);
@@ -158,6 +162,12 @@ class CryptoLatencyService : public QObject {
     QHash<QString, GeminiBook> gemini_books_;
     QSet<QString> wanted_sources_;
     QHash<QString, QTimer*> reconnect_timers_;
+    QTimer* silence_watchdog_ = nullptr;
+    /// Measured: a Coinbase socket stayed silent 74 minutes reporting
+    /// error=none, while every live stream on every venue delivered at ~1s.
+    /// Two minutes is far above the natural cadence and far below the outage.
+    static constexpr qint64 kSilentFeedLimitMs = 120'000;
+    static constexpr int kSilenceSweepMs = 30'000;
 };
 
 } // namespace openmarketterminal::services::crypto_latency
