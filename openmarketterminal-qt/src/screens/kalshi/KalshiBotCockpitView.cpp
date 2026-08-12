@@ -187,6 +187,10 @@ void KalshiBotCockpitView::apply_scene(const BotCockpitScene& scene) {
     scene_ = scene;
     if (inspect_node_id_ == QLatin1String(kBotCockpitPostmortemInspectId)) {
         if (scene_.postmortem_detail.isEmpty()) inspect_node_id_.clear();
+    } else if (is_family_chip_inspect_id(inspect_node_id_)) {
+        const BotCockpitFamilyChip* chip =
+            scene_.family_chip(family_chip_id_from_inspect(inspect_node_id_));
+        if (!chip || chip->detail.isEmpty()) inspect_node_id_.clear();
     } else if (!inspect_node_id_.isEmpty()) {
         const BotCockpitNode* open = scene_.node(inspect_node_id_);
         if (!open || open->detail.isEmpty()) inspect_node_id_.clear();
@@ -281,6 +285,12 @@ bool KalshiBotCockpitView::postmortem_kpi_at(const QPoint& pos) const {
 QString KalshiBotCockpitView::inspect_detail_text() const {
     if (inspect_node_id_ == QLatin1String(kBotCockpitPostmortemInspectId))
         return scene_.postmortem_detail;
+    if (is_family_chip_inspect_id(inspect_node_id_)) {
+        if (const BotCockpitFamilyChip* chip =
+                scene_.family_chip(family_chip_id_from_inspect(inspect_node_id_)))
+            return chip->detail;
+        return {};
+    }
     if (const BotCockpitNode* open = scene_.node(inspect_node_id_)) return open->detail;
     return {};
 }
@@ -288,8 +298,40 @@ QString KalshiBotCockpitView::inspect_detail_text() const {
 QString KalshiBotCockpitView::inspect_title() const {
     if (inspect_node_id_ == QLatin1String(kBotCockpitPostmortemInspectId))
         return QStringLiteral("BID POSTMORTEM");
+    if (is_family_chip_inspect_id(inspect_node_id_)) {
+        if (const BotCockpitFamilyChip* chip =
+                scene_.family_chip(family_chip_id_from_inspect(inspect_node_id_)))
+            return QStringLiteral("DECIDE · %1").arg(chip->label);
+        return QStringLiteral("DECIDE");
+    }
     if (const BotCockpitNode* open = scene_.node(inspect_node_id_)) return open->label;
     return {};
+}
+
+QVector<QRect> KalshiBotCockpitView::family_chip_hit_rects() const {
+    QVector<QRect> rects;
+    if (decide_body_rect_.isEmpty() || scene_.family_chips.isEmpty()) return rects;
+    const int n = scene_.family_chips.size();
+    constexpr int kChipH = 20;
+    constexpr int kPad = 6;
+    const int row_y = decide_body_rect_.bottom() - kChipH - kPad;
+    const int usable = decide_body_rect_.width() - 2 * kPad;
+    if (usable < n * 20 || row_y < decide_body_rect_.top() + 36) return rects;
+    const int chip_w = usable / n;
+    rects.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        rects << QRect(decide_body_rect_.left() + kPad + i * chip_w, row_y, chip_w - 2, kChipH);
+    }
+    return rects;
+}
+
+const BotCockpitFamilyChip* KalshiBotCockpitView::family_chip_at(const QPoint& pos) const {
+    const QVector<QRect> rects = family_chip_hit_rects();
+    for (int i = 0; i < rects.size() && i < scene_.family_chips.size(); ++i) {
+        if (rects.at(i).contains(pos) && !scene_.family_chips.at(i).detail.isEmpty())
+            return &scene_.family_chips.at(i);
+    }
+    return nullptr;
 }
 
 int KalshiBotCockpitView::flow_lane_capacity() const {
@@ -424,6 +466,15 @@ void KalshiBotCockpitView::mousePressEvent(QMouseEvent* event) {
         event->accept();
         return;
     }
+    if (const BotCockpitFamilyChip* chip = family_chip_at(event->pos())) {
+        const QString id = family_chip_inspect_id(chip->id);
+        if (inspect_node_id_ == id) inspect_node_id_.clear();
+        else inspect_node_id_ = id;
+        setFocus(Qt::MouseFocusReason);
+        update();
+        event->accept();
+        return;
+    }
     const BotCockpitNode* node = node_at(event->pos());
     if (node && !node->detail.isEmpty()) {
         if (inspect_node_id_ == node->id) inspect_node_id_.clear();
@@ -445,7 +496,8 @@ void KalshiBotCockpitView::mousePressEvent(QMouseEvent* event) {
 void KalshiBotCockpitView::mouseMoveEvent(QMouseEvent* event) {
     const BotCockpitNode* node = node_at(event->pos());
     if ((node && !node->detail.isEmpty()) ||
-        (postmortem_kpi_at(event->pos()) && !scene_.postmortem_detail.isEmpty())) {
+        (postmortem_kpi_at(event->pos()) && !scene_.postmortem_detail.isEmpty()) ||
+        family_chip_at(event->pos()) != nullptr) {
         setCursor(Qt::PointingHandCursor);
     } else if (flow_body_rect_.contains(event->pos()) && max_lane_scroll() > 0) {
         setCursor(Qt::SizeVerCursor);
@@ -927,6 +979,7 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
     // ── DECIDE station (right of flow, before ledger) ──────────────────────
     const QRect decide_body(decide.left(), decide.top() + kFlowAxisHeight + 2, decide.width(),
                             decide.height() - kFlowAxisHeight - 4);
+    decide_body_rect_ = decide_body;
     const QColor envelope_ink = role_color(scene_.envelope_role);
     painter.fillRect(decide_body, with_alpha(QColor(colors::BG_BASE()), dormant ? 200 : 232));
     painter.setPen(QPen(envelope_ink, 2));
@@ -939,10 +992,34 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
                                ? QStringLiteral("DECISION")
                                : QStringLiteral("DECISION · %1").arg(scene_.envelope_ticker),
                            decide_body.width() - 16));
+    const QVector<QRect> chip_rects = family_chip_hit_rects();
+    const int envelope_bottom_pad = chip_rects.isEmpty() ? 8 : 34;
     painter.setFont(body_font);
     painter.setPen(envelope_ink);
-    painter.drawText(decide_body.adjusted(8, 28, -8, -8),
+    painter.drawText(decide_body.adjusted(8, 28, -8, -envelope_bottom_pad),
                      Qt::TextWordWrap | Qt::AlignTop | Qt::AlignLeft, scene_.envelope);
+    // Per-family chips under the envelope — newest overall stays above; chips
+    // keep metals from inheriting each other's latest action.
+    if (!chip_rects.isEmpty()) {
+        painter.setFont(small_font);
+        for (int i = 0; i < chip_rects.size() && i < scene_.family_chips.size(); ++i) {
+            const BotCockpitFamilyChip& chip = scene_.family_chips.at(i);
+            const QRect box = chip_rects.at(i);
+            const QColor ink = role_color(chip.role);
+            painter.fillRect(box, with_alpha(ink, dormant ? 18 : 36));
+            painter.setPen(QPen(with_alpha(ink, chip.detail.isEmpty() ? 90 : 180), 1));
+            painter.drawRect(box);
+            if (inspect_node_id_ == family_chip_inspect_id(chip.id)) {
+                painter.setPen(QPen(ink, 2));
+                painter.drawRect(box.adjusted(1, 1, -1, -1));
+            }
+            painter.setPen(ink);
+            painter.drawText(box.adjusted(2, 0, -2, 0), Qt::AlignCenter,
+                             elide(small_metrics,
+                                   QStringLiteral("%1 %2").arg(chip.label, chip.action),
+                                   box.width() - 4));
+        }
+    }
 
     // ── LEDGER (end of the L→R pipeline) ───────────────────────────────────
     if (stream_width > 0) {
@@ -1019,12 +1096,16 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
             painter.fillRect(rect(), with_alpha(QColor(colors::BG_BASE()), 140));
             painter.fillRect(panel, with_alpha(QColor(colors::BG_RAISED()), 245));
             QColor ink = QColor(colors::CYAN());
-            if (!postmortem) {
-                if (const BotCockpitNode* open = scene_.node(inspect_node_id_))
-                    ink = role_color(open->role);
-            } else if (!scene_.kpi_roles.isEmpty() && postmortem_kpi_index() >= 0 &&
-                       postmortem_kpi_index() < scene_.kpi_roles.size()) {
-                ink = role_color(scene_.kpi_roles.at(postmortem_kpi_index()));
+            if (postmortem) {
+                if (!scene_.kpi_roles.isEmpty() && postmortem_kpi_index() >= 0 &&
+                    postmortem_kpi_index() < scene_.kpi_roles.size())
+                    ink = role_color(scene_.kpi_roles.at(postmortem_kpi_index()));
+            } else if (is_family_chip_inspect_id(inspect_node_id_)) {
+                if (const BotCockpitFamilyChip* chip =
+                        scene_.family_chip(family_chip_id_from_inspect(inspect_node_id_)))
+                    ink = role_color(chip->role);
+            } else if (const BotCockpitNode* open = scene_.node(inspect_node_id_)) {
+                ink = role_color(open->role);
             }
             painter.setPen(QPen(ink, 2));
             painter.drawRect(panel);
