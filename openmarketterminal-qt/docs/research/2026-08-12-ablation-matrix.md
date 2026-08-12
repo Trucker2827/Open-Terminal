@@ -1,3 +1,15 @@
+> **SUPERSEDED (intervals only).** This document's confidence intervals resampled
+> CONTRACTS. Contracts within one settlement event are strikes on a single price
+> path, so those intervals are several times too narrow. The event-clustered
+> results in `2026-08-12-offset-architecture.md` are authoritative.
+>
+> It also used the opposite sign convention (`delta = model - market`, positive
+> = worse). The frozen convention is now `delta = baseline - model`, POSITIVE =
+> improvement.
+>
+> The CONCLUSION is unchanged and in fact strengthened: no model beats
+> `market_raw` on any family or slice under either bootstrap.
+
 # Ablation matrix — what do the non-market features contribute?
 
 **Analysis only.** Nothing here is read by the bot, the gate, or any admission path.
