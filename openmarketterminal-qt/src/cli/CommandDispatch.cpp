@@ -3,6 +3,7 @@
 #include "services/edge_radar/VolCostContext.h"
 #include "cli/AiRunCommand.h"
 #include "cli/ObserveCommand.h"
+#include "cli/ProvenanceCommands.h"
 #include "cli/KalshiBotCommands.h"
 #include "cli/QuantLabCommands.h"
 #include "cli/BridgeDiscovery.h"
@@ -187,6 +188,7 @@ static int usage(FILE* stream = stderr, int code = 2) {
         "  strategy list|backtest|paper-run       Manage and test trading strategies\n"
         "  hub topics | peek <topic> | request <topic>\n"
         "  observe latest | week | alerts [N]\n\n"
+        "  provenance status|verify-rebuild     Inspect the non-authoritative trade context index\n\n"
         "App control (running GUI required):\n"
         "  screens [query]                      List/openable app screens\n"
         "  open <screen-or-alias>                Open a screen in the focused window\n"
@@ -28220,6 +28222,9 @@ int dispatch(QStringList args) {
     if (group == "observe") {
         // Pure-local read of the headless observer's journal (no transport).
         return observe_command(opts, args);
+    }
+    if (group == "provenance" || group == "context-index") {
+        return provenance_command(opts, args);
     }
     if (group == "quant" || group == "quantlab" || group == "quant-lab") {
         // AI Quant Lab modules (incl. Deep Agent) — direct python spawn, no

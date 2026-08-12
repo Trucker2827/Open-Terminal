@@ -1216,6 +1216,8 @@ set(ALGO_ENGINE_SOURCES
 # Services
 set(SERVICE_SOURCES
     src/services/DataServices.cpp
+    src/services/provenance/TradeProvenanceIndex.cpp
+    src/services/provenance/ContextFixtureMaterializer.cpp
     src/services/alpha_arena/AlphaArenaJson.cpp
     src/services/alpha_arena/Indicators.cpp
     src/services/alpha_arena/ContextBuilder.cpp
@@ -2502,6 +2504,7 @@ set_source_files_properties(
     src/cli/EdgeJournalRareAlerts.cpp
     src/cli/QuantLabCommands.cpp
     src/cli/KalshiBotCommands.cpp
+    src/cli/ProvenanceCommands.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE
                COMPILE_OPTIONS "$<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/GL->"
 )
@@ -3432,6 +3435,7 @@ add_executable(openterminalcli
     src/cli/automation/AutomationState.cpp
     src/cli/AiRunCommand.cpp
     src/cli/ObserveCommand.cpp
+    src/cli/ProvenanceCommands.cpp
     src/cli/ServeCommand.cpp
     src/cli/CryptoFeedHub.cpp
     src/cli/BridgeDiscovery.cpp

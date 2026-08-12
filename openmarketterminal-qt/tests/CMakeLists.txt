@@ -2,6 +2,26 @@
 find_package(Qt6 REQUIRED COMPONENTS Test Network Concurrent)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+# Trade provenance context index foundation: a separate disposable SQLite
+# projection, deterministic digest, and atomic current-batch publication.
+add_executable(tst_trade_provenance_index
+    tst_trade_provenance_index.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/provenance/TradeProvenanceIndex.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/provenance/ContextFixtureMaterializer.cpp)
+target_include_directories(tst_trade_provenance_index PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_trade_provenance_index PRIVATE Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_trade_provenance_index COMMAND tst_trade_provenance_index)
+
+# CLI inspection/rebuild verifier stays non-authoritative and read-only with
+# respect to the target index. The actual rebuild happens in a temporary DB.
+add_executable(tst_provenance_commands
+    tst_provenance_commands.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/ProvenanceCommands.cpp)
+target_include_directories(tst_provenance_commands PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_provenance_commands PRIVATE openterminal_core Qt6::Core Qt6::Test)
+set_target_properties(tst_provenance_commands PROPERTIES UNITY_BUILD OFF)
+add_test(NAME tst_provenance_commands COMMAND tst_provenance_commands)
+
 add_test(NAME test_crypto_fast_router
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_crypto_fast_router.py -v)
@@ -210,6 +230,7 @@ add_executable(tst_command_dispatch
     ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/AiRunCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ObserveCommand.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/ProvenanceCommands.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/CryptoFeedHub.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscovery.cpp
@@ -222,6 +243,7 @@ add_executable(tst_command_dispatch
 # newest family, whose file-scope helpers would otherwise land in the same
 # unity batch as CommandDispatch.cpp's.
 set_source_files_properties(${CMAKE_SOURCE_DIR}/src/cli/KalshiBotCommands.cpp
+                            ${CMAKE_SOURCE_DIR}/src/cli/ProvenanceCommands.cpp
                             PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE)
 target_include_directories(tst_command_dispatch PRIVATE ${CMAKE_SOURCE_DIR}/src)
 # CommandDispatch.cpp now references openterminal_core (HeadlessRuntime +
