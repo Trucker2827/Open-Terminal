@@ -12,6 +12,7 @@
 #include <QFontMetrics>
 #include <QJsonDocument>
 #include <QKeyEvent>
+#include <QList>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -53,6 +54,7 @@ constexpr int kCensusHeight = 20;
 constexpr int kHeroHeight = 26;
 constexpr int kHeroGap = 6;
 constexpr int kNodeRowHeight = 104;
+constexpr int kNodeRowGap = 6;
 constexpr int kKpiHeight = 38;
 constexpr int kStreamWidth = 300;
 // Horizontal contract lanes: sticky label | L→R glyph track | status.
@@ -352,15 +354,53 @@ QColor KalshiBotCockpitView::mood_color() const {
     return QColor(colors::TEXT_SECONDARY());
 }
 
-QRectF KalshiBotCockpitView::node_hit_rect(int index) const {
-    if (index < 0 || index >= scene_.nodes.size() || scene_.nodes.isEmpty()) return {};
+int KalshiBotCockpitView::orbit_row_count() const {
+    int max_row = 0;
+    for (const BotCockpitNode& node : scene_.nodes)
+        max_row = qMax(max_row, node.row);
+    return scene_.nodes.isEmpty() ? 0 : max_row + 1;
+}
+
+int KalshiBotCockpitView::orbit_band_height() const {
+    const int rows = orbit_row_count();
+    if (rows <= 0) return 0;
+    return rows * kNodeRowHeight + (rows - 1) * kNodeRowGap;
+}
+
+QRect KalshiBotCockpitView::orbit_band_rect() const {
+    const int band_h = orbit_band_height();
+    if (band_h <= 0) return {};
     const QRect kpi_rect(kMargin, height() - kMargin - kKpiHeight, width() - (2 * kMargin),
                          kKpiHeight);
-    const QRect node_rect(kMargin, kpi_rect.top() - 6 - kNodeRowHeight, width() - (2 * kMargin),
-                          kNodeRowHeight);
-    const double node_width = static_cast<double>(node_rect.width()) / scene_.nodes.size();
-    return QRectF(node_rect.left() + (index * node_width) + 3, node_rect.top(), node_width - 6,
-                  node_rect.height());
+    return QRect(kMargin, kpi_rect.top() - 6 - band_h, width() - (2 * kMargin), band_h);
+}
+
+QRect KalshiBotCockpitView::orbit_row_rect(int row) const {
+    const QRect band = orbit_band_rect();
+    if (band.isEmpty() || row < 0 || row >= orbit_row_count()) return {};
+    return QRect(band.left(), band.top() + row * (kNodeRowHeight + kNodeRowGap), band.width(),
+                 kNodeRowHeight);
+}
+
+QList<int> KalshiBotCockpitView::node_indices_for_row(int row) const {
+    QList<int> indices;
+    for (int i = 0; i < scene_.nodes.size(); ++i) {
+        if (scene_.nodes.at(i).row == row) indices.append(i);
+    }
+    return indices;
+}
+
+QRectF KalshiBotCockpitView::node_hit_rect(int index) const {
+    if (index < 0 || index >= scene_.nodes.size() || scene_.nodes.isEmpty()) return {};
+    const int row = scene_.nodes.at(index).row;
+    const QList<int> peers = node_indices_for_row(row);
+    const int pos_in_row = peers.indexOf(index);
+    if (pos_in_row < 0 || peers.isEmpty()) return {};
+    const QRect row_rect = orbit_row_rect(row);
+    if (row_rect.isEmpty()) return {};
+    const double node_width = static_cast<double>(row_rect.width()) / peers.size();
+    return QRectF(row_rect.left() + (pos_in_row * node_width) + 3, row_rect.top(), node_width - 6,
+                  row_rect.height());
 }
 
 const BotCockpitNode* KalshiBotCockpitView::node_at(const QPoint& pos) const {
@@ -687,11 +727,11 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
     // ── layout of the lower furniture ──────────────────────────────────────
     const QRect kpi_rect(kMargin, height() - kMargin - kKpiHeight, width() - (2 * kMargin),
                          kKpiHeight);
-    const QRect node_rect(kMargin, kpi_rect.top() - 6 - kNodeRowHeight, width() - (2 * kMargin),
-                          kNodeRowHeight);
+    const QRect node_rect = orbit_band_rect();
     const int field_top =
         (show_hero ? hero_rect.bottom() + kHeroGap : content_after_upper);
-    QRect field(kMargin, field_top, width() - (2 * kMargin), node_rect.top() - field_top - 6);
+    QRect field(kMargin, field_top, width() - (2 * kMargin),
+                (node_rect.isEmpty() ? kpi_rect.top() : node_rect.top()) - field_top - 6);
     if (field.height() < 120) field.setHeight(120);
 
     // ── L→R pipeline: FLOW lanes → DECIDE → LEDGER ─────────────────────────
@@ -941,14 +981,12 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
         }
     }
 
-    // ── orbit nodes ────────────────────────────────────────────────────────
-    if (!scene_.nodes.isEmpty()) {
-        const double node_width =
-            static_cast<double>(node_rect.width()) / scene_.nodes.size();
+    // ── orbit nodes (row 0 = BTC+session; row 1 = GOLD/SILVER/WTI) ──────────
+    if (!scene_.nodes.isEmpty() && !node_rect.isEmpty()) {
         for (int i = 0; i < scene_.nodes.size(); ++i) {
             const BotCockpitNode& node = scene_.nodes.at(i);
-            const QRectF box(node_rect.left() + (i * node_width) + 3, node_rect.top(),
-                             node_width - 6, node_rect.height());
+            const QRectF box = node_hit_rect(i);
+            if (box.isEmpty()) continue;
             const QColor ink = role_color(node.role);
             painter.fillRect(box, with_alpha(QColor(colors::BG_RAISED()), dormant ? 70 : 130));
             painter.setPen(QPen(with_alpha(ink, node.known ? 200 : 90), node.known ? 2 : 1));

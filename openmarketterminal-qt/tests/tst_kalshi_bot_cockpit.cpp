@@ -985,26 +985,27 @@ class KalshiBotCockpitTest : public QObject {
         for (const auto& glyph : scene.columns.at(2).glyphs) labels << glyph.label;
         QVERIFY(labels.contains(QStringLiteral("open")));
         QVERIFY(!labels.contains(QStringLiteral("sigma")));
-        // Inspect detail rides on the commodities orbit node (click target).
-        const BotCockpitNode* node = scene.node(QStringLiteral("commodities15m"));
-        QVERIFY(node != nullptr);
-        QVERIFY(!node->detail.isEmpty());
-        QVERIFY(node->detail.contains(QStringLiteral("ablations")));
-        QVERIFY(node->detail.contains(QStringLiteral("parity Pyth↔Kalshi 3/4 (75%)")));
-        QVERIFY(node->label.contains(QStringLiteral("click")));
-        QVERIFY(!node->value.contains(QStringLiteral(" · H ")));
-
-        // The 1-hour commodities report is a first-class scoreboard. It must
-        // not disappear into the 15-minute panel's chip or inspect detail.
-        const BotCockpitNode* hourly = scene.node(QStringLiteral("commodities_hourly"));
-        QVERIFY(hourly != nullptr);
-        QVERIFY(hourly->known);
-        QCOMPARE(hourly->label,
-                 QStringLiteral("COMMODITIES 1H — THRESHOLD SCOREBOARD · click"));
-        QVERIFY(hourly->value.contains(QStringLiteral("250/100 scored")));
-        QVERIFY(hourly->value.contains(QStringLiteral("ΔBrier −0.0800 vs mid")));
-        QVERIFY(hourly->value.contains(QStringLiteral("parity Pyth↔Kalshi 8/8 (100%)")));
-        QVERIFY(!hourly->detail.isEmpty());
+        // Metals each get their own orbit box (row 1); cadences fold inside.
+        // Gold must never share a tile with silver/oil.
+        const BotCockpitNode* gold = scene.node(QStringLiteral("gold"));
+        const BotCockpitNode* silver = scene.node(QStringLiteral("silver"));
+        const BotCockpitNode* wti = scene.node(QStringLiteral("wti"));
+        QVERIFY(gold != nullptr);
+        QVERIFY(silver != nullptr);
+        QVERIFY(wti != nullptr);
+        QCOMPARE(gold->row, 1);
+        QCOMPARE(silver->row, 1);
+        QCOMPARE(wti->row, 1);
+        QVERIFY(gold->label.contains(QStringLiteral("GOLD")));
+        QVERIFY(gold->value.contains(QStringLiteral("15m")));
+        QVERIFY(gold->value.contains(QStringLiteral("H ")));
+        QVERIFY(gold->value.contains(QStringLiteral("D ")));
+        QVERIFY(!gold->detail.isEmpty());
+        QVERIFY(gold->detail.contains(QStringLiteral("KXGOLD15M")));
+        QVERIFY(gold->detail.contains(QStringLiteral("KXGOLDH")));
+        // Pooled commodities15m / commodities_hourly tiles are gone.
+        QVERIFY(scene.node(QStringLiteral("commodities15m")) == nullptr);
+        QVERIFY(scene.node(QStringLiteral("commodities_hourly")) == nullptr);
     }
 
     void outside_info_inspect_detail_lists_sorted_ablations() {
@@ -1767,13 +1768,20 @@ class KalshiBotCockpitTest : public QObject {
                  QStringLiteral("1 watched contracts · all drawn · L→R · threshold first · ambition "
                                 "KXBTCD · 1 threshold · 0 kxbtc15m · 0 commodities15m · 0 "
                                 "commodities_hourly · 0 commodities_daily · 0 kxbtc_daily"));
-        QCOMPARE(baseline.nodes.size(), 9);
+        // Row 0: BTC 1H, BTC 15M, BRIER, SETTLEMENTS, GATE, KILL, EXPOSURE (7).
+        // Row 1: GOLD, SILVER, WTI (3). Total 10 — metals never share a box.
+        QCOMPARE(baseline.nodes.size(), 10);
         QVERIFY(!baseline.node(QStringLiteral("kxbtc15m"))->detail.isEmpty());
-        QVERIFY(!baseline.node(QStringLiteral("commodities15m"))->detail.isEmpty());
+        QVERIFY(!baseline.node(QStringLiteral("gold"))->detail.isEmpty());
         QVERIFY(baseline.node(QStringLiteral("calibrator")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("kxbtc15m")) != nullptr);
-        QVERIFY(baseline.node(QStringLiteral("commodities15m")) != nullptr);
-        QVERIFY(baseline.node(QStringLiteral("commodities_hourly")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("gold")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("silver")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("wti")) != nullptr);
+        QCOMPARE(baseline.node(QStringLiteral("calibrator"))->row, 0);
+        QCOMPARE(baseline.node(QStringLiteral("gold"))->row, 1);
+        QVERIFY(baseline.node(QStringLiteral("commodities15m")) == nullptr);
+        QVERIFY(baseline.node(QStringLiteral("commodities_hourly")) == nullptr);
         QVERIFY(baseline.node(QStringLiteral("brier_split")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("settlements")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("gate")) != nullptr);

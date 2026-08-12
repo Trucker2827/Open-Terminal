@@ -84,6 +84,12 @@ class KalshiBotCockpitView : public QWidget {
     void sync_animation_timer();
     QColor role_color(const QString& role) const;
     QColor mood_color() const;
+    /// Orbit height for the current scene (one or two scoreboard rows).
+    int orbit_band_height() const;
+    int orbit_row_count() const;
+    QRect orbit_band_rect() const;
+    QRect orbit_row_rect(int row) const;
+    QList<int> node_indices_for_row(int row) const;
     QRectF node_hit_rect(int index) const;
     const BotCockpitNode* node_at(const QPoint& pos) const;
     /// Per-scene-index KPI hit boxes matching paint (empty rect = not shown).

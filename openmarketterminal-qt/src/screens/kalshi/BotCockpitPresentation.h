@@ -336,6 +336,109 @@ inline QString commodities_hourly_scoreboard_line(const QJsonObject& report) {
     return line;
 }
 
+inline QString family_trust_mark(KalshiBotDecision::FamilyTrust trust) {
+    using Trust = KalshiBotDecision::FamilyTrust;
+    if (trust == Trust::Pass) return QStringLiteral("T");
+    if (trust == Trust::Fail) return QStringLiteral("U");
+    return QStringLiteral("?");
+}
+
+inline QJsonObject family_block(const QJsonObject& report, const QString& series) {
+    return report.value(QStringLiteral("by_family")).toObject().value(series).toObject();
+}
+
+/// One cadence chip on a metal orbit tile: `15m 53/100 ?` — series-local only.
+inline QString metal_cadence_chip(const QJsonObject& report, const QString& series,
+                                  const QString& tag) {
+    if (report.isEmpty()) return QStringLiteral("%1 —").arg(tag);
+    const auto trust = KalshiBotDecision::family_trust(report, series);
+    const QJsonObject block = family_block(report, series);
+    const int scored = block.value(QStringLiteral("scored_contracts")).toInt();
+    const int floor = block.value(QStringLiteral("min_scored_contracts")).toInt(
+        report.value(QStringLiteral("min_scored_contracts")).toInt(100));
+    return QStringLiteral("%1 %2/%3 %4")
+        .arg(tag)
+        .arg(scored)
+        .arg(floor)
+        .arg(family_trust_mark(trust));
+}
+
+/// Gold / Silver / WTI orbit line — cadences folded, metals never mixed.
+inline QString metal_scoreboard_line(const QJsonObject& report_15m, const QString& series_15m,
+                                     const QJsonObject& report_h, const QString& series_h,
+                                     const QJsonObject& report_d, const QString& series_d) {
+    return QStringLiteral("%1 · %2 · %3")
+        .arg(metal_cadence_chip(report_15m, series_15m, QStringLiteral("15m")),
+             metal_cadence_chip(report_h, series_h, QStringLiteral("H")),
+             metal_cadence_chip(report_d, series_d, QStringLiteral("D")));
+}
+
+inline QString metal_orbit_colour(const QJsonObject& report_15m, const QString& series_15m,
+                                  const QJsonObject& report_h, const QString& series_h,
+                                  const QJsonObject& report_d, const QString& series_d) {
+    QVector<QPair<QString, KalshiBotDecision::FamilyTrust>> states;
+    states.append({series_15m, KalshiBotDecision::family_trust(report_15m, series_15m)});
+    states.append({series_h, KalshiBotDecision::family_trust(report_h, series_h)});
+    states.append({series_d, KalshiBotDecision::family_trust(report_d, series_d)});
+    return family_group_colour(states);
+}
+
+inline bool metal_orbit_known(const QJsonObject& report_15m, const QString& series_15m,
+                              const QJsonObject& report_h, const QString& series_h,
+                              const QJsonObject& report_d, const QString& series_d) {
+    auto scored = [](const QJsonObject& report, const QString& series) {
+        return family_block(report, series).value(QStringLiteral("scored_contracts")).toInt() > 0;
+    };
+    return scored(report_15m, series_15m) || scored(report_h, series_h) ||
+           scored(report_d, series_d) || !report_15m.isEmpty() || !report_h.isEmpty() ||
+           !report_d.isEmpty();
+}
+
+inline QString metal_orbit_detail(const QString& metal_label, const QJsonObject& report_15m,
+                                  const QString& series_15m, const QJsonObject& report_h,
+                                  const QString& series_h, const QJsonObject& report_d,
+                                  const QString& series_d) {
+    const auto cadence_block = [](const QString& cadence, const QJsonObject& report,
+                                  const QString& series) {
+        QStringList lines;
+        lines << QStringLiteral("── %1 %2 ──").arg(cadence, series);
+        if (report.isEmpty()) {
+            lines << QStringLiteral("NO REPORT");
+            return lines.join(QLatin1Char('\n'));
+        }
+        const auto trust = KalshiBotDecision::family_trust(report, series);
+        const QJsonObject block = family_block(report, series);
+        if (block.isEmpty()) {
+            lines << QStringLiteral("UNAVAILABLE — no by_family row for this series yet");
+            if (report.value(QStringLiteral("pooled_trust_withheld")).toBool())
+                lines << QStringLiteral("pooled_trust_withheld (diagnostics only)");
+            return lines.join(QLatin1Char('\n'));
+        }
+        lines << QStringLiteral("trust %1 · scored %2 · eligible %3")
+                     .arg(family_trust_mark(trust))
+                     .arg(block.value(QStringLiteral("scored_contracts")).toInt())
+                     .arg(block.value(QStringLiteral("eligible_scored_contracts")).toInt());
+        const QJsonValue brier = block.value(QStringLiteral("brier_full"));
+        const QJsonValue mid = block.value(QStringLiteral("brier_market_mid_raw"));
+        if (brier.isDouble() && mid.isDouble()) {
+            lines << QStringLiteral("brier %1 vs mid %2")
+                         .arg(brier.toDouble(), 0, 'f', 4)
+                         .arg(mid.toDouble(), 0, 'f', 4);
+        } else {
+            lines << QStringLiteral("brier unavailable");
+        }
+        lines << KalshiBotDecision::bet_eligible_evidence_text(block);
+        const QString parity = settlement_parity_line(report);
+        if (!parity.isEmpty()) lines << parity;
+        return lines.join(QLatin1Char('\n'));
+    };
+    return QStringLiteral("%1 — one metal, three cadences; never averaged with peers\n%2\n%3\n%4")
+        .arg(metal_label,
+             cadence_block(QStringLiteral("15m"), report_15m, series_15m),
+             cadence_block(QStringLiteral("1h"), report_h, series_h),
+             cadence_block(QStringLiteral("daily"), report_d, series_d));
+}
+
 /// Threshold / KXBTCD strike scoreboard — same measurement shape as the 15m
 /// line, worded for the strike calibrator (`calibrator.json`). Paper ambition
 /// pins this family above FLOW while 15m stays an observe/KPI scoreboard.
@@ -448,6 +551,9 @@ struct BotCockpitNode {
     /// Multi-line inspect body for click-to-expand (outside-info ablations /
     /// parity). Empty when the node is not inspectable. Read-only — never arms.
     QString detail;
+    /// Orbit band: 0 = BTC + session authority; 1 = commodities by metal.
+    /// Metals must not share a box with each other — apples ≠ oranges.
+    int row = 0;
 };
 
 /// Feed/harvest health the pure presentation cannot see for itself — supplied
@@ -1469,9 +1575,11 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     }
 
     // ── orbit nodes ────────────────────────────────────────────────────────
+    // Row 0 = BTC + session authority. Row 1 = one box per metal (15m|H|D).
+    // Never put GOLD/SILVER/WTI in one pooled COMMODITIES box again.
     const auto add_node = [&scene](const QString& id, const QString& label, const QString& value,
                                    const QString& role, bool known,
-                                   const QString& detail = {}) {
+                                   const QString& detail = {}, int row = 0) {
         BotCockpitNode node;
         node.id = id;
         node.label = label;
@@ -1479,6 +1587,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         node.role = role;
         node.known = known;
         node.detail = detail;
+        node.row = row;
         scene.nodes << node;
     };
 
@@ -1534,47 +1643,44 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                  known, detail);
     }
 
-    // Commodities 15m — GOLD/SILVER/WTI races; daily folds into detail.
+    // Commodities by metal (row 1) — cadence folds inside; metals never share
+    // a box. Gold must not read green because silver carried a pooled report.
     {
-        QString line = commodities_15m_scoreboard_line(commodities_15m_report);
-        line += QStringLiteral(" · D %1").arg(family_cadence_chip(commodities_daily_report));
-        const bool known = !commodities_15m_report.isEmpty() &&
-                           commodities_15m_report.value(QStringLiteral("brier_full")).isDouble() &&
-                           commodities_15m_report.value(QStringLiteral("brier_market_mid_raw"))
-                               .isDouble();
-        // Per family, never pooled: gold must not read green because silver
-        // carried the pool. Green requires EVERY family to pass.
-        const auto states = family_states(commodities_15m_report);
-        line += QStringLiteral(" · %1").arg(family_states_line(states));
-        QString detail = outside_info_inspect_detail(commodities_15m_report);
-        if (!commodities_daily_report.isEmpty())
-            detail += QStringLiteral("\n── commodities daily ──\n") +
-                      outside_info_inspect_detail(commodities_daily_report);
-        add_node(QStringLiteral("commodities15m"),
-                 QStringLiteral("COMMODITIES 15M — DIRECTIONAL SCOREBOARD · click"), line,
-                 !known ? QStringLiteral("grey") : family_group_colour(states), known, detail);
-    }
-
-    // Commodities 1h — GOLD/SILVER/WTI strike books. This cadence has its own
-    // report and trust verdict, so it gets its own visible scoreboard instead
-    // of being hidden behind the 15-minute panel's detail affordance.
-    {
-        QString line = commodities_hourly_scoreboard_line(commodities_hourly_report);
-        const bool known = !commodities_hourly_report.isEmpty() &&
-                           commodities_hourly_report.value(QStringLiteral("brier_full"))
-                               .isDouble() &&
-                           commodities_hourly_report
-                               .value(QStringLiteral("brier_market_mid_raw"))
-                               .isDouble();
-        // Per family. This is the report whose POOLED flag once authorised bids
-        // in gold, silver and oil at once; it must never render as one verdict
-        // again.
-        const auto states = family_states(commodities_hourly_report);
-        line += QStringLiteral(" · %1").arg(family_states_line(states));
-        add_node(QStringLiteral("commodities_hourly"),
-                 QStringLiteral("COMMODITIES 1H — THRESHOLD SCOREBOARD · click"), line,
-                 !known ? QStringLiteral("grey") : family_group_colour(states), known,
-                 outside_info_inspect_detail(commodities_hourly_report));
+        struct MetalOrbit {
+            const char* id;
+            const char* name;
+            const char* series_15m;
+            const char* series_h;
+            const char* series_d;
+        };
+        const MetalOrbit metals[] = {
+            {"gold", "GOLD", "KXGOLD15M", "KXGOLDH", "KXGOLDD"},
+            {"silver", "SILVER", "KXSILVER15M", "KXSILVERH", "KXSILVERD"},
+            // Daily WTI series ticker is KXWTI (not KXWTID).
+            {"wti", "WTI", "KXWTI15M", "KXWTIH", "KXWTI"},
+        };
+        for (const MetalOrbit& metal : metals) {
+            const QString series_15m = QString::fromLatin1(metal.series_15m);
+            const QString series_h = QString::fromLatin1(metal.series_h);
+            const QString series_d = QString::fromLatin1(metal.series_d);
+            const QString name = QString::fromLatin1(metal.name);
+            const QString line =
+                metal_scoreboard_line(commodities_15m_report, series_15m, commodities_hourly_report,
+                                      series_h, commodities_daily_report, series_d);
+            const bool known =
+                metal_orbit_known(commodities_15m_report, series_15m, commodities_hourly_report,
+                                  series_h, commodities_daily_report, series_d);
+            add_node(QString::fromLatin1(metal.id),
+                     QStringLiteral("%1 — 15m|H|D · click").arg(name), line,
+                     metal_orbit_colour(commodities_15m_report, series_15m,
+                                        commodities_hourly_report, series_h,
+                                        commodities_daily_report, series_d),
+                     known,
+                     metal_orbit_detail(name, commodities_15m_report, series_15m,
+                                        commodities_hourly_report, series_h,
+                                        commodities_daily_report, series_d),
+                     /*row=*/1);
+        }
     }
 
     // MODEL vs BOT-SETTLED Brier — the split that decides whether paper may
