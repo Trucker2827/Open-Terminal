@@ -106,6 +106,9 @@ class KalshiBotCockpitView : public QWidget {
     KpiStripLayout layout_kpi_strip() const;
     QString inspect_detail_text() const;
     QString inspect_title() const;
+    /// DECIDE family-chip hit boxes matching paint (empty when no chips).
+    QVector<QRect> family_chip_hit_rects() const;
+    const BotCockpitFamilyChip* family_chip_at(const QPoint& pos) const;
     int flow_lane_capacity() const;
     int max_lane_scroll() const;
     void clamp_lane_scroll();
@@ -122,8 +125,11 @@ class KalshiBotCockpitView : public QWidget {
     /// and never again — one flash per real journal row.
     QHash<QString, int> pulse_age_frames_;
     int frame_ = 0;
-    /// Click-to-inspect: id of the open scoreboard node, or empty.
+    /// Click-to-inspect: orbit node id, PM KPI id, or `__chip_<id>` for a
+    /// DECIDE family chip. Empty when closed. Never arms.
     QString inspect_node_id_;
+    /// DECIDE station body from the last paint (chip hit-testing).
+    QRect decide_body_rect_;
     /// First visible contract lane in the FLOW panel (0-based).
     int lane_scroll_ = 0;
     /// Last painted FLOW body rect — wheel scroll hit-tests against this.

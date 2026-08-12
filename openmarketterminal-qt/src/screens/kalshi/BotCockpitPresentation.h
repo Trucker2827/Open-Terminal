@@ -556,6 +556,21 @@ struct BotCockpitNode {
     int row = 0;
 };
 
+/// One DECIDE family chip — newest journaled decision in an orbit-aligned
+/// bucket. Always six chips in fixed order; empty buckets paint "—" grey.
+/// Display only: does not arm, admit, or change decide/gate producers.
+struct BotCockpitFamilyChip {
+    QString id;      ///< "thr" | "btc15" | "btc_d" | "gold" | "silver" | "wti"
+    QString label;   ///< "THR" | "15M" | "BTC-D" | "GOLD" | "SILVER" | "WTI"
+    QString action;  ///< "BID" | "PASS" | "FILL" | "—"
+    QString reason;  ///< reason_code, or empty when none
+    QString ticker;  ///< newest row ticker for that bucket
+    QString role = QStringLiteral("grey");
+    qint64 ts_ms = 0;
+    /// Inspect body (ticker + reason). Empty when the chip has no row.
+    QString detail;
+};
+
 /// Feed/harvest health the pure presentation cannot see for itself — supplied
 /// by the view from kalshi-ws-engine.json + the newest retained ticker event.
 struct BotCockpitFeedHealth {
@@ -696,6 +711,14 @@ struct BotCockpitScene {
     QString envelope_key;   ///< changes exactly when a new decision row arrives
     QString envelope_role = QStringLiteral("grey");
     QString envelope_ticker;
+    /// Fixed six orbit-aligned DECIDE chips (THR / 15M / BTC-D / GOLD / SILVER /
+    /// WTI). Newest journaled decision per bucket; empty → action "—". Display
+    /// only — does not replace the primary envelope flash.
+    QList<BotCockpitFamilyChip> family_chips;
+    /// Scannable per-family admission strip for the single SEALED GATE tile.
+    /// Empty gate file leaves this blank; unevaluated / no-preregister states
+    /// say so explicitly rather than looking like a silent pooled FAIL.
+    QString gate_family_line;
 
     // ── orbit + strip ──────────────────────────────────────────────────────
     QList<BotCockpitNode> nodes;
@@ -763,7 +786,30 @@ struct BotCockpitScene {
             if (n.id == id) return &n;
         return nullptr;
     }
+
+    const BotCockpitFamilyChip* family_chip(const QString& id) const {
+        for (const auto& c : family_chips)
+            if (c.id == id) return &c;
+        return nullptr;
+    }
 };
+
+/// Inspect id prefix for DECIDE family chips — must not collide with orbit
+/// node ids (`gold` / `silver` / `wti`).
+inline constexpr auto kBotCockpitFamilyChipInspectPrefix = "__chip_";
+
+inline QString family_chip_inspect_id(const QString& chip_id) {
+    return QString::fromLatin1(kBotCockpitFamilyChipInspectPrefix) + chip_id;
+}
+
+inline bool is_family_chip_inspect_id(const QString& id) {
+    return id.startsWith(QLatin1String(kBotCockpitFamilyChipInspectPrefix));
+}
+
+inline QString family_chip_id_from_inspect(const QString& inspect_id) {
+    if (!is_family_chip_inspect_id(inspect_id)) return {};
+    return inspect_id.mid(int(sizeof("__chip_") - 1));
+}
 
 namespace bot_cockpit_detail {
 
@@ -861,6 +907,129 @@ inline void build_glyphs(const QJsonObject& prediction, BotCockpitColumn* column
                                                QString::number(sigma, 'f', 2))
                                        : missing_glyph(QStringLiteral("sigma")));
     }
+}
+
+/// Series prefix of a ticker — same rule as `KalshiBotGate::family_of` (left of
+/// the first '-'). Kept local so this header stays link-free for GUILESS pins;
+/// if that rule ever changes, update both sites together.
+inline QString series_ticker_of(const QString& ticker) {
+    const QString trimmed = ticker.trimmed().toUpper();
+    const int dash = trimmed.indexOf(QLatin1Char('-'));
+    if (dash <= 0) return {};
+    return trimmed.left(dash);
+}
+
+/// Fold a Kalshi series ticker into one of the six orbit-aligned DECIDE
+/// buckets. Cadences for one metal share a chip so COM-H does not reappear as
+/// a pooled "commodities" chip; metals stay separate.
+inline QString orbit_family_chip_id(const QString& series) {
+    if (series == QLatin1String("KXBTCD")) return QStringLiteral("thr");
+    if (series == QLatin1String("KXBTC15M")) return QStringLiteral("btc15");
+    if (series == QLatin1String("KXBTC")) return QStringLiteral("btc_d");
+    if (series == QLatin1String("KXGOLD15M") || series == QLatin1String("KXGOLDH") ||
+        series == QLatin1String("KXGOLDD"))
+        return QStringLiteral("gold");
+    if (series == QLatin1String("KXSILVER15M") || series == QLatin1String("KXSILVERH") ||
+        series == QLatin1String("KXSILVERD"))
+        return QStringLiteral("silver");
+    if (series == QLatin1String("KXWTI15M") || series == QLatin1String("KXWTIH") ||
+        series == QLatin1String("KXWTI"))
+        return QStringLiteral("wti");
+    return {};
+}
+
+inline QString family_chip_action(const QJsonObject& row, QString* role) {
+    const QString action = row.value(QStringLiteral("action")).toString();
+    if (action == QLatin1String("bid")) {
+        const QString side = row.value(QStringLiteral("side")).toString();
+        if (role) *role = side == QLatin1String("NO") ? QStringLiteral("red")
+                                                      : QStringLiteral("green");
+        return QStringLiteral("BID");
+    }
+    if (action == QLatin1String("fill")) {
+        if (role) *role = QStringLiteral("green");
+        return QStringLiteral("FILL");
+    }
+    // pass / cancel / unknown — chip vocabulary is BID|PASS|FILL|—
+    if (role) *role = QStringLiteral("cyan");
+    return QStringLiteral("PASS");
+}
+
+/// Newest decision per orbit bucket → always six chips in fixed order.
+inline QList<BotCockpitFamilyChip> present_family_chips(const QJsonArray& ledger_rows) {
+    using services::prediction::kalshi_ns::kalshi_bot_row_ts_ms;
+    struct BucketNewest {
+        QJsonObject row;
+        qint64 ts_ms = -1;
+    };
+    QHash<QString, BucketNewest> newest;
+    for (const auto& value : ledger_rows) {
+        const QJsonObject row = value.toObject();
+        if (row.value(QStringLiteral("event")).toString() !=
+            QLatin1String(kalshi_bot_detail::kDecisionEvent))
+            continue;
+        const QString ticker = row.value(QStringLiteral("ticker")).toString();
+        const QString bucket = orbit_family_chip_id(series_ticker_of(ticker));
+        if (bucket.isEmpty()) continue;
+        const qint64 ts = kalshi_bot_row_ts_ms(row);
+        const auto it = newest.constFind(bucket);
+        if (it != newest.constEnd() && it->ts_ms >= ts) continue;
+        newest.insert(bucket, BucketNewest{row, ts});
+    }
+
+    static const struct {
+        const char* id;
+        const char* label;
+    } kOrder[] = {{"thr", "THR"},     {"btc15", "15M"}, {"btc_d", "BTC-D"},
+                  {"gold", "GOLD"},   {"silver", "SILVER"}, {"wti", "WTI"}};
+    QList<BotCockpitFamilyChip> chips;
+    chips.reserve(6);
+    for (const auto& spec : kOrder) {
+        BotCockpitFamilyChip chip;
+        chip.id = QString::fromLatin1(spec.id);
+        chip.label = QString::fromLatin1(spec.label);
+        const auto it = newest.constFind(chip.id);
+        if (it == newest.constEnd()) {
+            chip.action = QStringLiteral("—");
+            chip.role = QStringLiteral("grey");
+        } else {
+            QString role;
+            chip.action = family_chip_action(it->row, &role);
+            chip.role = role;
+            chip.reason = it->row.value(QStringLiteral("reason_code")).toString();
+            chip.ticker = it->row.value(QStringLiteral("ticker")).toString();
+            chip.ts_ms = it->ts_ms;
+            chip.detail = QStringLiteral("%1\n%2%3")
+                              .arg(chip.ticker.isEmpty() ? QStringLiteral("(no ticker)")
+                                                         : chip.ticker,
+                                   chip.action,
+                                   chip.reason.isEmpty()
+                                       ? QString()
+                                       : QStringLiteral("\n%1").arg(chip.reason));
+        }
+        chips << chip;
+    }
+    return chips;
+}
+
+/// SEALED GATE family strip: explicit no-preregister, or sorted series verdicts.
+inline QString present_gate_family_line(const QJsonObject& gate) {
+    if (gate.isEmpty()) return {};
+    const QJsonObject by_family = gate.value(QStringLiteral("by_family")).toObject();
+    const bool eligible = gate.value(QStringLiteral("by_family_eligible")).toBool();
+    if (!eligible || by_family.isEmpty())
+        return QStringLiteral("no families preregistered — admit nothing");
+    QStringList keys = by_family.keys();
+    keys.sort();
+    QStringList parts;
+    parts.reserve(keys.size());
+    for (const QString& key : keys) {
+        const QString verdict =
+            by_family.value(key).toObject().value(QStringLiteral("verdict")).toString();
+        parts << QStringLiteral("%1 %2")
+                     .arg(key, verdict.isEmpty() ? QStringLiteral("—") : verdict);
+    }
+    return parts.join(QStringLiteral(" · "));
 }
 
 /// The compact decision text the envelope flashes. Deliberately shorter than
@@ -1573,6 +1742,10 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         if (kalshi_bot_detail::is_live(newest_decision))
             scene.envelope = QStringLiteral("LIVE · %1").arg(scene.envelope);
     }
+    // Per-family DECIDE chips (orbit buckets). Newest overall stays on envelope;
+    // chips keep Gold BID from painting Silver/WTI as BID.
+    scene.family_chips = present_family_chips(ledger_rows);
+    scene.gate_family_line = present_gate_family_line(gate);
 
     // ── orbit nodes ────────────────────────────────────────────────────────
     // Row 0 = BTC + session authority. Row 1 = one box per metal (15m|H|D).
@@ -1991,13 +2164,24 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         const QString verdict =
             gate.value(QStringLiteral("verdict")).toString(QStringLiteral("VERDICT MISSING"));
         // Lifetime sealed promotion scorecard — not the new-rules P&L judge.
-        // Age/colour match the BOT panel (issue #167).
-        add_node(QStringLiteral("gate"), QStringLiteral("SEALED GATE · LIFETIME"),
-                 QStringLiteral("%1 · %2 · %3/%4 criteria met · %5")
-                     .arg(verdict, panel.gate_age).arg(met).arg(criteria.size())
-                     .arg(lines.isEmpty() ? QStringLiteral("the verdict carries no criteria")
-                                          : lines.join(QStringLiteral(" · "))),
-                 panel.gate_role, true);
+        // Age/colour match the BOT panel (issue #167). Family admission strip
+        // rides on the same tile (never a second gate node).
+        QString value = QStringLiteral("%1 · %2 · %3/%4 criteria met · %5")
+                            .arg(verdict, panel.gate_age)
+                            .arg(met)
+                            .arg(criteria.size())
+                            .arg(lines.isEmpty() ? QStringLiteral("the verdict carries no criteria")
+                                                 : lines.join(QStringLiteral(" · ")));
+        if (!scene.gate_family_line.isEmpty())
+            value += QStringLiteral(" · %1").arg(scene.gate_family_line);
+        const QString detail =
+            scene.gate_family_line.isEmpty()
+                ? QString()
+                : QStringLiteral("Per-family admission (display only):\n%1")
+                      .arg(QString(scene.gate_family_line).replace(QStringLiteral(" · "),
+                                                                   QStringLiteral("\n")));
+        add_node(QStringLiteral("gate"), QStringLiteral("SEALED GATE · LIFETIME"), value,
+                 panel.gate_role, true, detail);
     }
 
     // KILL SWITCH — the panel's own reading of the stop file.

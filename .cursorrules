@@ -1,13 +1,13 @@
 # Open-Terminal — Cursor scratchpad & lessons
 
-## Scratchpad — cockpit 2-row metal scoreboards (2026-08-11)
+## Scratchpad — cockpit DECIDE/gate family mirror (2026-08-11)
 
-Landed upstream: #237 by_family; #238 ternary; #239 decide per family; #240 chip fold in pooled COM tiles.
-Now: unpool orbit — row0 BTC+session; row1 GOLD/SILVER/WTI (15m|H|D each). Branch `finn/cockpit-two-row-metal-scoreboards`.
-[X] Presentation metal nodes + row field; remove commodities15m/hourly orbit tiles
-[X] View paints/hits two orbit rows
-[X] Pins: 10 nodes / 6 KPI; tst_kalshi_bot_cockpit 79/79
-[ ] PR when ready
+PR A #243 merged. PR B `finn/cockpit-decide-gate-family-mirror`: display-only DECIDE chips + gate strip.
+[X] PR A ship (#243)
+[X] Scene: family_chips (6) + gate_family_line
+[X] Paint: DECIDE chips + click-inspect; gate value append
+[X] Pins: 83/83 (chip isolation, no-preregister, multi-family strip)
+[ ] PR B ship
 
 ---
 
@@ -34,6 +34,7 @@ Now: unpool orbit — row0 BTC+session; row1 GOLD/SILVER/WTI (15m|H|D each). Bra
 - **Apples ≠ oranges (metal pooling):** Gold/Silver/Oil are different prediction problems even at the same cadence. Never authorize (or paint trusted) from a pooled Brier/trust across underlyings. Census may count apples+oranges; quality/verdict is per series. Containment (#234): multi-series reports force `adds_value_*=false` + `pooled_*` / `pooled_trust_withheld`. Split (#237): per-family model+evidence+trust before preregister/live.
 - **Decide before cockpit for per-family trust:** Authorizer is `KalshiBotDecision::signal_trusted` / `family_trust`; view must mirror it, not invent it. Order: decide reads `by_family` → refuse missing → cockpit → preregister.
 - **Cockpit metals are separate orbit boxes:** Row 0 = BTC 1H + BTC 15M + BRIER/SETTLEMENTS/GATE/KILL/EXPOSURE; row 1 = GOLD / SILVER / WTI with `15m|H|D` folded inside each. Never a pooled COMMODITIES 15M/1H tile. Pin **10 nodes / 6 KPI**. Colour via `family_trust` worst-of (amber > grey > green-all-pass).
+- **DECIDE chips ≠ global newest:** Six orbit buckets (THR/15M/BTC-D/GOLD/SILVER/WTI) from series prefix (= `family_of` rule); newest row per bucket. One Gold BID must not paint SILVER/WTI BID. Envelope stays newest overall. Gate tile stays one node — append `gate_family_line` (`no families preregistered — admit nothing` when `!by_family_eligible` / empty). Display only; chip inspect uses `__chip_` prefix so it cannot collide with orbit `gold`/`silver`/`wti`.
 - **Trust is ternary, not bool:** PASS / FAIL / UNAVAILABLE (with n). Bool collapses "Gold n=40 unmeasured" with "Gold n=200 lost to mid" — both false — and cockpit grey-as-red invites "drop commodities" when the truth is "not measured yet."
 - **Python calibrators have no deploy step:** LaunchAgents run scripts from the repo path on a ~60s timer. An uncommitted working-tree edit is live immediately (state migrations / withhold can fire before merge). Never "try" producer edits in the tree expecting them to stay dark; commit/PR or edit off-path. UI PRs must not touch producers casually.
 - **Cockpit additive pins:** Dual-source rain changes census (`· N threshold · M kxbtc15m`), adds `kxbtc15m` orbit node, and always appends a KXBTC15M KPI line — update `health_fields_are_additive_*` pins when those land. Metal unpool replaces pooled `commodities15m`/`commodities_hourly` orbit tiles with `gold`/`silver`/`wti` on row 1 — baseline pin is **10 nodes / 6 KPI**. Outside-info detail rides on those lines — do not add nodes without updating the pin. Commodities rain adds census `· K commodities15m` and a `COM` source tag — update rain/census pins when that lands. Bid postmortem inspect opens from the **PM KPI** (or BOT VIEW), not a new node. Always reserve the PM cell in the KPI strip so narrow widths cannot bury it under `… N more`.

@@ -2000,6 +2000,84 @@ class KalshiBotCockpitTest : public QObject {
                  QStringLiteral("grey"));
     }
 
+    // ── DECIDE family chips + gate by_family strip (display-only mirror) ───
+
+    void decide_family_chips_are_orbit_buckets_not_global_newest() {
+        // Gold PASS + BTC15 BID → GOLD PASS / 15M BID; THR stays "—".
+        // A single global-newest fill would incorrectly paint every chip BID.
+        const QJsonArray ledger{
+            decision_row(kNow - 20'000, QStringLiteral("KXGOLDH-26AUG1112-T3400"),
+                         QStringLiteral("EDGE_BELOW_THRESHOLD")),
+            bid_row(kNow - 5'000, QStringLiteral("KXBTC15M-26AUG111215-B64000"))};
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), {}, {}, ledger, {}, kNow);
+        QCOMPARE(scene.family_chips.size(), 6);
+        QCOMPARE(scene.family_chips.at(0).id, QStringLiteral("thr"));
+        QCOMPARE(scene.family_chips.at(0).action, QStringLiteral("—"));
+        QCOMPARE(scene.family_chips.at(0).role, QStringLiteral("grey"));
+        const BotCockpitFamilyChip* btc15 = scene.family_chip(QStringLiteral("btc15"));
+        QVERIFY(btc15 != nullptr);
+        QCOMPARE(btc15->action, QStringLiteral("BID"));
+        QCOMPARE(btc15->role, QStringLiteral("green"));
+        QVERIFY(btc15->ticker.contains(QStringLiteral("KXBTC15M")));
+        const BotCockpitFamilyChip* gold = scene.family_chip(QStringLiteral("gold"));
+        QVERIFY(gold != nullptr);
+        QCOMPARE(gold->action, QStringLiteral("PASS"));
+        QCOMPARE(gold->role, QStringLiteral("cyan"));
+        QVERIFY(gold->ticker.contains(QStringLiteral("KXGOLDH")));
+        // Envelope still tracks newest overall (the BTC15 bid).
+        QVERIFY(scene.envelope.startsWith(QStringLiteral("BID")));
+        QVERIFY(scene.envelope_ticker.contains(QStringLiteral("KXBTC15M")));
+    }
+
+    void one_metal_bid_does_not_paint_sibling_metals() {
+        const QJsonArray ledger{
+            bid_row(kNow - 3'000, QStringLiteral("KXGOLDH-26AUG1112-T3400"))};
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger), {}, {}, ledger, {}, kNow);
+        QCOMPARE(scene.family_chip(QStringLiteral("gold"))->action, QStringLiteral("BID"));
+        QCOMPARE(scene.family_chip(QStringLiteral("silver"))->action, QStringLiteral("—"));
+        QCOMPARE(scene.family_chip(QStringLiteral("wti"))->action, QStringLiteral("—"));
+        QCOMPARE(scene.family_chip(QStringLiteral("silver"))->role, QStringLiteral("grey"));
+        QCOMPARE(scene.family_chip(QStringLiteral("wti"))->role, QStringLiteral("grey"));
+    }
+
+    void sealed_gate_states_no_families_preregistered_explicitly() {
+        QJsonObject gate = evaluated_gate(QStringLiteral("FAIL"), 4, 3, 1, 1.35, 1.55);
+        gate.insert(QStringLiteral("by_family_eligible"), false);
+        gate.insert(QStringLiteral("by_family"), QJsonObject());
+        const QJsonArray ledger{decision_row(kNow - 5'000, QStringLiteral("KXBTCD-26AUG1112-T64000"),
+                                             QStringLiteral("EDGE_BELOW_THRESHOLD"))};
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger, gate), {}, gate, ledger, {}, kNow);
+        QVERIFY(scene.gate_family_line.contains(QStringLiteral("no families preregistered")));
+        const BotCockpitNode* node = scene.node(QStringLiteral("gate"));
+        QVERIFY(node != nullptr);
+        QVERIFY2(node->value.contains(QStringLiteral("no families preregistered")),
+                 qPrintable(node->value));
+        QVERIFY(node->value.startsWith(QStringLiteral("FAIL")));
+    }
+
+    void sealed_gate_family_strip_lists_each_preregistered_verdict() {
+        QJsonObject gate = evaluated_gate(QStringLiteral("FAIL"), 4, 3, 1, 1.35, 1.55);
+        gate.insert(QStringLiteral("by_family_eligible"), true);
+        gate.insert(QStringLiteral("by_family"),
+                    QJsonObject{{QStringLiteral("KXGOLDH"),
+                                 QJsonObject{{QStringLiteral("verdict"), QStringLiteral("FAIL")}}},
+                                {QStringLiteral("KXBTC15M"),
+                                 QJsonObject{{QStringLiteral("verdict"), QStringLiteral("PASS")}}}});
+        const QJsonArray ledger{decision_row(kNow - 5'000, QStringLiteral("KXBTCD-26AUG1112-T64000"),
+                                             QStringLiteral("EDGE_BELOW_THRESHOLD"))};
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel_for(ledger, gate), {}, gate, ledger, {}, kNow);
+        QVERIFY(scene.gate_family_line.contains(QStringLiteral("KXGOLDH FAIL")));
+        QVERIFY(scene.gate_family_line.contains(QStringLiteral("KXBTC15M PASS")));
+        // Pooled top-level verdict stays the headline; strip is additive.
+        QVERIFY(scene.node(QStringLiteral("gate"))->value.startsWith(QStringLiteral("FAIL")));
+        QVERIFY(scene.node(QStringLiteral("gate"))
+                    ->value.contains(QStringLiteral("KXGOLDH FAIL")));
+    }
+
 };
 
 QTEST_GUILESS_MAIN(KalshiBotCockpitTest)
