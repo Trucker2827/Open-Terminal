@@ -144,6 +144,53 @@ class TrustReportTest(unittest.TestCase):
         self.assertNotIn("pooled_trust_withheld", report)
 
 
+class SpotFallbackTest(unittest.TestCase):
+    """Zero is not a price.
+
+    Pyth published 0.0 for Metal.XTI/USD. Because 0.0 is not None it satisfied
+    resolve_spot's `if spot is None` test and BLOCKED the Yahoo fallback, which
+    had a good CL=F quote all along. KXWTIH skipped 9,520 markets as
+    unmodelled, trained on nothing, and could never earn promotion.
+    """
+
+    def test_a_zero_pyth_price_is_unavailable_not_a_price(self):
+        self.assertIsNone(stf.fetch_pyth_spot("dead-feed", fetcher=lambda url: {
+            "parsed": [{"price": {"price": "0", "expo": -8}}]}))
+        # A real price still comes through.
+        self.assertAlmostEqual(stf.fetch_pyth_spot("live-feed", fetcher=lambda url: {
+            "parsed": [{"price": {"price": "8313000000", "expo": -8}}]}), 83.13)
+
+    def test_a_dead_pyth_feed_falls_back_to_yahoo(self):
+        spec = stf.SeriesSpec(yahoo="CL=F", label="wti", spot_mode="pyth",
+                              pyth_symbol="Metal.XTI/USD", pyth_id="dead")
+        real = stf.fetch_pyth_spot
+        stf.fetch_pyth_spot = lambda *a, **k: None      # the hardened return
+        try:
+            spot, vol, source = stf.resolve_spot(spec, {"CL=F": [(1, 83.14), (2, 83.13)]})
+        finally:
+            stf.fetch_pyth_spot = real
+        self.assertGreater(spot, 0.0, "a dead primary must not leave spot at zero")
+        self.assertIn("yahoo", source)
+
+
+    def test_a_brti_source_returning_zero_also_falls_back(self):
+        """The belt-and-braces guard, on the OTHER source path.
+
+        Without its own test this guard passed a neuter — the fallback test
+        above stubs the primary to return None and never reaches the `<= 0.0`
+        branch, so it would have proved nothing about it.
+        """
+        spec = stf.SeriesSpec(yahoo="BTC=F", label="btc", spot_mode="brti")
+        real = stf.latest_brti_spot
+        stf.latest_brti_spot = lambda: 0.0      # present, but not a price
+        try:
+            spot, vol, source = stf.resolve_spot(spec, {"BTC=F": [(1, 64000.0), (2, 64100.0)]})
+        finally:
+            stf.latest_brti_spot = real
+        self.assertGreater(spot, 0.0, "a zero primary must not survive as the spot")
+        self.assertIn("yahoo", source)
+
+
 class PerFamilySplitTest(unittest.TestCase):
     """Gold 15m, Silver 15m and Oil 15m are three prediction problems.
 
