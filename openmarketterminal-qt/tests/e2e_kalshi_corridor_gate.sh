@@ -6,6 +6,8 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export OPENTERMINAL_EVIDENCE_DIR="$TMP"
 export OPENTERMINAL_KALSHI_EVIDENCE_DIR="$TMP"
+export HOME="$TMP/home"
+mkdir -p "$HOME"
 
 PARAMS='{"max_bundles_per_opportunity":2,"max_cost_per_opportunity_usd":2.0,"max_scan_age_ms":60000}'
 "$CLI" --json kalshi bot corridor-gate seal "$PARAMS" >"$TMP/sealed.json"
@@ -76,9 +78,18 @@ assert rows[0]["live_order_submitted"] is False
 assert rows[0]["result"] == "SIMULATED_AT_OBSERVED_BOOK"
 PY
 
-# A micro-live seal is not sufficient by itself. With no human live session
-# and no global live arm, the shipped destructive tool must refuse before any
-# credential or order call and must leave the execution ledger absent.
+# A micro-live seal is not sufficient by itself. Reach the handler through the
+# headless Authenticated/destructive boundary by enabling the BASE trading
+# capability in this throwaway profile, while deliberately leaving the global
+# LIVE arm off and creating no bounded human session. The handler itself must
+# then refuse before any credential or order call and leave the execution
+# ledger absent. This setup is explicit so the test cannot depend on the host
+# user's persisted authentication/trading state.
+"$CLI" --headless mcp list >/dev/null
+DB="$(find "$HOME" -name openmarketterminal.db -type f -print -quit)"
+test -n "$DB"
+sqlite3 "$DB" \
+  "INSERT OR REPLACE INTO settings(key,value,category,updated_at) VALUES('cli.allow_trading','true','cli','2026-01-01'),('cli.live_trading_armed','false','cli','2026-01-01');"
 set +e
 "$CLI" --json kalshi bot corridor-micro-live once >"$TMP/micro-refused.json"
 rc=$?
