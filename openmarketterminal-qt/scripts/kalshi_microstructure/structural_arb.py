@@ -116,6 +116,7 @@ class CertifiedLeg:
     side: str
     payouts: tuple[Decimal, ...]
     minimum_ask_price: Decimal
+    terms_sha256: str
 
     def payload(self) -> dict[str, object]:
         return {
@@ -123,6 +124,7 @@ class CertifiedLeg:
             "side": self.side,
             "payouts": [str(value) for value in self.payouts],
             "minimum_ask_price": str(self.minimum_ask_price),
+            "terms_sha256": self.terms_sha256,
         }
 
 
@@ -162,6 +164,7 @@ class PayoffCertificate:
             minimum_ask_price = _decimal(
                 raw.get("minimum_ask_price"), f"legs[{index}].minimum_ask_price"
             )
+            terms_sha256 = str(raw.get("terms_sha256") or "").strip().lower()
             if not ticker or side not in {"yes", "no"}:
                 raise ValueError(f"legs[{index}] needs a ticker and yes/no side")
             if (ticker, side) in identities:
@@ -175,12 +178,17 @@ class PayoffCertificate:
                 raise ValueError("version 1 certificates allow only binary 0/1 payouts")
             if minimum_ask_price <= ZERO:
                 raise ValueError(f"legs[{index}].minimum_ask_price must be positive")
+            if len(terms_sha256) != 64 or any(
+                character not in "0123456789abcdef" for character in terms_sha256
+            ):
+                raise ValueError(f"legs[{index}].terms_sha256 must be lowercase SHA-256")
             identities.add((ticker, side))
             legs.append(CertifiedLeg(
                 ticker=ticker,
                 side=side,
                 payouts=payouts,
                 minimum_ask_price=minimum_ask_price,
+                terms_sha256=terms_sha256,
             ))
 
         certificate = cls(
@@ -191,6 +199,11 @@ class PayoffCertificate:
         )
         by_identity = {(leg.ticker, leg.side): leg for leg in certificate.legs}
         for ticker in certificate.tickers:
+            ticker_legs = [leg for leg in certificate.legs if leg.ticker == ticker]
+            if len({leg.terms_sha256 for leg in ticker_legs}) != 1:
+                raise ValueError(f"same-market legs must bind one settlement-terms hash: {ticker}")
+            if len({leg.minimum_ask_price for leg in ticker_legs}) != 1:
+                raise ValueError(f"same-market legs must bind one price grid: {ticker}")
             yes = by_identity.get((ticker, "yes"))
             no = by_identity.get((ticker, "no"))
             if yes is not None and no is not None and any(
@@ -400,12 +413,14 @@ class BtcThresholdCorridorCertificate:
                     "side": "yes",
                     "payouts": [0, 1, 1],
                     "minimum_ask_price": str(self.minimum_ask_price),
+                    "terms_sha256": lower.terms_sha256,
                 },
                 {
                     "ticker": higher.ticker,
                     "side": "no",
                     "payouts": [1, 1, 0],
                     "minimum_ask_price": str(self.minimum_ask_price),
+                    "terms_sha256": higher.terms_sha256,
                 },
             ],
         })
@@ -591,6 +606,29 @@ def validate_corridor_markets(
             return f"settlement time changed: {member.ticker}"
         if settlement_terms_sha256(raw) != member.terms_sha256:
             return f"reviewed settlement terms changed: {member.ticker}"
+    return ""
+
+
+def validate_generic_markets(
+    certificate: PayoffCertificate,
+    markets: Mapping[str, Market],
+) -> str:
+    """Return empty only when every generic leg matches its reviewed market."""
+    for ticker in certificate.tickers:
+        market = markets.get(ticker)
+        if market is None:
+            return f"missing certified market: {ticker}"
+        if market.ticker != ticker or str(market.raw.get("ticker") or "") != ticker:
+            return f"market ticker changed: {ticker}"
+        if market.status.lower() not in {"active", "open"}:
+            return f"market is not open: {ticker} ({market.status})"
+        ticker_legs = [leg for leg in certificate.legs if leg.ticker == ticker]
+        expected_grid = ticker_legs[0].minimum_ask_price
+        expected_terms = ticker_legs[0].terms_sha256
+        if market_minimum_ask_price(market.raw) != expected_grid:
+            return f"certified price grid changed or is unavailable: {ticker}"
+        if settlement_terms_sha256(market.raw) != expected_terms:
+            return f"reviewed settlement terms changed: {ticker}"
     return ""
 
 
@@ -894,20 +932,20 @@ def collect_snapshot(
         for ticker in certificate.tickers:
             market = client.get_market(ticker)
             markets[ticker] = market
-            if market.status.lower() not in {"active", "open"}:
-                unavailable_reason = f"market is not open: {ticker} ({market.status})"
-                break
-            series_ticker = str(market.raw.get("series_ticker") or "")
-            if not series_ticker:
-                unavailable_reason = f"market has no series_ticker: {ticker}"
-                break
-            if series_ticker not in series_payloads:
-                series_payloads[series_ticker] = client.get_series(series_ticker)
-            try:
-                schedules[ticker] = FeeSchedule.from_payload(series_payloads[series_ticker])
-            except ValueError as exc:
-                unavailable_reason = f"{ticker}: {exc}"
-                break
+        unavailable_reason = validate_generic_markets(certificate, markets)
+        if not unavailable_reason:
+            for ticker, market in markets.items():
+                series_ticker = str(market.raw.get("series_ticker") or "")
+                if not series_ticker:
+                    unavailable_reason = f"market has no series_ticker: {ticker}"
+                    break
+                if series_ticker not in series_payloads:
+                    series_payloads[series_ticker] = client.get_series(series_ticker)
+                try:
+                    schedules[ticker] = FeeSchedule.from_payload(series_payloads[series_ticker])
+                except ValueError as exc:
+                    unavailable_reason = f"{ticker}: {exc}"
+                    break
 
         books = client.get_orderbooks(list(certificate.tickers)) if not unavailable_reason else {}
     except Exception as exc:  # noqa: BLE001 - persist telemetry failure as evidence.

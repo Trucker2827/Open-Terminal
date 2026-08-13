@@ -6,6 +6,8 @@ import sys
 import tempfile
 import unittest
 from decimal import Decimal
+from unittest.mock import MagicMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -27,13 +29,14 @@ from scripts.kalshi_microstructure.structural_arb import (
     require_price_grid_feasible,
     replay_evidence,
     settlement_terms_sha256,
+    validate_generic_markets,
 )
 
 
 def certificate(payload: dict) -> PayoffCertificate:
     normalized = {"schema_version": 1, **payload}
     normalized["legs"] = [
-        {"minimum_ask_price": "0.01", **leg}
+        {"minimum_ask_price": "0.01", "terms_sha256": "a" * 64, **leg}
         for leg in payload.get("legs", [])
     ]
     return PayoffCertificate.from_payload(normalized)
@@ -69,6 +72,21 @@ def threshold_market(
         "rules_secondary": "No scalar payout; reviewed fixture",
         "price_level_structure": "linear_cent",
         "price_ranges": [{"start": "0.0000", "end": "1.0000", "step": "0.0100"}],
+    })
+
+
+def generic_market(ticker: str, *, rules: str = "reviewed ordinary binary rule") -> Market:
+    return Market.from_api({
+        "ticker": ticker,
+        "event_ticker": "GENERIC-EVENT",
+        "series_ticker": "GENERIC-SERIES",
+        "title": ticker,
+        "status": "active",
+        "rules_primary": rules,
+        "rules_secondary": "ordinary binary payout",
+        "expected_expiration_time": "2026-08-14T00:00:00Z",
+        "price_level_structure": "linear_cent",
+        "price_ranges": [{"start": "0", "end": "1", "step": "0.01"}],
     })
 
 
@@ -556,6 +574,106 @@ class StructuralArbitrageTest(unittest.TestCase):
             path.write_text(json.dumps(row) + "\n", encoding="utf-8")
             self.assertTrue(replay_evidence(path)["valid"])
 
+    def test_generic_certificate_binds_live_terms_and_price_grid(self) -> None:
+        markets = {ticker: generic_market(ticker) for ticker in ("A", "B")}
+        cert = certificate({
+            "bundle_id": "generic-bound",
+            "description": "Every generic leg binds reviewed live metadata",
+            "outcomes": ["a", "b"],
+            "legs": [
+                {
+                    "ticker": "A",
+                    "side": "yes",
+                    "payouts": [1, 0],
+                    "terms_sha256": settlement_terms_sha256(markets["A"].raw),
+                },
+                {
+                    "ticker": "B",
+                    "side": "yes",
+                    "payouts": [0, 1],
+                    "terms_sha256": settlement_terms_sha256(markets["B"].raw),
+                },
+            ],
+        })
+        self.assertEqual(validate_generic_markets(cert, markets), "")
+
+        changed_rules = generic_market("B", rules="changed after certificate review")
+        self.assertEqual(
+            validate_generic_markets(cert, {"A": markets["A"], "B": changed_rules}),
+            "reviewed settlement terms changed: B",
+        )
+
+        changed_grid = Market.from_api({
+            **markets["B"].raw,
+            "price_level_structure": "deci_cent",
+            "price_ranges": [{"start": "0", "end": "1", "step": "0.001"}],
+        })
+        self.assertEqual(
+            validate_generic_markets(cert, {"A": markets["A"], "B": changed_grid}),
+            "certified price grid changed or is unavailable: B",
+        )
+
+    def test_generic_collection_refuses_changed_terms_before_books(self) -> None:
+        reviewed = {ticker: generic_market(ticker) for ticker in ("A", "B")}
+        cert = certificate({
+            "bundle_id": "generic-stale",
+            "description": "Changed rules must withhold evaluation",
+            "outcomes": ["a", "b"],
+            "legs": [
+                {"ticker": ticker, "side": "yes", "payouts": payouts,
+                 "terms_sha256": settlement_terms_sha256(reviewed[ticker].raw)}
+                for ticker, payouts in (("A", [1, 0]), ("B", [0, 1]))
+            ],
+        })
+
+        class Probe:
+            book_calls = 0
+
+            def get_market(self, ticker):
+                return generic_market(ticker, rules="changed") if ticker == "B" else reviewed[ticker]
+
+            def get_orderbooks(self, tickers):
+                self.book_calls += 1
+                raise AssertionError("stale certificate reached quote collection")
+
+        probe = Probe()
+        row = collect_snapshot(probe, cert)
+        self.assertEqual(row["evaluation"]["state"], "unavailable")
+        self.assertEqual(row["collection_error"], "reviewed settlement terms changed: B")
+        self.assertEqual(probe.book_calls, 0)
+
+    def test_generic_collection_accepts_matching_reviewed_terms(self) -> None:
+        markets = {ticker: generic_market(ticker) for ticker in ("A", "B")}
+        cert = certificate({
+            "bundle_id": "generic-current",
+            "description": "Matching reviewed terms may reach quote evaluation",
+            "outcomes": ["a", "b"],
+            "legs": [
+                {"ticker": ticker, "side": "yes", "payouts": payouts,
+                 "terms_sha256": settlement_terms_sha256(markets[ticker].raw)}
+                for ticker, payouts in (("A", [1, 0]), ("B", [0, 1]))
+            ],
+        })
+
+        class Probe:
+            book_calls = 0
+
+            def get_market(self, ticker):
+                return markets[ticker]
+
+            def get_series(self, ticker):
+                return {"fee_type": "none", "fee_multiplier": 1}
+
+            def get_orderbooks(self, tickers):
+                self.book_calls += 1
+                return {ticker: book(ticker, no_bids=((0.75, 10),)) for ticker in tickers}
+
+        probe = Probe()
+        row = collect_snapshot(probe, cert)
+        self.assertEqual(row["evaluation"]["state"], "opportunity")
+        self.assertIsNone(row["collection_error"])
+        self.assertEqual(probe.book_calls, 1)
+
     def test_depth_sweep_uses_vwap_and_requires_full_equal_quantity(self) -> None:
         cert = certificate(
             {
@@ -662,6 +780,17 @@ class BatchOrderbooksTest(unittest.TestCase):
         self.assertEqual(client.calls, [("/markets/orderbooks", {"tickers": ["A"]})])
         self.assertEqual(books["A"].best_yes_ask.price, 0.45)
         self.assertEqual(books["A"].best_yes_ask.size, 3.0)
+
+    def test_batch_orderbooks_encodes_tickers_as_repeated_parameters(self) -> None:
+        response = MagicMock()
+        response.read.return_value = b'{"orderbooks": []}'
+        response.__enter__.return_value = response
+        response.__exit__.return_value = False
+        with patch("scripts.kalshi_microstructure.kalshi.urlopen", return_value=response) as opened:
+            KalshiRestClient(max_get_retries=0).get_orderbooks(["A", "B"])
+
+        query = parse_qs(urlsplit(opened.call_args.args[0].full_url).query)
+        self.assertEqual(query, {"tickers": ["A", "B"]})
 
     def test_client_pages_raw_event_metadata_for_review(self) -> None:
         class FakeClient:

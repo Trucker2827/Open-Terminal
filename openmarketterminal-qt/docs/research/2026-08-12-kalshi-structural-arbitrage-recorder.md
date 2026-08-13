@@ -40,16 +40,18 @@ Example structure (illustrative tickers only; not a live certificate):
   "description": "Exactly one reviewed range bucket settles YES",
   "outcomes": ["low", "middle", "high"],
   "legs": [
-    {"ticker": "REPLACE-LOW", "side": "yes", "payouts": [1, 0, 0], "minimum_ask_price": "0.01"},
-    {"ticker": "REPLACE-MIDDLE", "side": "yes", "payouts": [0, 1, 0], "minimum_ask_price": "0.01"},
-    {"ticker": "REPLACE-HIGH", "side": "yes", "payouts": [0, 0, 1], "minimum_ask_price": "0.01"}
+    {"ticker": "REPLACE-LOW", "side": "yes", "payouts": [1, 0, 0], "minimum_ask_price": "0.01", "terms_sha256": "REPLACE-64-HEX"},
+    {"ticker": "REPLACE-MIDDLE", "side": "yes", "payouts": [0, 1, 0], "minimum_ask_price": "0.01", "terms_sha256": "REPLACE-64-HEX"},
+    {"ticker": "REPLACE-HIGH", "side": "yes", "payouts": [0, 0, 1], "minimum_ask_price": "0.01", "terms_sha256": "REPLACE-64-HEX"}
   ]
 }
 ```
 
-Do not preregister a certificate until the contracts' official settlement
-rules establish that the enumerated states are exhaustive. Correlation,
-similar wording, or shared underliers are insufficient.
+Each leg binds the SHA-256 of the reviewed live settlement fields as well as
+its price grid. Every scan refetches the market and refuses evaluation if
+either binding changed. Do not preregister a certificate until the contracts'
+official settlement rules establish that the enumerated states are exhaustive.
+Correlation, similar wording, or shared underliers are insufficient.
 
 ## Commands
 
