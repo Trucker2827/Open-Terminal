@@ -177,12 +177,12 @@ def summarize_cf_liquidity_recording(
         event = row.get("event")
         if event == "session_started":
             ticker = str((row.get("market") or {}).get("ticker") or "")
-            cache = KalshiBookCache(ticker) if ticker else None
+            cache = KalshiBookCache(ticker, validate_sequence=True) if ticker else None
             continue
         if event == "kalshi" and cache is not None:
             cache.apply(row.get("message") or {})
             continue
-        if event != "cf" or cache is None:
+        if event != "cf" or cache is None or not cache.valid:
             continue
         payload = cf_liquidity_payload(row.get("settlement_state"), cache.to_book(), config)
         summary.add(payload)

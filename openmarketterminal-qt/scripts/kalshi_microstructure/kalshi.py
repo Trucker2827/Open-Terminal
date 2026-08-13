@@ -124,6 +124,41 @@ class KalshiRestClient:
         payload = self.get_json(f"/markets/{ticker}")
         return Market.from_api(payload["market"])
 
+    def get_events(
+        self,
+        *,
+        status: str = "open",
+        limit: int = 200,
+        cursor: str | None = None,
+        with_nested_markets: bool = True,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """Return raw event metadata for read-only candidate discovery.
+
+        Raw dictionaries are intentional: certification review needs every
+        settlement/rule field Kalshi supplied, including fields this client
+        does not yet model. Discovery never converts these rows into payoff
+        certificates.
+        """
+        if not 1 <= limit <= 200:
+            raise ValueError("get_events limit must be between 1 and 200")
+        params: dict[str, Any] = {
+            "status": status,
+            "limit": limit,
+            "with_nested_markets": str(with_nested_markets).lower(),
+        }
+        if cursor:
+            params["cursor"] = cursor
+        payload = self.get_json("/events", params)
+        events = [event for event in payload.get("events", []) if isinstance(event, dict)]
+        return events, payload.get("cursor")
+
+    def get_series(self, ticker: str) -> dict[str, Any]:
+        payload = self.get_json(f"/series/{ticker}")
+        series = payload.get("series")
+        if not isinstance(series, dict):
+            raise ValueError(f"Kalshi returned no series metadata for {ticker}")
+        return series
+
     def get_orderbook(self, ticker: str) -> BinaryBook:
         payload = self.get_json(f"/markets/{ticker}/orderbook")
         book = payload.get("orderbook_fp") or payload.get("orderbook") or {}
@@ -132,6 +167,26 @@ class KalshiRestClient:
             yes_bids=_levels(book.get("yes_dollars") or book.get("yes") or ()),
             no_bids=_levels(book.get("no_dollars") or book.get("no") or ()),
         )
+
+    def get_orderbooks(self, tickers: list[str]) -> dict[str, BinaryBook]:
+        """Fetch one server-side batch snapshot for up to 100 markets."""
+        if not tickers or len(tickers) > 100:
+            raise ValueError("get_orderbooks requires between 1 and 100 tickers")
+        payload = self.get_json("/markets/orderbooks", {"tickers": tickers})
+        books: dict[str, BinaryBook] = {}
+        for item in payload.get("orderbooks", []):
+            if not isinstance(item, dict):
+                continue
+            ticker = str(item.get("ticker") or "")
+            raw = item.get("orderbook_fp") or item.get("orderbook") or {}
+            if not ticker or not isinstance(raw, dict):
+                continue
+            books[ticker] = BinaryBook(
+                ticker=ticker,
+                yes_bids=_levels(raw.get("yes_dollars") or raw.get("yes") or ()),
+                no_bids=_levels(raw.get("no_dollars") or raw.get("no") or ()),
+            )
+        return books
 
 
 def _levels(raw_levels: Any) -> tuple[Level, ...]:

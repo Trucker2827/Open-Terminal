@@ -63,6 +63,12 @@ add_test(NAME test_prediction_kalshi_queue
 add_test(NAME test_kalshi_strategy
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_strategy.py -v)
+# Read-only structural-arbitrage measurement. This pins Kalshi's reciprocal
+# book semantics, explicit payoff certificates, depth/fee accounting, and
+# evidence replay without importing or invoking an order-placement path.
+add_test(NAME test_kalshi_structural_arb
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_structural_arb.py -v)
 add_test(NAME test_kalshi_advisor_core
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_advisor_core.py -v)

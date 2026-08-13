@@ -156,7 +156,7 @@ async def run_websocket_bot(
                     "close_time": market.close_time.isoformat() if market.close_time else None,
                 },
             )
-            cache = KalshiBookCache(market.ticker)
+            cache = KalshiBookCache(market.ticker, validate_sequence=True)
             ws_client = KalshiWebSocketClient(credentials=credentials, env=env)
             next_eval = 0.0
 
@@ -177,7 +177,7 @@ async def run_websocket_bot(
                         logger.write("market_closed", {"ticker": market.ticker})
                         break
 
-                    if cache.seq is None or now < next_eval:
+                    if not cache.valid or now < next_eval:
                         continue
 
                     evaluate_cached_book(
