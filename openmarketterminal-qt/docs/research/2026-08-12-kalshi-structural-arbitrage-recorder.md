@@ -202,11 +202,19 @@ shared event ticker.
 - Fee rounding is applied conservatively at every swept price level.
 - A positive snapshot is a research observation, not permission to trade.
 - WebSocket sequence numbers are tracked once per subscription id, not once
-  per market, and sid-tagged control frames advance the same counter. A gap
-  invalidates and clears every book under that subscription and raises a
-  reconnect-required signal. Re-subscribing on the same socket does not replay
-  snapshots, so recovery means closing the connection, opening a new one, and
-  waiting for fresh snapshots for every member. Multi-market coherence uses
-  each delta's exchange `ts_ms`, not local arrival order.
+  per market. Every frame carrying both `sid` and `seq` advances the counter;
+  the initial unsequenced `subscribed` response is ignored. A measured
+  single-market stream produced no sequenced control frames in 1,430 sequenced
+  messages, so current one-market callers are not actively affected by control
+  traffic. The uniform rule protects the latent case where an in-connection
+  command produces a sequenced `ok` frame.
+- A sequence gap invalidates and clears every book under that subscription and
+  raises a reconnect-required signal. Re-subscribing on the same socket does
+  not replay snapshots, so recovery means closing the connection, opening a
+  new one, and waiting for fresh snapshots for every member. Multi-market
+  coherence uses each delta's exchange `ts_ms`, not local arrival order.
+- A live near-money single-market sample delivered 1,429 deltas in 90 seconds
+  (about 16 per second). That is modest for the present two-leg research scope,
+  but it is a concrete reason not to expand to a full ladder casually.
 - No live path should be designed until recorded opportunities survive
   duration, latency, partial-fill, and sequence-integrity analysis.
