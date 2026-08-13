@@ -178,13 +178,22 @@ not authority for this strategy:
 
 ```bash
 openterminalcli kalshi bot corridor-gate seal \
-  '{"min_scans":300,"min_distinct_events":3,"min_opportunity_scans":10,"min_opportunity_events":3,"min_best_net_edge_usd":0.01,"max_unavailable_rate":0.10}'
+  '{"max_bundles_per_opportunity":2,"max_cost_per_opportunity_usd":2.0,"max_scan_age_ms":60000}'
 openterminalcli kalshi bot corridor-gate
 ```
 
-Only evidence observed after the gate was sealed counts. A PASS sets
-`paper_bids_authorized=true` and still sets `live_orders_authorized=false`.
-There is no live corridor order path.
+The immutable seal activates bounded paper evidence collection immediately; it
+does **not** require historical scans or profitable events first. Those are the
+outcome the paper experiment exists to measure. Every proposed paper bid must
+still come from a fresh certificate-backed scan whose selected pair is a
+net-positive `opportunity`, was evaluated at the requested quantity, and fits
+the per-simulation cost limit. A passing gate sets
+`paper_bids_authorized=true` and always sets `live_orders_authorized=false`.
+
+Scan and opportunity totals remain visible in the Bot Cockpit as diagnostics.
+They cannot disable paper collection. Fill quality, partial-leg exposure,
+slippage, settlement and independent-event profitability belong to a separate
+future **live-promotion** gate; this paper seal can never authorize live orders.
 
 The commands remain read-only. No order operation is exposed. A positive row
 is evidence for latency, duration and partial-fill research—not permission to

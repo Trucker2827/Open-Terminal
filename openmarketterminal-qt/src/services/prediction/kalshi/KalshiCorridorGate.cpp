@@ -60,6 +60,29 @@ double number(const QJsonValue& value, double fallback = 0.0) {
     return fallback;
 }
 
+QString canonical_sha256(const QJsonObject& object) {
+    const auto canonicalize = [](const auto& self, const QJsonValue& value) -> QJsonValue {
+        if (value.isObject()) {
+            const QJsonObject source = value.toObject();
+            QStringList keys = source.keys();
+            keys.sort(Qt::CaseSensitive);
+            QJsonObject sorted;
+            for (const QString& key : keys) sorted.insert(key, self(self, source.value(key)));
+            return sorted;
+        }
+        if (value.isArray()) {
+            QJsonArray array;
+            for (const QJsonValue& item : value.toArray()) array.append(self(self, item));
+            return array;
+        }
+        return value;
+    };
+    return QString::fromLatin1(QCryptographicHash::hash(
+        QJsonDocument(canonicalize(canonicalize, object).toObject())
+            .toJson(QJsonDocument::Compact),
+        QCryptographicHash::Sha256).toHex());
+}
+
 } // namespace
 
 QString KalshiCorridorGate::seal(const QJsonObject& record) {
@@ -81,10 +104,9 @@ QJsonObject KalshiCorridorGate::parse_params(const QJsonObject& raw, QString* er
         return QJsonObject{};
     };
     static const QSet<QString> allowed{
-        QStringLiteral("min_scans"), QStringLiteral("min_distinct_events"),
-        QStringLiteral("min_opportunity_scans"), QStringLiteral("min_opportunity_events"),
-        QStringLiteral("min_best_net_edge_usd"),
-        QStringLiteral("max_unavailable_rate")};
+        QStringLiteral("max_bundles_per_opportunity"),
+        QStringLiteral("max_cost_per_opportunity_usd"),
+        QStringLiteral("max_scan_age_ms")};
     QStringList unknown;
     for (auto it = raw.constBegin(); it != raw.constEnd(); ++it)
         if (!allowed.contains(it.key())) unknown.append(it.key());
@@ -93,45 +115,39 @@ QJsonObject KalshiCorridorGate::parse_params(const QJsonObject& raw, QString* er
         return fail(QStringLiteral("unknown corridor gate params [%1]")
                         .arg(unknown.join(QStringLiteral(", "))));
     }
-    const auto integer = [&](const char* key, int floor) -> int {
+    const auto integer = [&](const char* key, int floor, int ceiling) -> int {
         const QJsonValue value = raw.value(QString::fromLatin1(key));
         if (!value.isDouble() || value.toDouble() != std::floor(value.toDouble()) ||
-            value.toInt() < floor)
+            value.toInt() < floor || value.toInt() > ceiling)
             return -1;
         return value.toInt();
     };
-    const int min_scans = integer("min_scans", kMinScansFloor);
-    if (min_scans < 0)
-        return fail(QStringLiteral("min_scans must be an integer >= %1").arg(kMinScansFloor));
-    const int min_events = integer("min_distinct_events", kMinDistinctEventsFloor);
-    if (min_events < 0)
-        return fail(QStringLiteral("min_distinct_events must be an integer >= %1")
-                        .arg(kMinDistinctEventsFloor));
-    const int min_opportunities = integer("min_opportunity_scans", kMinOpportunityScansFloor);
-    if (min_opportunities < 0)
-        return fail(QStringLiteral("min_opportunity_scans must be an integer >= %1")
-                        .arg(kMinOpportunityScansFloor));
-    const int min_opportunity_events =
-        integer("min_opportunity_events", kMinOpportunityEventsFloor);
-    if (min_opportunity_events < 0)
-        return fail(QStringLiteral("min_opportunity_events must be an integer >= %1")
-                        .arg(kMinOpportunityEventsFloor));
-    const QJsonValue edge = raw.value(QStringLiteral("min_best_net_edge_usd"));
-    if (!edge.isDouble() || edge.toDouble() < 0.0 || edge.toDouble() > 1.0)
-        return fail(QStringLiteral("min_best_net_edge_usd must be a number in [0, 1]"));
-    const QJsonValue unavailable = raw.value(QStringLiteral("max_unavailable_rate"));
-    if (!unavailable.isDouble() || unavailable.toDouble() < 0.0 ||
-        unavailable.toDouble() > kMaxUnavailableRateCeiling)
-        return fail(QStringLiteral("max_unavailable_rate must be a number in [0, %1]")
-                        .arg(kMaxUnavailableRateCeiling, 0, 'f', 2));
+    const int max_bundles =
+        integer("max_bundles_per_opportunity", 1, kMaxBundlesCeiling);
+    if (max_bundles < 0)
+        return fail(QStringLiteral("max_bundles_per_opportunity must be an integer in [1, %1]")
+                        .arg(kMaxBundlesCeiling));
+    const auto bounded_money = [&](const char* key, double ceiling) -> double {
+        const QJsonValue value = raw.value(QString::fromLatin1(key));
+        return value.isDouble() && std::isfinite(value.toDouble()) && value.toDouble() > 0.0 &&
+                       value.toDouble() <= ceiling
+                   ? value.toDouble()
+                   : -1.0;
+    };
+    const double max_cost =
+        bounded_money("max_cost_per_opportunity_usd", kMaxOpportunityCostCeiling);
+    if (max_cost < 0.0)
+        return fail(QStringLiteral("max_cost_per_opportunity_usd must be in (0, %1]")
+                        .arg(kMaxOpportunityCostCeiling));
+    const int max_age = integer("max_scan_age_ms", kMinScanAgeMs, kMaxScanAgeMs);
+    if (max_age < 0)
+        return fail(QStringLiteral("max_scan_age_ms must be an integer in [%1, %2]")
+                        .arg(kMinScanAgeMs).arg(kMaxScanAgeMs));
 
     if (error) error->clear();
-    return QJsonObject{{QStringLiteral("min_scans"), min_scans},
-                       {QStringLiteral("min_distinct_events"), min_events},
-                       {QStringLiteral("min_opportunity_scans"), min_opportunities},
-                       {QStringLiteral("min_opportunity_events"), min_opportunity_events},
-                       {QStringLiteral("min_best_net_edge_usd"), edge},
-                       {QStringLiteral("max_unavailable_rate"), unavailable}};
+    return QJsonObject{{QStringLiteral("max_bundles_per_opportunity"), max_bundles},
+                       {QStringLiteral("max_cost_per_opportunity_usd"), max_cost},
+                       {QStringLiteral("max_scan_age_ms"), max_age}};
 }
 
 QJsonObject KalshiCorridorGate::preregister(const QString& path,
@@ -249,52 +265,22 @@ QJsonObject KalshiCorridorGate::evaluate(const QJsonValue& params_record,
     const double unavailable_rate = scans > 0
         ? static_cast<double>(unavailable) / static_cast<double>(scans) : 1.0;
     const QJsonArray criteria{
-        criterion(QStringLiteral("min_scans"), QStringLiteral("certificate-backed scans"), scans,
-                  params.value(QStringLiteral("min_scans")).toInt(), QStringLiteral(">="),
-                  scans >= params.value(QStringLiteral("min_scans")).toInt()),
-        criterion(QStringLiteral("min_distinct_events"),
-                  QStringLiteral("distinct reviewed hourly expirations"), events.size(),
-                  params.value(QStringLiteral("min_distinct_events")).toInt(),
-                  QStringLiteral(">="),
-                  events.size() >= params.value(QStringLiteral("min_distinct_events")).toInt()),
-        criterion(QStringLiteral("min_opportunity_scans"),
-                  QStringLiteral("scans with executable edge after fees and buffer"),
-                  opportunity_scans,
-                  params.value(QStringLiteral("min_opportunity_scans")).toInt(),
-                  QStringLiteral(">="), opportunity_scans >=
-                      params.value(QStringLiteral("min_opportunity_scans")).toInt()),
-        criterion(QStringLiteral("min_opportunity_events"),
-                  QStringLiteral("distinct reviewed expirations with executable edge"),
-                  opportunity_events.size(),
-                  params.value(QStringLiteral("min_opportunity_events")).toInt(),
-                  QStringLiteral(">="), opportunity_events.size() >=
-                      params.value(QStringLiteral("min_opportunity_events")).toInt()),
-        criterion(QStringLiteral("min_best_net_edge_usd"),
-                  QStringLiteral("best certified net edge per bundle"), best_edge,
-                  params.value(QStringLiteral("min_best_net_edge_usd")).toDouble(),
-                  QStringLiteral(">="), best_edge >=
-                      params.value(QStringLiteral("min_best_net_edge_usd")).toDouble()),
-        criterion(QStringLiteral("max_unavailable_rate"),
-                  QStringLiteral("fraction of scans unavailable"), unavailable_rate,
-                  params.value(QStringLiteral("max_unavailable_rate")).toDouble(),
-                  QStringLiteral("<="), unavailable_rate <=
-                      params.value(QStringLiteral("max_unavailable_rate")).toDouble())};
-    bool all_met = true;
-    for (const QJsonValue& value : criteria)
-        if (!value.toObject().value(QStringLiteral("met")).toBool()) all_met = false;
+        criterion(QStringLiteral("sealed_paper_risk_envelope"),
+                  QStringLiteral("immutable paper-only risk limits are valid"), 1, 1,
+                  QStringLiteral("=="), true)};
 
     return QJsonObject{{QStringLiteral("schema"), 1},
                        {QStringLiteral("event"), QString::fromLatin1(kVerdictEvent)},
                        {QStringLiteral("strategy_family"), QString::fromLatin1(kFamily)},
                        {QStringLiteral("ts_ms"), static_cast<double>(now_ms)},
                        {QStringLiteral("ts"), iso(now_ms)},
-                       {QStringLiteral("verdict"),
-                        QString::fromLatin1(all_met ? kVerdictPass : kVerdictFail)},
+                       {QStringLiteral("verdict"), QString::fromLatin1(kVerdictPass)},
                        {QStringLiteral("evaluated"), true},
                        {QStringLiteral("authority"), QStringLiteral("paper_only")},
-                       {QStringLiteral("paper_bids_authorized"), all_met},
+                       {QStringLiteral("paper_bids_authorized"), true},
                        {QStringLiteral("live_orders_authorized"), false},
                        {QStringLiteral("gate_id"), record.value(QStringLiteral("gate_id"))},
+                       {QStringLiteral("sealed_params"), record},
                        {QStringLiteral("sealed_at_ms"),
                         record.value(QStringLiteral("sealed_at_ms"))},
                        {QStringLiteral("seal_sha256"),
@@ -313,12 +299,13 @@ QJsonObject KalshiCorridorGate::evaluate(const QJsonValue& params_record,
                                     {QStringLiteral("pairs_evaluated"), pairs_evaluated},
                                     {QStringLiteral("best_net_edge_usd"), best_edge}}},
                        {QStringLiteral("reason"),
-                        all_met
-                            ? QStringLiteral("paper corridor evidence clears every sealed criterion; live orders remain unavailable")
-                            : QStringLiteral("corridor evidence has not cleared every sealed criterion")}};
+                        QStringLiteral("sealed paper-risk envelope is active; each simulated bid still requires a fresh certified opportunity; live orders remain unavailable")}};
 }
 
-bool KalshiCorridorGate::permits_paper_bid(const QJsonObject& verdict, QString* reason) {
+bool KalshiCorridorGate::permits_paper_bid(const QJsonObject& verdict,
+                                           const QJsonObject& scan, int pair_index,
+                                           int requested_bundles, qint64 now_ms,
+                                           QString* reason) {
     const auto refuse = [reason](const QString& why) {
         if (reason) *reason = why;
         return false;
@@ -333,7 +320,56 @@ bool KalshiCorridorGate::permits_paper_bid(const QJsonObject& verdict, QString* 
         return refuse(QStringLiteral("corridor paper-bid authority is absent"));
     if (!verdict.value(QStringLiteral("evaluated")).toBool() ||
         verdict.value(QStringLiteral("verdict")).toString() != QLatin1String(kVerdictPass))
-        return refuse(QStringLiteral("corridor evidence gate is not PASS"));
+        return refuse(QStringLiteral("corridor paper gate is not PASS"));
+    const QJsonObject sealed_params = verdict.value(QStringLiteral("sealed_params")).toObject();
+    if (!seal_valid(sealed_params) ||
+        sealed_params.value(QStringLiteral("strategy_family")).toString() != QLatin1String(kFamily) ||
+        sealed_params.value(QStringLiteral("gate_id")) != verdict.value(QStringLiteral("gate_id")) ||
+        sealed_params.value(QStringLiteral("params")) != verdict.value(QStringLiteral("params")))
+        return refuse(QStringLiteral("corridor verdict does not carry its intact sealed risk envelope"));
+    QString params_error;
+    const QJsonObject params =
+        parse_params(verdict.value(QStringLiteral("params")).toObject(), &params_error);
+    if (params.isEmpty()) return refuse(QStringLiteral("corridor risk limits are invalid: %1").arg(params_error));
+    if (scan.value(QStringLiteral("event")).toString() != QLatin1String(kScanEvent) ||
+        scan.value(QStringLiteral("family")).toString() != QLatin1String(kFamily))
+        return refuse(QStringLiteral("proposal is not a BTC corridor scan"));
+    const QJsonObject certificate = scan.value(QStringLiteral("certificate")).toObject();
+    const QString certificate_sha = scan.value(QStringLiteral("certificate_sha256")).toString();
+    if (certificate.value(QStringLiteral("event_ticker")).toString().isEmpty() ||
+        certificate_sha.isEmpty())
+        return refuse(QStringLiteral("proposal has no reviewed certificate identity"));
+    if (canonical_sha256(certificate) != certificate_sha)
+        return refuse(QStringLiteral("proposal certificate content does not match its SHA-256"));
+    const qint64 received_ms = QDateTime::fromString(
+        scan.value(QStringLiteral("received_at")).toString(), Qt::ISODateWithMs).toMSecsSinceEpoch();
+    if (received_ms <= 0 || received_ms > now_ms + 5'000)
+        return refuse(QStringLiteral("proposal scan timestamp is invalid"));
+    if (received_ms < static_cast<qint64>(verdict.value(QStringLiteral("sealed_at_ms")).toDouble()))
+        return refuse(QStringLiteral("proposal predates the sealed paper experiment"));
+    if (now_ms - received_ms > params.value(QStringLiteral("max_scan_age_ms")).toInt())
+        return refuse(QStringLiteral("proposal scan is stale"));
+    if (requested_bundles < 1 ||
+        requested_bundles > params.value(QStringLiteral("max_bundles_per_opportunity")).toInt())
+        return refuse(QStringLiteral("requested paper quantity exceeds the sealed limit"));
+    const double quoted_quantity = number(scan.value(QStringLiteral("quantity")), -1.0);
+    if (quoted_quantity != static_cast<double>(requested_bundles))
+        return refuse(QStringLiteral("paper quantity was not evaluated against this book depth"));
+    const QJsonArray pairs =
+        scan.value(QStringLiteral("evaluation")).toObject().value(QStringLiteral("pairs")).toArray();
+    if (pair_index < 0 || pair_index >= pairs.size())
+        return refuse(QStringLiteral("paper opportunity index is outside the certified scan"));
+    const QJsonObject pair = pairs.at(pair_index).toObject();
+    const QJsonObject evaluation = pair.value(QStringLiteral("evaluation")).toObject();
+    if (evaluation.value(QStringLiteral("state")).toString() != QLatin1String("opportunity"))
+        return refuse(QStringLiteral("selected pair is not a certified net-positive opportunity"));
+    const double acquisition = number(evaluation.value(QStringLiteral("acquisition_cost")), -1.0);
+    const double fees = number(evaluation.value(QStringLiteral("fees")), -1.0);
+    const double buffer = number(evaluation.value(QStringLiteral("execution_buffer")), -1.0);
+    const double cost = acquisition + fees + buffer;
+    if (!std::isfinite(cost) || acquisition < 0.0 || fees < 0.0 || buffer < 0.0 ||
+        cost > params.value(QStringLiteral("max_cost_per_opportunity_usd")).toDouble())
+        return refuse(QStringLiteral("paper opportunity exceeds its sealed cost limit"));
     if (reason) reason->clear();
     return true;
 }

@@ -1771,7 +1771,7 @@ class KalshiBotCockpitTest : public QObject {
         // Row 0 additionally includes the structural corridor watch + its own
         // paper-only gate. They are always visible, even before evidence.
         // Row 1: GOLD, SILVER, WTI (3). Total 10 — metals never share a box.
-        QCOMPARE(baseline.nodes.size(), 12);
+        QCOMPARE(baseline.nodes.size(), 13);
         QVERIFY(!baseline.node(QStringLiteral("kxbtc15m"))->detail.isEmpty());
         QVERIFY(!baseline.node(QStringLiteral("gold"))->detail.isEmpty());
         QVERIFY(baseline.node(QStringLiteral("calibrator")) != nullptr);
@@ -2100,17 +2100,24 @@ class KalshiBotCockpitTest : public QObject {
                                         {"live_orders_authorized", false},
                                         {"evaluated", true},
                                         {"verdict", "PASS"},
+                                        {"params", QJsonObject{{"max_bundles_per_opportunity", 2},
+                                                                 {"max_cost_per_opportunity_usd", 2.0},
+                                                                 {"max_scan_age_ms", 60000}}},
                                         {"evidence", QJsonObject{{"scans", 300},
                                                                   {"distinct_events", 3},
                                                                   {"opportunity_scans", 10}}}};
         const BotCockpitScene scene = present_bot_cockpit(
             panel_for({}), {}, {}, {}, {}, kNow, QByteArray(), kBotCockpitMaxColumns,
-            kBotCockpitMaxPulses, {}, {}, {}, {}, {}, {}, {}, {}, scan, corridor_gate);
+            kBotCockpitMaxPulses, {}, {}, {}, {}, {}, {}, {}, {}, scan, corridor_gate, 1);
         QCOMPARE(scene.node(QStringLiteral("btc_corridor"))->role, QStringLiteral("green"));
+        QVERIFY(scene.node(QStringLiteral("btc_corridor"))->value.contains(QStringLiteral("PAPER OPPORTUNITY")));
         QVERIFY(scene.node(QStringLiteral("btc_corridor"))->value.contains(QStringLiteral("$0.0310")));
         QCOMPARE(scene.node(QStringLiteral("corridor_gate"))->role, QStringLiteral("green"));
+        QVERIFY(scene.node(QStringLiteral("corridor_gate"))->value.contains(QStringLiteral("COLLECTION ARMED")));
         QVERIFY(scene.node(QStringLiteral("corridor_gate"))->value.contains(QStringLiteral("PAPER ONLY")));
         QVERIFY(scene.node(QStringLiteral("corridor_gate"))->value.contains(QStringLiteral("LIVE NEVER")));
+        QCOMPARE(scene.node(QStringLiteral("corridor_paper"))->role, QStringLiteral("green"));
+        QVERIFY(scene.node(QStringLiteral("corridor_paper"))->value.contains(QStringLiteral("1 simulated")));
 
         // A directional PASS is not a corridor PASS, even though both inspect
         // KXBTCD contracts.
@@ -2123,6 +2130,26 @@ class KalshiBotCockpitTest : public QObject {
             kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, {}, {}, {}, {}, {}, {}, {}, scan,
             directional);
         QCOMPARE(separated.node(QStringLiteral("corridor_gate"))->role, QStringLiteral("grey"));
+
+        const BotCockpitScene no_input = present_bot_cockpit(
+            panel_for({}), {}, {}, {}, {}, kNow, QByteArray(), kBotCockpitMaxColumns,
+            kBotCockpitMaxPulses, {}, {}, {}, {}, {}, {}, {}, {}, {}, corridor_gate);
+        QCOMPARE(no_input.node(QStringLiteral("btc_corridor"))->role, QStringLiteral("grey"));
+        QVERIFY(no_input.node(QStringLiteral("btc_corridor"))->value.contains(QStringLiteral("NO INPUT")));
+        QVERIFY(no_input.node(QStringLiteral("btc_corridor"))->value.contains(QStringLiteral("NOT a negative result")));
+
+        QJsonObject no_edge = scan;
+        QJsonObject no_edge_evaluation = no_edge.value("evaluation").toObject();
+        no_edge_evaluation["state"] = QStringLiteral("not_profitable");
+        no_edge_evaluation["opportunities"] = 0;
+        no_edge["evaluation"] = no_edge_evaluation;
+        const BotCockpitScene measured_negative = present_bot_cockpit(
+            panel_for({}), {}, {}, {}, {}, kNow, QByteArray(), kBotCockpitMaxColumns,
+            kBotCockpitMaxPulses, {}, {}, {}, {}, {}, {}, {}, {}, no_edge, corridor_gate);
+        QCOMPARE(measured_negative.node(QStringLiteral("btc_corridor"))->role,
+                 QStringLiteral("amber"));
+        QVERIFY(measured_negative.node(QStringLiteral("btc_corridor"))->value.contains(
+            QStringLiteral("SCANNING / NO EDGE")));
     }
 
 };

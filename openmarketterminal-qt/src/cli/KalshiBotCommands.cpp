@@ -88,6 +88,7 @@
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -139,6 +140,9 @@ constexpr auto kSettlementEvent = "kalshi_bot_paper_settlement";
 
 QString bot_ledger_path() { return kalshi_evidence_path(QString::fromLatin1(kLedgerFile)); }
 QString bot_stop_path() { return kalshi_evidence_path(QString::fromLatin1(kKalshiBotStopFileName)); }
+QString corridor_paper_ledger_path() {
+    return kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kPaperLedgerFile));
+}
 
 /// Row filter for one ledger event type.
 std::function<bool(const QJsonObject&)> is_event(const char* name) {
@@ -180,6 +184,94 @@ QJsonArray read_jsonl(const QString& path,
         if (keep(row)) rows.append(row);
     }
     return rows;
+}
+
+bool write_json_file(const QString& path, const QJsonObject& object);
+
+int collect_corridor_paper_bids(qint64 now_ms) {
+    const QJsonArray evidence = read_jsonl(
+        kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kEvidenceFile)),
+        [](const QJsonObject& row) {
+            return row.value(QStringLiteral("event")).toString() ==
+                       QLatin1String(KalshiCorridorGate::kScanEvent) &&
+                   row.value(QStringLiteral("family")).toString() ==
+                       QLatin1String(KalshiCorridorGate::kFamily);
+        });
+    const QJsonValue params = KalshiCorridorGate::load_params_file(
+        kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kParamsFile)));
+    const QJsonObject verdict = KalshiCorridorGate::evaluate(params, evidence, now_ms);
+    if (!write_json_file(
+            kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kVerdictFile)), verdict))
+        return 0;
+    if (evidence.isEmpty()) return 0;
+    const QJsonObject scan = evidence.last().toObject();
+    const QJsonArray pairs =
+        scan.value(QStringLiteral("evaluation")).toObject().value(QStringLiteral("pairs")).toArray();
+    bool quantity_ok = false;
+    const double quantity_value = scan.value(QStringLiteral("quantity")).toString().toDouble(&quantity_ok);
+    const int quantity = static_cast<int>(quantity_value);
+    if (!quantity_ok || quantity < 1 || quantity_value != static_cast<double>(quantity)) return 0;
+
+    QSet<QString> existing;
+    for (const QJsonValue& value : read_jsonl(corridor_paper_ledger_path(), [](const QJsonObject&) {
+             return true;
+         })) {
+        const QString key = value.toObject().value(QStringLiteral("simulation_key")).toString();
+        if (!key.isEmpty()) existing.insert(key);
+    }
+    int written = 0;
+    for (int index = 0; index < pairs.size(); ++index) {
+        QString reason;
+        if (!KalshiCorridorGate::permits_paper_bid(
+                verdict, scan, index, quantity, now_ms, &reason))
+            continue;
+        const QJsonObject pair = pairs.at(index).toObject();
+        const QJsonObject evaluation = pair.value(QStringLiteral("evaluation")).toObject();
+        const QString key_material = QStringLiteral("%1|%2|%3|%4|%5")
+            .arg(scan.value(QStringLiteral("certificate_sha256")).toString(),
+                 scan.value(QStringLiteral("received_at")).toString(),
+                 pair.value(QStringLiteral("lower_ticker")).toString(),
+                 pair.value(QStringLiteral("higher_ticker")).toString())
+            .arg(quantity);
+        const QString simulation_key = QString::fromLatin1(QCryptographicHash::hash(
+            key_material.toUtf8(), QCryptographicHash::Sha256).toHex());
+        if (existing.contains(simulation_key)) continue;
+        const QJsonObject row{
+            {QStringLiteral("schema"), 1},
+            {QStringLiteral("event"), QString::fromLatin1(KalshiCorridorGate::kPaperBidEvent)},
+            {QStringLiteral("strategy_family"), QString::fromLatin1(KalshiCorridorGate::kFamily)},
+            {QStringLiteral("mode"), QStringLiteral("paper")},
+            {QStringLiteral("live_order_submitted"), false},
+            {QStringLiteral("simulation_key"), simulation_key},
+            {QStringLiteral("ts_ms"), static_cast<double>(now_ms)},
+            {QStringLiteral("ts"), QDateTime::fromMSecsSinceEpoch(now_ms, QTimeZone::UTC)
+                                           .toString(Qt::ISODateWithMs)},
+            {QStringLiteral("gate_id"), verdict.value(QStringLiteral("gate_id"))},
+            {QStringLiteral("source_received_at"), scan.value(QStringLiteral("received_at"))},
+            {QStringLiteral("certificate_sha256"),
+             scan.value(QStringLiteral("certificate_sha256"))},
+            {QStringLiteral("event_ticker"),
+             scan.value(QStringLiteral("certificate")).toObject().value(QStringLiteral("event_ticker"))},
+            {QStringLiteral("pair_index"), index},
+            {QStringLiteral("lower_ticker"), pair.value(QStringLiteral("lower_ticker"))},
+            {QStringLiteral("higher_ticker"), pair.value(QStringLiteral("higher_ticker"))},
+            {QStringLiteral("quantity"), quantity},
+            {QStringLiteral("acquisition_cost_usd"),
+             evaluation.value(QStringLiteral("acquisition_cost"))},
+            {QStringLiteral("fees_usd"), evaluation.value(QStringLiteral("fees"))},
+            {QStringLiteral("execution_buffer_usd"),
+             evaluation.value(QStringLiteral("execution_buffer"))},
+            {QStringLiteral("net_edge_per_bundle_usd"),
+             evaluation.value(QStringLiteral("net_edge_per_bundle"))},
+            {QStringLiteral("result"), QStringLiteral("SIMULATED_AT_OBSERVED_BOOK")}};
+        if (KalshiEvidenceEngine::append_jsonl(
+                corridor_paper_ledger_path(), row,
+                KalshiEvidenceEngine::Rotation::KeepAllGenerations)) {
+            existing.insert(simulation_key);
+            ++written;
+        }
+    }
+    return written;
 }
 
 /// Settlements in the live generation only (base path — not `.1`, `.2`, …).
@@ -561,6 +653,7 @@ KalshiBotLive::Permission live_permission(qint64 now_ms, const QString& family) 
 
 struct TickResult {
     int bids = 0;
+    int corridor_paper_bids = 0;
     int passes = 0;
     /// Live bids the submit path refused. Counted separately from `bids`: an
     /// order the venue never took is not a bid the bot placed.
@@ -676,6 +769,10 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     };
     KalshiBotOrders::Book book = KalshiBotOrders::replay(ledger);
     TickResult result;
+    // Separate structural strategy, separate sealed authority and ledger. This
+    // records simulations only; it contains no order client and can never
+    // reach Kalshi. Zero evidence remains zero simulations, visibly.
+    result.corridor_paper_bids = collect_corridor_paper_bids(now_ms);
 
     // --- the exchange's real results, for everything the bot has working ---
     QSet<QString> wanted;
@@ -1099,6 +1196,7 @@ QJsonObject tick_summary(const TickResult& tick, const KalshiBotDecision::Config
         {QStringLiteral("state"), tick.state},
         {QStringLiteral("stopped"), tick.stopped},
         {QStringLiteral("bids"), tick.bids},
+        {QStringLiteral("corridor_paper_bids"), tick.corridor_paper_bids},
         {QStringLiteral("passes"), tick.passes},
         {QStringLiteral("settled"), tick.settled},
         {QStringLiteral("settled_pnl"), tick.settled_pnl},
@@ -1150,6 +1248,8 @@ void print_tick(const GlobalOpts& opts, const TickResult& tick,
         return;
     }
     std::printf("  bids %d · passes %d · open %d\n", tick.bids, tick.passes, tick.still_open);
+    std::printf("  corridor paper simulations %d · live corridor orders 0\n",
+                tick.corridor_paper_bids);
     // Resting is risk: it is printed on every tick, not only when it changes.
     std::printf("  resting %d ($%.2f at limit) · exposure $%.2f of $%.2f · session $%.2f of $%.2f\n",
                 tick.resting, tick.resting_usd, tick.exposure_usd, config.max_open_exposure_usd,
@@ -1185,7 +1285,7 @@ void bot_usage() {
                  "       kalshi bot gate [--json]\n"
                  "       kalshi bot gate seal '{\"min_settled_bids\":300,\"max_drawdown_usd\":5}'\n"
                  "       kalshi bot corridor-gate [--json]\n"
-                 "       kalshi bot corridor-gate seal '{\"min_scans\":300,\"min_distinct_events\":3,\"min_opportunity_scans\":10,\"min_opportunity_events\":3,\"min_best_net_edge_usd\":0.01,\"max_unavailable_rate\":0.10}'\n"
+                 "       kalshi bot corridor-gate seal '{\"max_bundles_per_opportunity\":2,\"max_cost_per_opportunity_usd\":2.0,\"max_scan_age_ms\":60000}'\n"
                  "       kalshi bot stop [--reason \"why\"]   throw the kill switch\n"
                  "       kalshi bot resume                  clear it\n"
                  "       kalshi bot status                  what the GUI BOT chip shows\n"
@@ -1241,8 +1341,10 @@ void bot_usage() {
                  "journals one SIGNAL_UNTRUSTED pass.\n"
                  "`gate` scores the PAPER ledger against sealed, preregistered criteria and\n"
                  "writes the verdict to %s. It never acts on it.\n"
-                 "`corridor-gate` is separate: it scores only certificate-backed BTC corridor\n"
-                 "scans and can authorize only a paper corridor experiment. It never authorizes\n"
+                 "`corridor-gate` is separate: it seals risk limits for a paper BTC corridor\n"
+                 "experiment. Historical opportunities are diagnostics, never a prerequisite\n"
+                 "for collecting paper evidence. Each paper proposal must still be a fresh,\n"
+                 "certificate-backed net-positive scan inside the seal. It never authorizes\n"
                  "directional bids or live orders.\n"
                  "\n"
                  "--mode live is REFUSED (rc 4) unless every one of these holds right now:\n"
