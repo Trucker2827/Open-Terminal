@@ -374,4 +374,161 @@ bool KalshiCorridorGate::permits_paper_bid(const QJsonObject& verdict,
     return true;
 }
 
+QJsonObject KalshiCorridorGate::parse_micro_live_params(const QJsonObject& raw,
+                                                        QString* error) {
+    const auto fail = [error](const QString& message) {
+        if (error) *error = message;
+        return QJsonObject{};
+    };
+    static const QSet<QString> allowed{
+        QStringLiteral("max_bundles_per_opportunity"),
+        QStringLiteral("max_all_in_per_leg_usd"),
+        QStringLiteral("max_scan_age_ms"),
+        QStringLiteral("max_executions_per_hour")};
+    QStringList unknown;
+    for (auto it = raw.constBegin(); it != raw.constEnd(); ++it)
+        if (!allowed.contains(it.key())) unknown.append(it.key());
+    if (!unknown.isEmpty()) {
+        unknown.sort();
+        return fail(QStringLiteral("unknown micro-live corridor params [%1]")
+                        .arg(unknown.join(QStringLiteral(", "))));
+    }
+    const auto integer = [&](const char* key, int floor, int ceiling) -> int {
+        const QJsonValue value = raw.value(QString::fromLatin1(key));
+        if (!value.isDouble() || value.toDouble() != std::floor(value.toDouble()) ||
+            value.toInt() < floor || value.toInt() > ceiling)
+            return -1;
+        return value.toInt();
+    };
+    const int bundles = integer("max_bundles_per_opportunity", 1, kMaxBundlesCeiling);
+    const int age = integer("max_scan_age_ms", kMinScanAgeMs, kMaxScanAgeMs);
+    const int hourly = integer("max_executions_per_hour", 1,
+                               kMicroLiveMaxExecutionsPerHour);
+    const QJsonValue leg_cap_value = raw.value(QStringLiteral("max_all_in_per_leg_usd"));
+    const double leg_cap = leg_cap_value.isDouble() ? leg_cap_value.toDouble() : -1.0;
+    if (bundles < 0)
+        return fail(QStringLiteral("max_bundles_per_opportunity must be a bounded positive integer"));
+    if (!std::isfinite(leg_cap) || leg_cap <= 0.0 ||
+        leg_cap > kMicroLiveMaxAllInPerLegUsd)
+        return fail(QStringLiteral("max_all_in_per_leg_usd must be in (0, 2]"));
+    if (age < 0)
+        return fail(QStringLiteral("max_scan_age_ms is outside the corridor freshness bounds"));
+    if (hourly < 0)
+        return fail(QStringLiteral("max_executions_per_hour must be in [1, 5]"));
+    if (error) error->clear();
+    return QJsonObject{{QStringLiteral("max_bundles_per_opportunity"), bundles},
+                       {QStringLiteral("max_all_in_per_leg_usd"), leg_cap},
+                       {QStringLiteral("max_scan_age_ms"), age},
+                       {QStringLiteral("max_executions_per_hour"), hourly}};
+}
+
+QJsonObject KalshiCorridorGate::preregister_micro_live(
+    const QString& path, const QJsonObject& raw_params, qint64 now_ms,
+    QString* error) {
+    const auto fail = [error](const QString& message) {
+        if (error) *error = message;
+        return QJsonObject{};
+    };
+    if (QFileInfo::exists(path))
+        return fail(QStringLiteral("%1 already exists; micro-live corridor criteria are immutable")
+                        .arg(path));
+    QString parse_error;
+    const QJsonObject params = parse_micro_live_params(raw_params, &parse_error);
+    if (params.isEmpty()) return fail(parse_error);
+    QJsonObject record{{QStringLiteral("schema"), 1},
+                       {QStringLiteral("event"), QString::fromLatin1(kMicroLiveParamsEvent)},
+                       {QStringLiteral("strategy_family"), QString::fromLatin1(kFamily)},
+                       {QStringLiteral("authority"), QStringLiteral("micro_live_only")},
+                       {QStringLiteral("production_live_authorized"), false},
+                       {QStringLiteral("gate_id"),
+                        QUuid::createUuid().toString(QUuid::WithoutBraces)},
+                       {QStringLiteral("sealed_at_ms"), static_cast<double>(now_ms)},
+                       {QStringLiteral("sealed_at"), iso(now_ms)},
+                       {QStringLiteral("params"), params}};
+    record.insert(QString::fromLatin1(kSealField), seal(record));
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return fail(QStringLiteral("cannot write %1: %2").arg(path, file.errorString()));
+    file.write(QJsonDocument(record).toJson(QJsonDocument::Indented));
+    if (!file.commit())
+        return fail(QStringLiteral("cannot write %1: %2").arg(path, file.errorString()));
+    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::ReadGroup |
+                                    QFileDevice::ReadOther);
+    if (error) error->clear();
+    return record;
+}
+
+bool KalshiCorridorGate::permits_micro_live(const QJsonValue& params_record,
+                                            const QJsonObject& scan, int pair_index,
+                                            int requested_bundles, qint64 now_ms,
+                                            QString* reason) {
+    const auto refuse = [reason](const QString& why) {
+        if (reason) *reason = why;
+        return false;
+    };
+    if (!params_record.isObject() || !seal_valid(params_record.toObject()))
+        return refuse(QStringLiteral("micro-live corridor seal is missing, unreadable, or tampered"));
+    const QJsonObject record = params_record.toObject();
+    if (record.value(QStringLiteral("event")).toString() !=
+            QLatin1String(kMicroLiveParamsEvent) ||
+        record.value(QStringLiteral("strategy_family")).toString() != QLatin1String(kFamily) ||
+        record.value(QStringLiteral("authority")).toString() != QLatin1String("micro_live_only") ||
+        record.value(QStringLiteral("production_live_authorized")).toBool())
+        return refuse(QStringLiteral("seal does not carry BTC corridor micro-live-only authority"));
+    QString params_error;
+    const QJsonObject params =
+        parse_micro_live_params(record.value(QStringLiteral("params")).toObject(), &params_error);
+    if (params.isEmpty()) return refuse(params_error);
+
+    if (scan.value(QStringLiteral("event")).toString() != QLatin1String(kScanEvent) ||
+        scan.value(QStringLiteral("family")).toString() != QLatin1String(kFamily))
+        return refuse(QStringLiteral("proposal is not a BTC corridor scan"));
+    const QJsonObject certificate = scan.value(QStringLiteral("certificate")).toObject();
+    const QString certificate_sha = scan.value(QStringLiteral("certificate_sha256")).toString();
+    if (certificate.value(QStringLiteral("event_ticker")).toString().isEmpty() ||
+        certificate_sha.isEmpty() || canonical_sha256(certificate) != certificate_sha)
+        return refuse(QStringLiteral("proposal has no intact reviewed certificate identity"));
+    const qint64 received_ms = QDateTime::fromString(
+        scan.value(QStringLiteral("received_at")).toString(), Qt::ISODateWithMs).toMSecsSinceEpoch();
+    if (received_ms <= 0 || received_ms > now_ms + 5'000 ||
+        received_ms < static_cast<qint64>(record.value(QStringLiteral("sealed_at_ms")).toDouble()) ||
+        now_ms - received_ms > params.value(QStringLiteral("max_scan_age_ms")).toInt())
+        return refuse(QStringLiteral("proposal scan is stale, future-dated, or predates the micro-live seal"));
+    if (requested_bundles < 1 ||
+        requested_bundles > params.value(QStringLiteral("max_bundles_per_opportunity")).toInt() ||
+        number(scan.value(QStringLiteral("quantity")), -1.0) != requested_bundles)
+        return refuse(QStringLiteral("micro-live quantity was not certified inside the sealed bound"));
+    const QJsonArray pairs =
+        scan.value(QStringLiteral("evaluation")).toObject().value(QStringLiteral("pairs")).toArray();
+    if (pair_index < 0 || pair_index >= pairs.size())
+        return refuse(QStringLiteral("micro-live opportunity index is outside the certified scan"));
+    const QJsonObject pair = pairs.at(pair_index).toObject();
+    const QJsonObject evaluation = pair.value(QStringLiteral("evaluation")).toObject();
+    if (evaluation.value(QStringLiteral("state")).toString() != QLatin1String("opportunity"))
+        return refuse(QStringLiteral("selected pair is not a certified net-positive opportunity"));
+    const QJsonArray legs = pair.value(QStringLiteral("evaluation")).toObject()
+                                .value(QStringLiteral("legs")).toArray();
+    if (legs.size() != 2)
+        return refuse(QStringLiteral("certified opportunity does not carry exactly two executable legs"));
+    const double buffer_total = number(pair.value(QStringLiteral("evaluation")).toObject()
+                                           .value(QStringLiteral("execution_buffer")), -1.0);
+    if (!std::isfinite(buffer_total) || buffer_total < 0.0)
+        return refuse(QStringLiteral("certified execution buffer is invalid"));
+    double pair_all_in = 0.0;
+    for (const QJsonValue& value : legs) {
+        const QJsonObject leg = value.toObject();
+        const double cost = number(leg.value(QStringLiteral("cost")), -1.0);
+        const double fee = number(leg.value(QStringLiteral("fee")), -1.0);
+        const double all_in = cost + fee + buffer_total / 2.0;
+        if (!std::isfinite(all_in) || cost < 0.0 || fee < 0.0 ||
+            all_in > params.value(QStringLiteral("max_all_in_per_leg_usd")).toDouble() + 1e-9)
+            return refuse(QStringLiteral("one corridor leg exceeds its sealed $2 all-in ceiling"));
+        pair_all_in += all_in;
+    }
+    if (pair_all_in > kMicroLiveMaxPairAllInUsd + 1e-9)
+        return refuse(QStringLiteral("corridor pair exceeds the $4 micro-live backstop"));
+    if (reason) reason->clear();
+    return true;
+}
+
 } // namespace openmarketterminal::services::prediction::kalshi_ns

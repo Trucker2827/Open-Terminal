@@ -22,6 +22,8 @@
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/PredictionTypes.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
+#include "services/prediction/kalshi/KalshiCorridorGate.h"
+#include "services/prediction/kalshi/KalshiCorridorLiveExecutor.h"
 #include "storage/repositories/OrderDraftRepository.h"
 #include "storage/repositories/PmPaperRepository.h"
 #include "storage/repositories/SettingsRepository.h"
@@ -32,11 +34,17 @@
 #include "trading/options/OptionSymbol.h"
 
 #include <QDateTime>
+#include <QCryptographicHash>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QMetaObject>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QSaveFile>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QUuid>
 #include <QVector>
@@ -49,11 +57,133 @@ namespace openmarketterminal::mcp::tools {
 
 static constexpr const char* TAG = "OrderFlowTools";
 
+namespace pred = openmarketterminal::services::prediction;
+
 using openmarketterminal::trading::OrderSide;
 using openmarketterminal::trading::OrderType;
 using openmarketterminal::trading::UnifiedOrder;
 
 namespace {
+
+using CorridorExecutor = pred::kalshi_ns::KalshiCorridorLiveExecutor;
+using CorridorGate = pred::kalshi_ns::KalshiCorridorGate;
+
+QString kalshi_evidence_file(const QString& filename) {
+    const QString override_dir =
+        qEnvironmentVariable("OPENTERMINAL_KALSHI_EVIDENCE_DIR").trimmed();
+    const QString dir = override_dir.isEmpty()
+        ? QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
+              QStringLiteral("/Open Terminal/Open Terminal")
+        : override_dir;
+    QDir().mkpath(dir);
+    return QDir(dir).filePath(filename);
+}
+
+QJsonValue read_json_value(const QString& path) {
+    QFile file(path);
+    if (!file.exists()) return QJsonValue(QJsonValue::Undefined);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QJsonValue(false);
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    return document.isObject() ? QJsonValue(document.object()) : QJsonValue(false);
+}
+
+bool save_json_object(const QString& path, const QJsonObject& object, QString* error) {
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text) ||
+        file.write(QJsonDocument(object).toJson(QJsonDocument::Indented)) < 0 ||
+        !file.commit()) {
+        if (error) *error = QStringLiteral("cannot durably save %1: %2").arg(path, file.errorString());
+        return false;
+    }
+    if (error) error->clear();
+    return true;
+}
+
+bool append_json_line(const QString& path, const QJsonObject& object, QString* error) {
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        if (error) *error = QStringLiteral("cannot append %1: %2").arg(path, file.errorString());
+        return false;
+    }
+    const QByteArray line = QJsonDocument(object).toJson(QJsonDocument::Compact) + '\n';
+    if (file.write(line) != line.size() || !file.flush()) {
+        if (error) *error = QStringLiteral("cannot append %1: %2").arg(path, file.errorString());
+        return false;
+    }
+    if (error) error->clear();
+    return true;
+}
+
+double json_number(const QJsonValue& value, double fallback = -1.0) {
+    if (value.isDouble()) return value.toDouble();
+    bool ok = false;
+    const double parsed = value.toString().toDouble(&ok);
+    return ok ? parsed : fallback;
+}
+
+double best_bid(const QJsonObject& scan, const QString& ticker, const QString& outcome) {
+    const QJsonObject book = scan.value(QStringLiteral("books")).toObject()
+                                 .value(ticker).toObject();
+    const QJsonArray levels = book.value(outcome.compare(QStringLiteral("YES"), Qt::CaseInsensitive) == 0
+                                             ? QStringLiteral("yes_bids")
+                                             : QStringLiteral("no_bids"))
+                                  .toArray();
+    return levels.isEmpty() ? -1.0 : json_number(levels.first().toArray().at(0));
+}
+
+CorridorExecutor::Intent corridor_intent(const QJsonObject& scan, int pair_index,
+                                         double max_per_leg, QString* error) {
+    CorridorExecutor::Intent intent;
+    const QJsonArray pairs = scan.value(QStringLiteral("evaluation")).toObject()
+                                 .value(QStringLiteral("pairs")).toArray();
+    if (pair_index < 0 || pair_index >= pairs.size()) {
+        if (error) *error = QStringLiteral("pair index is outside the certified scan");
+        return intent;
+    }
+    const QJsonObject pair = pairs.at(pair_index).toObject();
+    const QJsonObject evaluation = pair.value(QStringLiteral("evaluation")).toObject();
+    const QJsonArray legs = evaluation.value(QStringLiteral("legs")).toArray();
+    if (legs.size() != 2) {
+        if (error) *error = QStringLiteral("certified pair has no two-leg execution payload");
+        return intent;
+    }
+    const int bundles = static_cast<int>(json_number(scan.value(QStringLiteral("quantity")), 0));
+    const double buffer = json_number(evaluation.value(QStringLiteral("execution_buffer")), -1.0);
+    const QString key_material = scan.value(QStringLiteral("certificate_sha256")).toString() +
+        QStringLiteral("|") + scan.value(QStringLiteral("received_at")).toString() +
+        QStringLiteral("|") + QString::number(pair_index);
+    intent.bundle_id = QString::fromLatin1(
+        QCryptographicHash::hash(key_material.toUtf8(), QCryptographicHash::Sha256).toHex().left(32));
+    intent.tier = CorridorExecutor::ExecutionTier::MicroLive;
+    intent.bundles = bundles;
+    intent.max_all_in_per_leg_usd = max_per_leg;
+    for (const QJsonValue& value : legs) {
+        const QJsonObject leg = value.toObject();
+        const QString outcome = leg.value(QStringLiteral("side")).toString().toUpper();
+        const QString ticker = leg.value(QStringLiteral("ticker")).toString();
+        const QJsonArray fills = leg.value(QStringLiteral("fills")).toArray();
+        double limit = -1.0;
+        double depth = 0.0;
+        for (const QJsonValue& fill_value : fills) {
+            const QJsonObject fill = fill_value.toObject();
+            limit = std::max(limit, json_number(fill.value(QStringLiteral("price"))));
+            depth += json_number(fill.value(QStringLiteral("contracts")), 0.0);
+        }
+        CorridorExecutor::Leg parsed{ticker, outcome, limit, best_bid(scan, ticker, outcome),
+                                    static_cast<int>(std::floor(depth + 1e-9))};
+        if (outcome == QLatin1String("YES")) {
+            intent.lower_yes = parsed;
+            intent.lower_yes_fee_usd = json_number(leg.value(QStringLiteral("fee")), -1.0);
+            intent.lower_yes_buffer_usd = buffer / 2.0;
+        } else if (outcome == QLatin1String("NO")) {
+            intent.higher_no = parsed;
+            intent.higher_no_fee_usd = json_number(leg.value(QStringLiteral("fee")), -1.0);
+            intent.higher_no_buffer_usd = buffer / 2.0;
+        }
+    }
+    if (error) error->clear();
+    return intent;
+}
 
 // ── enum parsing (string → enum; reject unknown) ───────────────────────────
 
@@ -267,8 +397,6 @@ void audit_submit(const QString& account, const QString& mode, const QJsonObject
 // fetch helpers never touch the adapter's live order methods), then run a
 // DETERMINISTIC PM risk floor. Mirrors the equity floor: caps come ONLY from
 // GUI-only cli.risk.* keys with finite defaults.
-
-namespace pred = openmarketterminal::services::prediction;
 
 struct PmResolved {
     bool ok = false;
@@ -679,6 +807,262 @@ PmPlaceResult pm_place_live(const QString& venue, const pred::OrderRequest& req)
     return out;
 }
 
+struct PmCancelResult {
+    bool confirmed = false;
+    bool indeterminate = false;
+    QString reason;
+};
+
+struct PmOrderReadResult {
+    bool ok = false;
+    bool indeterminate = false;
+    int cumulative_filled = 0;
+    QString status;
+    QString reason;
+    QJsonObject raw;
+};
+
+PmOrderReadResult pm_read_kalshi_order(pred::kalshi_ns::KalshiAdapter* adapter,
+                                       const QString& order_id) {
+    PmOrderReadResult out;
+    if (!adapter || order_id.isEmpty()) {
+        out.reason = QStringLiteral("fresh order read has no Kalshi adapter or order id");
+        return out;
+    }
+    struct State {
+        QMutex m;
+        bool finished = false;
+        bool timed_out = false;
+        QJsonObject order;
+        QString error;
+    };
+    auto st = std::make_shared<State>();
+    detail::run_async_wait(adapter, [adapter, order_id, st](auto signal_done) {
+        auto conns = std::make_shared<QVector<QMetaObject::Connection>>();
+        auto finalize = [st, conns, signal_done]() {
+            for (const auto& c : *conns) QObject::disconnect(c);
+            conns->clear();
+            signal_done();
+        };
+        conns->append(QObject::connect(
+            adapter, &pred::kalshi_ns::KalshiAdapter::single_order_ready, adapter,
+            [st, order_id, finalize](const QJsonObject& order) {
+                if (order.value(QStringLiteral("order_id")).toString() != order_id) return;
+                QMutexLocker lk(&st->m);
+                if (st->finished) return;
+                st->order = order;
+                st->finished = true;
+                finalize();
+            }));
+        conns->append(QObject::connect(
+            adapter, &pred::PredictionExchangeAdapter::error_occurred, adapter,
+            [st, finalize](const QString& ctx, const QString& msg) {
+                QMutexLocker lk(&st->m);
+                if (st->finished) return;
+                st->error = msg.isEmpty() ? ctx : (ctx + QStringLiteral(": ") + msg);
+                st->finished = true;
+                finalize();
+            }));
+        QTimer::singleShot(15'000, adapter, [st, finalize]() {
+            QMutexLocker lk(&st->m);
+            if (st->finished) return;
+            st->timed_out = true;
+            st->finished = true;
+            finalize();
+        });
+        adapter->fetch_order(order_id);
+    });
+    if (st->timed_out) {
+        out.indeterminate = true;
+        out.reason = QStringLiteral("fresh order read timed out after confirmed cancellation");
+        return out;
+    }
+    if (st->order.isEmpty()) {
+        out.indeterminate = true;
+        out.reason = st->error.isEmpty()
+            ? QStringLiteral("fresh order read returned no venue order") : st->error;
+        return out;
+    }
+    bool filled_ok = false;
+    const double filled = json_number(
+        st->order.contains(QStringLiteral("fill_count_fp"))
+            ? st->order.value(QStringLiteral("fill_count_fp"))
+            : st->order.value(QStringLiteral("fill_count")), -1.0);
+    const int filled_int = static_cast<int>(std::floor(filled + 1e-9));
+    filled_ok = filled >= 0.0 && std::fabs(filled - filled_int) <= 1e-9;
+    if (!filled_ok) {
+        out.indeterminate = true;
+        out.reason = QStringLiteral("fresh order read has a missing or fractional cumulative fill");
+        return out;
+    }
+    out.ok = true;
+    out.cumulative_filled = filled_int;
+    out.status = st->order.value(QStringLiteral("status")).toString().toUpper();
+    out.raw = st->order;
+    out.reason = QStringLiteral("fresh cumulative fill confirmed from venue");
+    return out;
+}
+
+PmCancelResult pm_cancel_live(pred::PredictionExchangeAdapter* adapter,
+                              const QString& order_id) {
+    PmCancelResult out;
+    if (!adapter || order_id.isEmpty()) {
+        out.reason = QStringLiteral("cancel has no adapter or order id");
+        return out;
+    }
+    struct State { QMutex m; bool finished = false; bool timed_out = false;
+                   bool ok = false; QString error; };
+    auto st = std::make_shared<State>();
+    detail::run_async_wait(adapter, [adapter, order_id, st](auto signal_done) {
+        auto conns = std::make_shared<QVector<QMetaObject::Connection>>();
+        auto finalize = [st, conns, signal_done]() {
+            for (const auto& c : *conns) QObject::disconnect(c);
+            conns->clear();
+            signal_done();
+        };
+        conns->append(QObject::connect(
+            adapter, &pred::PredictionExchangeAdapter::order_cancelled, adapter,
+            [st, order_id, finalize](const QString& id, bool ok, const QString& error) {
+                if (id != order_id) return;
+                QMutexLocker lk(&st->m);
+                if (st->finished) return;
+                st->ok = ok;
+                st->error = error;
+                st->finished = true;
+                finalize();
+            }));
+        conns->append(QObject::connect(
+            adapter, &pred::PredictionExchangeAdapter::error_occurred, adapter,
+            [st, finalize](const QString& ctx, const QString& msg) {
+                QMutexLocker lk(&st->m);
+                if (st->finished) return;
+                st->error = msg.isEmpty() ? ctx : (ctx + QStringLiteral(": ") + msg);
+                st->finished = true;
+                finalize();
+            }));
+        QTimer::singleShot(15'000, adapter, [st, finalize]() {
+            QMutexLocker lk(&st->m);
+            if (st->finished) return;
+            st->timed_out = true;
+            st->finished = true;
+            finalize();
+        });
+        adapter->cancel_order(order_id);
+    });
+    out.indeterminate = st->timed_out;
+    out.confirmed = st->ok;
+    out.reason = st->timed_out
+        ? QStringLiteral("cancel outcome unknown after local timeout")
+        : st->ok ? QStringLiteral("cancel confirmed")
+                 : st->error.isEmpty() ? QStringLiteral("cancel rejected") : st->error;
+    return out;
+}
+
+Result<void> persist_corridor_submission(const CorridorExecutor::Action& action,
+                                         const PmPlaceResult& result);
+Result<void> persist_corridor_cancel(const QString& order_id,
+                                     const PmOrderReadResult& result);
+
+QJsonObject run_corridor_protocol(CorridorExecutor executor,
+                                  pred::PredictionExchangeAdapter* adapter,
+                                  const QString& active_path, const QString& ledger_path,
+                                  const QString& gate_id, const QString& source_key,
+                                  qint64 now_ms) {
+    QString io_error;
+    if (!save_json_object(active_path, executor.to_json(), &io_error))
+        return {{QStringLiteral("status"), QStringLiteral("rejected")},
+                {QStringLiteral("reason"), io_error}};
+    for (int effects = 0; effects < 12; ++effects) {
+        const auto action = executor.next_action();
+        if (!save_json_object(active_path, executor.to_json(), &io_error))
+            return {{QStringLiteral("status"), QStringLiteral("halted_unsafe")},
+                    {QStringLiteral("reason"), io_error}};
+        if (action.kind == CorridorExecutor::ActionKind::None) break;
+        if (action.kind == CorridorExecutor::ActionKind::SubmitFak) {
+            pred::OrderRequest request;
+            request.key.exchange_id = QStringLiteral("kalshi");
+            request.key.market_id = action.ticker;
+            request.asset_id = action.ticker + QStringLiteral(":") + action.outcome.toLower();
+            request.side = action.side;
+            request.order_type = QStringLiteral("fak");
+            request.price = action.limit_price;
+            request.size = action.count;
+            request.client_order_id = action.client_order_id;
+            request.extras.insert(QStringLiteral("post_only"), false);
+            request.extras.insert(QStringLiteral("reduce_only"), action.reduce_only);
+            request.extras.insert(QStringLiteral("cancel_order_on_pause"), true);
+            const PmPlaceResult placed = pm_place_live(QStringLiteral("kalshi"), request);
+            const auto persisted = persist_corridor_submission(action, placed);
+            CorridorExecutor::OrderReport report;
+            report.client_order_id = action.client_order_id;
+            report.order_id = placed.order_id;
+            report.accepted = placed.ok;
+            const QString venue_status = placed.status.trimmed().toUpper();
+            report.terminal = placed.ok &&
+                (placed.remaining <= 1e-9 || venue_status == QLatin1String("FILLED") ||
+                 venue_status == QLatin1String("CANCELED") ||
+                 venue_status == QLatin1String("CANCELLED") ||
+                 venue_status == QLatin1String("REJECTED"));
+            report.indeterminate = placed.indeterminate || persisted.is_err();
+            report.cumulative_filled = static_cast<int>(std::floor(placed.filled + 1e-9));
+            report.average_fill_price = placed.average_fill_price;
+            report.error = persisted.is_err()
+                ? QStringLiteral("venue order may exist but local execution ledger failed: %1")
+                      .arg(QString::fromStdString(persisted.error()))
+                : placed.reason;
+            QString protocol_error;
+            executor.apply_order_report(report, &protocol_error);
+        } else {
+            const PmCancelResult cancelled = pm_cancel_live(adapter, action.order_id);
+            auto* kalshi = qobject_cast<pred::kalshi_ns::KalshiAdapter*>(adapter);
+            const PmOrderReadResult final_order = cancelled.confirmed
+                ? pm_read_kalshi_order(kalshi, action.order_id) : PmOrderReadResult{};
+            const auto cancel_persisted = final_order.ok
+                ? persist_corridor_cancel(action.order_id, final_order)
+                : Result<void>::ok();
+            executor.apply_cancel_report({action.order_id,
+                                          cancelled.confirmed && final_order.ok &&
+                                              cancel_persisted.is_ok(),
+                                          cancelled.indeterminate ||
+                                              (cancelled.confirmed && final_order.indeterminate) ||
+                                              cancel_persisted.is_err(),
+                                          final_order.cumulative_filled,
+                                          cancel_persisted.is_err()
+                                              ? QStringLiteral("cancel was confirmed but the local ledger update failed: %1")
+                                                    .arg(QString::fromStdString(cancel_persisted.error()))
+                                          : cancelled.confirmed ? final_order.reason
+                                                              : cancelled.reason});
+        }
+        if (!save_json_object(active_path, executor.to_json(), &io_error))
+            return {{QStringLiteral("status"), QStringLiteral("halted_unsafe")},
+                    {QStringLiteral("reason"), io_error}};
+    }
+    const auto snap = executor.snapshot();
+    const bool complete = snap.phase == CorridorExecutor::Phase::Complete;
+    const bool unsafe = snap.phase == CorridorExecutor::Phase::HaltedUnsafe;
+    QJsonObject row{{QStringLiteral("schema"), 1},
+                    {QStringLiteral("event"), QString::fromLatin1(CorridorGate::kMicroLiveExecutionEvent)},
+                    {QStringLiteral("mode"), QStringLiteral("micro_live")},
+                    {QStringLiteral("strategy_family"), QString::fromLatin1(CorridorGate::kFamily)},
+                    {QStringLiteral("gate_id"), gate_id},
+                    {QStringLiteral("ts_ms"), static_cast<double>(now_ms)},
+                    {QStringLiteral("bundle_id"), snap.bundle_id},
+                    {QStringLiteral("source_key"), source_key},
+                    {QStringLiteral("status"), complete ? QStringLiteral("complete")
+                        : unsafe ? QStringLiteral("halted_unsafe") : QStringLiteral("incomplete")},
+                    {QStringLiteral("requested_bundles"), snap.requested_bundles},
+                    {QStringLiteral("matched_bundles"), snap.matched_bundles},
+                    {QStringLiteral("unmatched_first_leg"), snap.unmatched_first_leg},
+                    {QStringLiteral("reason"), snap.reason}};
+    if (!append_json_line(ledger_path, row, &io_error)) {
+        row.insert(QStringLiteral("status"), QStringLiteral("reconciliation_required"));
+        row.insert(QStringLiteral("reason"), io_error);
+        return row;
+    }
+    if (complete) QFile::remove(active_path);
+    return row;
+}
+
 QString normalized_kalshi_order_state(const PmPlaceResult& result, double requested) {
     const QString venue_state = result.status.trimmed().toUpper();
     if (result.filled >= requested - 1e-9 && requested > 0.0)
@@ -721,6 +1105,48 @@ Result<void> persist_kalshi_submission(const QString& draft_id, const QJsonObjec
     // then let GET /portfolio/fills populate the deduplicated fill ledger and
     // P&L. Recording both would double-book the same execution.
     return Result<void>::ok();
+}
+
+Result<void> persist_corridor_submission(const CorridorExecutor::Action& action,
+                                         const PmPlaceResult& result) {
+    const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    const QString state = result.indeterminate
+        ? QStringLiteral("submission_unknown")
+        : result.ok ? normalized_kalshi_order_state(result, action.count)
+                    : QStringLiteral("rejected");
+    const QString raw = QString::fromUtf8(
+        QJsonDocument(result.raw).toJson(QJsonDocument::Compact));
+    const QString client_id = result.client_order_id.isEmpty()
+        ? action.client_order_id : result.client_order_id;
+    auto order = Database::instance().execute(
+        "INSERT INTO kalshi_live_orders(client_order_id,order_id,draft_id,market_id,asset_id,action,outcome,state,"
+        "requested_count,filled_count,remaining_count,limit_price,average_fill_price,fees_paid,exchange_ts_ms,"
+        "created_at,updated_at,last_reconciled_at,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(client_order_id) DO UPDATE SET order_id=excluded.order_id,state=excluded.state,"
+        "filled_count=excluded.filled_count,remaining_count=excluded.remaining_count,"
+        "average_fill_price=excluded.average_fill_price,fees_paid=excluded.fees_paid,"
+        "exchange_ts_ms=excluded.exchange_ts_ms,updated_at=excluded.updated_at,raw_json=excluded.raw_json",
+        {client_id, result.order_id, QString(), action.ticker,
+         action.ticker + QStringLiteral(":") + action.outcome.toLower(),
+         action.side.toLower(), action.outcome, state, action.count, result.filled,
+         result.indeterminate ? action.count : result.remaining, action.limit_price,
+         result.average_fill_price, result.average_fee_paid * result.filled,
+         result.exchange_ts_ms, now, now, now, raw});
+    return order.is_ok() ? Result<void>::ok() : Result<void>::err(order.error());
+}
+
+Result<void> persist_corridor_cancel(const QString& order_id,
+                                     const PmOrderReadResult& result) {
+    const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    const QString raw = QString::fromUtf8(
+        QJsonDocument(result.raw).toJson(QJsonDocument::Compact));
+    const QString state = result.cumulative_filled > 0
+        ? QStringLiteral("partially_filled_cancelled") : QStringLiteral("cancelled");
+    auto updated = Database::instance().execute(
+        "UPDATE kalshi_live_orders SET state=?,filled_count=?,remaining_count=0,"
+        "updated_at=?,last_reconciled_at=?,raw_json=? WHERE order_id=?",
+        {state, result.cumulative_filled, now, now, raw, order_id});
+    return updated.is_ok() ? Result<void>::ok() : Result<void>::err(updated.error());
 }
 
 // ── prediction submit path (asset_class == "prediction") ─────────────────────
@@ -1159,6 +1585,166 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
 
 std::vector<ToolDef> get_order_flow_tools() {
     std::vector<ToolDef> tools;
+
+    // Dedicated two-leg REAL micro-live corridor executor. This is not two
+    // calls to submit_order: one protocol owns both legs, partial fills,
+    // cancellation and unwind. Production sizing has no reachable authority.
+    {
+        ToolDef t;
+        t.name = "execute_kalshi_corridor_micro_live";
+        t.description =
+            "Execute one certificate-backed Kalshi BTC threshold corridor under its separate "
+            "micro-live seal. Maximum $2 all-in per leg ($4 pair). Requires the human live "
+            "session, global live arm, allowed Kalshi venue, credentials, kill switch clear, "
+            "and no unresolved corridor state. Production-live is unavailable.";
+        t.category = "trading";
+        t.auth_required = AuthLevel::Authenticated;
+        t.is_destructive = true;
+        t.input_schema = ToolSchemaBuilder()
+            .object("scan", "Exact certificate-backed corridor scan row").required()
+            .integer("pair_index", "Opportunity index within scan.evaluation.pairs")
+                .required().min(0)
+            .build();
+        t.handler = [](const QJsonObject& args) -> ToolResult {
+            const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+            const QString active_path = kalshi_evidence_file(
+                QStringLiteral("kalshi-btc-corridor-micro-live-active.json"));
+            const QString ledger_path = kalshi_evidence_file(
+                QString::fromLatin1(CorridorGate::kMicroLiveLedgerFile));
+            if (mcp::cli_kill_switch_engaged())
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                                                       {"reason", "kill switch engaged"}});
+            if (!(mcp::cli_trading_allowed() && mcp::cli_live_armed()))
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                    {"reason", "live trading not armed — arm in GUI Settings"}});
+            if (!mcp::cli_venue_allowed(QStringLiteral("kalshi")))
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                    {"reason", "Kalshi is not in the allowed live venues"}});
+            if (QFileInfo::exists(active_path))
+                return ToolResult::ok_data(QJsonObject{{"status", "reconciliation_required"},
+                    {"reason", "an earlier corridor is incomplete; reconcile its durable state before another execution"}});
+            auto unknown = Database::instance().execute(
+                "SELECT COUNT(*) FROM kalshi_live_orders WHERE state IN "
+                "('submitting','submission_unknown','reconciliation_required')", {});
+            if (unknown.is_err() || !unknown.value().next() || unknown.value().value(0).toInt() > 0)
+                return ToolResult::ok_data(QJsonObject{{"status", "reconciliation_required"},
+                    {"reason", "an existing Kalshi order has an unresolved submission state"}});
+
+            auto setting = [](const QString& key) {
+                const auto value = SettingsRepository::instance().get(key, QString());
+                return value.is_ok() ? value.value() : QString();
+            };
+            if (setting(QStringLiteral("kalshi.live_automation.enabled")).trimmed().toLower() !=
+                QLatin1String("true"))
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                    {"reason", "bounded human Kalshi live session is not enabled"}});
+            const QString session_id =
+                setting(QStringLiteral("kalshi.live_automation.session_id")).trimmed();
+            const QDateTime session_end = QDateTime::fromString(
+                setting(QStringLiteral("kalshi.live_automation.ends_at")), Qt::ISODateWithMs);
+            if (session_id.isEmpty() || !session_end.isValid() ||
+                session_end <= QDateTime::currentDateTimeUtc())
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                    {"reason", "micro-live corridor requires a current bounded human session"}});
+            const QJsonValue session_value = read_json_value(kalshi_evidence_file(
+                QStringLiteral("kalshi-live-session.json")));
+            const QJsonObject session = session_value.toObject();
+            if (!session.value(QStringLiteral("enabled")).toBool() ||
+                session.value(QStringLiteral("session_id")).toString() != session_id)
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                    {"reason", "bounded live-session file does not match the active session"}});
+
+            const QJsonValue seal = read_json_value(kalshi_evidence_file(
+                QString::fromLatin1(CorridorGate::kMicroLiveParamsFile)));
+            const QJsonObject scan = args.value(QStringLiteral("scan")).toObject();
+            const int pair_index = args.value(QStringLiteral("pair_index")).toInt(-1);
+            bool quantity_ok = false;
+            const double quantity_value = json_number(scan.value(QStringLiteral("quantity")), -1.0);
+            const int quantity = static_cast<int>(quantity_value);
+            quantity_ok = quantity >= 1 && quantity_value == static_cast<double>(quantity);
+            QString gate_reason;
+            if (!quantity_ok || !CorridorGate::permits_micro_live(
+                    seal, scan, pair_index, quantity, now_ms, &gate_reason))
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                    {"reason", quantity_ok ? gate_reason : QStringLiteral("scan quantity is not a positive integer")}});
+            const QJsonObject sealed = seal.toObject();
+            const QJsonObject params = sealed.value(QStringLiteral("params")).toObject();
+            const double pair_all_in =
+                params.value(QStringLiteral("max_all_in_per_leg_usd")).toDouble() * 2.0;
+            if (!mcp::tools::daily_loss_ok(pair_all_in))
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                    {"reason", "daily live-loss backstop would be exceeded"}});
+            const QDateTime hour_ago = QDateTime::currentDateTimeUtc().addSecs(-3600);
+            auto orders = Database::instance().execute(
+                "SELECT COUNT(*) FROM kalshi_live_orders WHERE created_at>=?",
+                {hour_ago.toString(Qt::ISODateWithMs)});
+            const int orders_last_hour = orders.is_ok() && orders.value().next()
+                ? orders.value().value(0).toInt() : std::numeric_limits<int>::max();
+            const int session_order_cap = session.value(QStringLiteral("max_orders_per_hour")).toInt();
+            // Reserve capacity for both acquisitions plus a possible emergency
+            // unwind. The happy path uses two; uncertainty never consumes the
+            // reserved third by sending another unrelated order.
+            if (session_order_cap < 3 || orders_last_hour + 3 > session_order_cap)
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                    {"reason", "bounded live session lacks room for two legs plus a possible unwind"}});
+            auto exposure = Database::instance().execute(
+                "SELECT COALESCE(SUM((CASE WHEN filled_count>0 THEN filled_count*"
+                "CASE WHEN average_fill_price>0 THEN average_fill_price ELSE limit_price END ELSE 0 END)+"
+                "(CASE WHEN state IN ('submitting','accepted','resting','partially_filled') "
+                "THEN remaining_count*limit_price ELSE 0 END)),0) "
+                "FROM kalshi_live_orders WHERE state NOT IN ('rejected','settled','cancelled')", {});
+            const double used = exposure.is_ok() && exposure.value().next()
+                ? exposure.value().value(0).toDouble()
+                : std::numeric_limits<double>::infinity();
+            if (used + pair_all_in > session.value(QStringLiteral("experiment_cap")).toDouble())
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                    {"reason", "bounded live experiment exposure cap would be exceeded"}});
+            const int hourly_cap = params.value(QStringLiteral("max_executions_per_hour")).toInt();
+            int recent = 0;
+            QFile ledger(ledger_path);
+            if (ledger.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                while (!ledger.atEnd()) {
+                    const QJsonObject row = QJsonDocument::fromJson(ledger.readLine()).object();
+                    if (static_cast<qint64>(row.value(QStringLiteral("ts_ms")).toDouble()) >=
+                        now_ms - 3'600'000)
+                        ++recent;
+                }
+            }
+            if (recent >= hourly_cap)
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                    {"reason", QStringLiteral("corridor micro-live rolling-hour limit reached")}});
+
+            auto* adapter = pred::PredictionExchangeRegistry::instance().adapter(
+                QStringLiteral("kalshi"));
+            if (adapter && !adapter->has_credentials()) {
+                if (auto* kalshi = qobject_cast<pred::kalshi_ns::KalshiAdapter*>(adapter))
+                    if (const auto credentials = pred::PredictionCredentialStore::load_kalshi())
+                        kalshi->set_credentials(*credentials);
+            }
+            if (!adapter || !adapter->has_credentials())
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                    {"reason", "no Kalshi credentials — configure them in GUI"}});
+
+            QString intent_error;
+            const auto intent = corridor_intent(
+                scan, pair_index,
+                params.value(QStringLiteral("max_all_in_per_leg_usd")).toDouble(),
+                &intent_error);
+            auto executor = CorridorExecutor::create(intent, &intent_error);
+            if (!intent_error.isEmpty())
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"},
+                                                       {"reason", intent_error}});
+            const QString source_key = QString::fromLatin1(QCryptographicHash::hash(
+                (scan.value(QStringLiteral("certificate_sha256")).toString() +
+                 QStringLiteral("|") + scan.value(QStringLiteral("received_at")).toString() +
+                 QStringLiteral("|") + QString::number(pair_index)).toUtf8(),
+                QCryptographicHash::Sha256).toHex());
+            return ToolResult::ok_data(run_corridor_protocol(
+                executor, adapter, active_path, ledger_path,
+                sealed.value(QStringLiteral("gate_id")).toString(), source_key, now_ms));
+        };
+        tools.push_back(std::move(t));
+    }
 
     // ── prepare_order ──────────────────────────────────────────────────────
     {

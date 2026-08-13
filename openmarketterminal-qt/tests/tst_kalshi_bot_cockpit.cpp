@@ -1771,7 +1771,7 @@ class KalshiBotCockpitTest : public QObject {
         // Row 0 additionally includes the structural corridor watch + its own
         // paper-only gate. They are always visible, even before evidence.
         // Row 1: GOLD, SILVER, WTI (3). Total 10 — metals never share a box.
-        QCOMPARE(baseline.nodes.size(), 13);
+        QCOMPARE(baseline.nodes.size(), 14);
         QVERIFY(!baseline.node(QStringLiteral("kxbtc15m"))->detail.isEmpty());
         QVERIFY(!baseline.node(QStringLiteral("gold"))->detail.isEmpty());
         QVERIFY(baseline.node(QStringLiteral("calibrator")) != nullptr);
@@ -1790,6 +1790,7 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(baseline.node(QStringLiteral("exposure")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("btc_corridor")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("corridor_gate")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("corridor_micro_live")) != nullptr);
         QCOMPARE(baseline.pulses.size(), 1);
         QCOMPARE(baseline.pulses.first().kind, QStringLiteral("calibrator"));
         QVERIFY(!baseline.lessons_available);
@@ -2118,6 +2119,23 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(scene.node(QStringLiteral("corridor_gate"))->value.contains(QStringLiteral("LIVE NEVER")));
         QCOMPARE(scene.node(QStringLiteral("corridor_paper"))->role, QStringLiteral("green"));
         QVERIFY(scene.node(QStringLiteral("corridor_paper"))->value.contains(QStringLiteral("1 simulated")));
+
+        const QJsonObject micro_seal{
+            {"event", "kalshi_btc_threshold_corridor_micro_live_params"},
+            {"authority", "micro_live_only"},
+            {"params", QJsonObject{{"max_all_in_per_leg_usd", 2.0}}}};
+        const BotCockpitScene micro = present_bot_cockpit(
+            panel_for({}), {}, {}, {}, {}, kNow, QByteArray(), kBotCockpitMaxColumns,
+            kBotCockpitMaxPulses, {}, {}, {}, {}, {}, {}, {}, {}, scan, corridor_gate, 1,
+            micro_seal, 3, QStringLiteral("complete"));
+        QCOMPARE(micro.node(QStringLiteral("corridor_micro_live"))->role,
+                 QStringLiteral("amber"));
+        QVERIFY(micro.node(QStringLiteral("corridor_micro_live"))->value.contains(
+            QStringLiteral("$2.00 EACH LEG")));
+        QVERIFY(micro.node(QStringLiteral("corridor_micro_live"))->value.contains(
+            QStringLiteral("$4 PAIR")));
+        QVERIFY(micro.node(QStringLiteral("corridor_micro_live"))->value.contains(
+            QStringLiteral("production live HARD-OFF")));
 
         // A directional PASS is not a corridor PASS, even though both inspect
         // KXBTCD contracts.

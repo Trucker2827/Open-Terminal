@@ -144,6 +144,10 @@ QString corridor_paper_ledger_path() {
     return kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kPaperLedgerFile));
 }
 
+QString corridor_micro_live_ledger_path() {
+    return kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kMicroLiveLedgerFile));
+}
+
 /// Row filter for one ledger event type.
 std::function<bool(const QJsonObject&)> is_event(const char* name) {
     return [name](const QJsonObject& row) {
@@ -272,6 +276,49 @@ int collect_corridor_paper_bids(qint64 now_ms) {
         }
     }
     return written;
+}
+
+int execute_corridor_micro_live(const GlobalOpts& opts, qint64 now_ms,
+                                QJsonObject* last_result = nullptr) {
+    Q_UNUSED(now_ms);
+    const QJsonArray evidence = read_jsonl(
+        kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kEvidenceFile)),
+        [](const QJsonObject& row) {
+            return row.value(QStringLiteral("event")).toString() ==
+                       QLatin1String(KalshiCorridorGate::kScanEvent) &&
+                   row.value(QStringLiteral("family")).toString() ==
+                       QLatin1String(KalshiCorridorGate::kFamily);
+        });
+    if (evidence.isEmpty()) return 0;
+    const QJsonObject scan = evidence.last().toObject();
+    const QJsonArray pairs = scan.value(QStringLiteral("evaluation")).toObject()
+                                 .value(QStringLiteral("pairs")).toArray();
+    QSet<QString> attempted;
+    for (const QJsonValue& value : read_jsonl(corridor_micro_live_ledger_path(),
+                                               [](const QJsonObject&) { return true; }))
+        attempted.insert(value.toObject().value(QStringLiteral("source_key")).toString());
+    for (int index = 0; index < pairs.size(); ++index) {
+        const QJsonObject evaluation = pairs.at(index).toObject()
+                                           .value(QStringLiteral("evaluation")).toObject();
+        if (evaluation.value(QStringLiteral("state")).toString() != QLatin1String("opportunity"))
+            continue;
+        const QString source_key = QString::fromLatin1(QCryptographicHash::hash(
+            (scan.value(QStringLiteral("certificate_sha256")).toString() + QStringLiteral("|") +
+             scan.value(QStringLiteral("received_at")).toString() + QStringLiteral("|") +
+             QString::number(index)).toUtf8(), QCryptographicHash::Sha256).toHex());
+        if (attempted.contains(source_key)) continue;
+        QJsonObject response;
+        const int rc = kalshi_bot_call_tool(
+            opts, QStringLiteral("execute_kalshi_corridor_micro_live"),
+            QJsonObject{{QStringLiteral("scan"), scan},
+                        {QStringLiteral("pair_index"), index}}, response);
+        const QJsonObject data = response;
+        if (last_result) *last_result = data;
+        if (rc != 0) return -1;
+        return data.value(QStringLiteral("status")).toString() == QLatin1String("complete")
+            ? 1 : -1;
+    }
+    return 0;
 }
 
 /// Settlements in the live generation only (base path — not `.1`, `.2`, …).
@@ -1248,7 +1295,7 @@ void print_tick(const GlobalOpts& opts, const TickResult& tick,
         return;
     }
     std::printf("  bids %d · passes %d · open %d\n", tick.bids, tick.passes, tick.still_open);
-    std::printf("  corridor paper simulations %d · live corridor orders 0\n",
+    std::printf("  corridor paper simulations %d · micro-live is a separate two-leg command\n",
                 tick.corridor_paper_bids);
     // Resting is risk: it is printed on every tick, not only when it changes.
     std::printf("  resting %d ($%.2f at limit) · exposure $%.2f of $%.2f · session $%.2f of $%.2f\n",
@@ -1286,6 +1333,9 @@ void bot_usage() {
                  "       kalshi bot gate seal '{\"min_settled_bids\":300,\"max_drawdown_usd\":5}'\n"
                  "       kalshi bot corridor-gate [--json]\n"
                  "       kalshi bot corridor-gate seal '{\"max_bundles_per_opportunity\":2,\"max_cost_per_opportunity_usd\":2.0,\"max_scan_age_ms\":60000}'\n"
+                 "       kalshi bot corridor-micro-live seal '{\"max_bundles_per_opportunity\":2,\"max_all_in_per_leg_usd\":2.0,\"max_scan_age_ms\":60000,\"max_executions_per_hour\":3}'\n"
+                 "       kalshi bot corridor-micro-live once\n"
+                 "       kalshi bot corridor-micro-live run [--interval 60] [--iterations N]\n"
                  "       kalshi bot stop [--reason \"why\"]   throw the kill switch\n"
                  "       kalshi bot resume                  clear it\n"
                  "       kalshi bot status                  what the GUI BOT chip shows\n"
@@ -1546,6 +1596,89 @@ int corridor_gate_command(const GlobalOpts& opts, QStringList args) {
         std::printf("  live orders authorized: NO\n");
     }
     return out.value(QStringLiteral("evaluated")).toBool() ? 0 : 3;
+}
+
+int corridor_micro_live_command(const GlobalOpts& opts, QStringList args) {
+    if (args.isEmpty()) {
+        bot_usage();
+        return 2;
+    }
+    const QString action = args.takeFirst().trimmed().toLower();
+    if (action == QStringLiteral("seal")) {
+        if (args.size() != 1) return 2;
+        QJsonParseError parse_error;
+        const QJsonDocument document = QJsonDocument::fromJson(args.first().toUtf8(), &parse_error);
+        if (!document.isObject()) {
+            std::fprintf(stderr, "kalshi bot corridor-micro-live seal: params must be JSON (%s)\n",
+                         qUtf8Printable(parse_error.errorString()));
+            return 2;
+        }
+        QString error;
+        const QString path = kalshi_evidence_path(
+            QString::fromLatin1(KalshiCorridorGate::kMicroLiveParamsFile));
+        const QJsonObject record = KalshiCorridorGate::preregister_micro_live(
+            path, document.object(), QDateTime::currentMSecsSinceEpoch(), &error);
+        if (record.isEmpty()) {
+            std::fprintf(stderr, "kalshi bot corridor-micro-live seal: %s\n",
+                         qUtf8Printable(error));
+            return 3;
+        }
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(record).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("KALSHI BTC CORRIDOR · MICRO-LIVE SEALED · $2 ALL-IN EACH LEG\n  %s\n",
+                        qUtf8Printable(path));
+        return 0;
+    }
+    if (action == QStringLiteral("once") && args.isEmpty()) {
+        QJsonObject result;
+        const int completed = execute_corridor_micro_live(
+            opts, QDateTime::currentMSecsSinceEpoch(), &result);
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(result).toJson(QJsonDocument::Compact).constData());
+        else if (completed == 0)
+            std::printf("KALSHI BTC CORRIDOR · MICRO-LIVE · no new certified opportunity\n");
+        else
+            std::printf("KALSHI BTC CORRIDOR · MICRO-LIVE · %s · %s\n",
+                        completed > 0 ? "COMPLETE" : "NOT COMPLETE",
+                        qUtf8Printable(result.value(QStringLiteral("reason")).toString()));
+        return completed < 0 ? 6 : 0;
+    }
+    if (action == QStringLiteral("run")) {
+        QString interval_raw;
+        QString iterations_raw;
+        if (!take_string_option(args, QStringLiteral("--interval"), interval_raw) ||
+            !take_string_option(args, QStringLiteral("--iterations"), iterations_raw) ||
+            !args.isEmpty())
+            return 2;
+        bool ok = true;
+        const int interval = interval_raw.isEmpty() ? 60 : interval_raw.toInt(&ok);
+        if (!ok || interval < 5 || interval > 3600) return 2;
+        const int iterations = iterations_raw.isEmpty() ? 0 : iterations_raw.toInt(&ok);
+        if (!ok || iterations < 0) return 2;
+        int completed = 0;
+        for (int cycle = 0; iterations == 0 || cycle < iterations; ++cycle) {
+            QJsonObject result;
+            const int rc = execute_corridor_micro_live(
+                opts, QDateTime::currentMSecsSinceEpoch(), &result);
+            if (rc > 0) ++completed;
+            if (rc < 0) {
+                if (opts.json)
+                    std::printf("%s\n", QJsonDocument(result).toJson(QJsonDocument::Compact).constData());
+                else
+                    std::fprintf(stderr, "corridor micro-live stopped: %s\n",
+                                 qUtf8Printable(result.value(QStringLiteral("reason")).toString()));
+                return 6;
+            }
+            if (iterations != 0 && cycle + 1 >= iterations) break;
+            QThread::sleep(static_cast<unsigned long>(interval));
+        }
+        if (!opts.json)
+            std::printf("KALSHI BTC CORRIDOR · MICRO-LIVE · completed %d bundles\n", completed);
+        return 0;
+    }
+    bot_usage();
+    return 2;
 }
 
 // --- the kill switch and the status the GUI chip mirrors --------------------
@@ -2374,6 +2507,7 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
                                           QStringLiteral("run"),
                                           QStringLiteral("gate"),
                                           QStringLiteral("corridor-gate"),
+                                          QStringLiteral("corridor-micro-live"),
                                           QStringLiteral("status"),
                                           QStringLiteral("stop"),
                                           QStringLiteral("resume"),
@@ -2393,6 +2527,8 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     // parsed.
     if (sub == QStringLiteral("gate")) return gate_command(opts, args);
     if (sub == QStringLiteral("corridor-gate")) return corridor_gate_command(opts, args);
+    if (sub == QStringLiteral("corridor-micro-live"))
+        return corridor_micro_live_command(opts, args);
     if (sub == QStringLiteral("status")) return bot_status_command(opts, args);
     if (sub == QStringLiteral("stop")) return bot_stop_command(opts, args);
     if (sub == QStringLiteral("resume")) return bot_resume_command(opts, args);
