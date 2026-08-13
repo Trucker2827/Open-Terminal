@@ -41,13 +41,14 @@
 //     UNAVAILABLE, not zeroes, when the gate has published none.
 //
 // Nothing here reaches an exchange, and nothing here can arm anything: the
-// scene is a renderer over four files the CLI writes.
+// scene is a renderer over the evidence files the CLI/scanner write.
 
 #include "screens/kalshi/AutoCockpitPresentation.h"
 #include "screens/kalshi/BotCockpitRainLabels.h"
 #include "screens/kalshi/KalshiBotPanelPresentation.h"
 #include "services/prediction/kalshi/KalshiBotDecision.h"
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
+#include "services/prediction/kalshi/KalshiCorridorGate.h"
 #include "services/prediction/kalshi/KalshiStrategyGridView.h"
 
 #include <QHash>
@@ -77,6 +78,9 @@ inline constexpr auto kKalshiCommodities15mCalibratorFile = "commodities-15m-cal
 inline constexpr auto kKalshiCommoditiesHourlyCalibratorFile = "commodities-hourly-calibrator.json";
 inline constexpr auto kKalshiCommoditiesDailyCalibratorFile = "commodities-daily-calibrator.json";
 inline constexpr auto kKalshiKxbtcDailyCalibratorFile = "kxbtc-daily-calibrator.json";
+inline constexpr auto kKalshiCorridorEvidenceFile = "kalshi-btc-threshold-corridor.jsonl";
+inline constexpr auto kKalshiCorridorGateFile = "kalshi-btc-corridor-gate.json";
+inline constexpr auto kKalshiCorridorPaperLedgerFile = "kalshi-btc-corridor-paper.jsonl";
 
 inline QString kalshi_calibrator_path() {
     return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiCalibratorFile));
@@ -96,6 +100,96 @@ inline QString kalshi_commodities_daily_calibrator_path() {
 }
 inline QString kalshi_kxbtc_daily_calibrator_path() {
     return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiKxbtcDailyCalibratorFile));
+}
+
+inline QString kalshi_corridor_evidence_path() {
+    return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiCorridorEvidenceFile));
+}
+
+inline QString kalshi_corridor_gate_path() {
+    return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiCorridorGateFile));
+}
+
+inline QString kalshi_corridor_paper_ledger_path() {
+    return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiCorridorPaperLedgerFile));
+}
+
+/// Latest scanner row, shown as a watch rather than trading authority.
+inline QString corridor_watch_line(const QJsonObject& scan) {
+    if (scan.isEmpty())
+        return QStringLiteral("NO INPUT · zero KXBTCD corridor observations · NOT a negative result");
+    const QJsonObject evaluation = scan.value(QStringLiteral("evaluation")).toObject();
+    const QString state = evaluation.value(QStringLiteral("state")).toString(
+        QStringLiteral("unavailable"));
+    const QString event = scan.value(QStringLiteral("certificate")).toObject()
+                              .value(QStringLiteral("event_ticker")).toString(
+                                  QStringLiteral("event unknown"));
+    double best = 0.0;
+    for (const QJsonValue& value : evaluation.value(QStringLiteral("pairs")).toArray()) {
+        const QJsonObject result = value.toObject().value(QStringLiteral("evaluation")).toObject();
+        bool ok = false;
+        const double edge = result.value(QStringLiteral("net_edge_per_bundle")).toString()
+                                .toDouble(&ok);
+        if (ok) best = std::max(best, edge);
+    }
+    const QString phase = state == QLatin1String("opportunity")
+        ? QStringLiteral("PAPER OPPORTUNITY")
+        : state == QLatin1String("not_profitable")
+            ? QStringLiteral("SCANNING / NO EDGE")
+            : QStringLiteral("INPUT UNAVAILABLE");
+    return QStringLiteral("%1 · %2 · %3 · %4 pairs · %5 opportunities · best net $%6")
+        .arg(phase, event, state)
+        .arg(evaluation.value(QStringLiteral("pairs_evaluated")).toInt())
+        .arg(evaluation.value(QStringLiteral("opportunities")).toInt())
+        .arg(best, 0, 'f', 4);
+}
+
+inline QString corridor_watch_role(const QJsonObject& scan) {
+    if (scan.isEmpty()) return QStringLiteral("grey");
+    const QString state = scan.value(QStringLiteral("evaluation")).toObject()
+                              .value(QStringLiteral("state")).toString();
+    if (state == QLatin1String("opportunity")) return QStringLiteral("green");
+    if (state == QLatin1String("not_profitable")) return QStringLiteral("amber");
+    return QStringLiteral("grey");
+}
+
+inline QString corridor_gate_line(const QJsonObject& gate) {
+    if (gate.isEmpty())
+        return QStringLiteral("NOT EVALUATED · separate corridor criteria are not published");
+    const QString verdict = gate.value(QStringLiteral("verdict")).toString(
+        QStringLiteral("VERDICT MISSING"));
+    const QJsonObject params = gate.value(QStringLiteral("params")).toObject();
+    const QJsonObject evidence = gate.value(QStringLiteral("evidence")).toObject();
+    if (evidence.isEmpty())
+        return QStringLiteral("%1 · %2 · PAPER ONLY · LIVE NEVER")
+            .arg(verdict, gate.value(QStringLiteral("reason")).toString());
+    return QStringLiteral("%1 · PAPER ONLY · COLLECTION ARMED · <=%2 bundles · <=$%3/simulation · %4 scans / %5 opportunities · LIVE NEVER")
+        .arg(verdict)
+        .arg(params.value(QStringLiteral("max_bundles_per_opportunity")).toInt())
+        .arg(params.value(QStringLiteral("max_cost_per_opportunity_usd")).toDouble(), 0, 'f', 2)
+        .arg(evidence.value(QStringLiteral("scans")).toInt())
+        .arg(evidence.value(QStringLiteral("opportunity_scans")).toInt());
+}
+
+inline QString corridor_gate_role(const QJsonObject& gate) {
+    const bool own_pass =
+        gate.value(QStringLiteral("strategy_family")).toString() ==
+            QLatin1String(services::prediction::kalshi_ns::KalshiCorridorGate::kFamily) &&
+        gate.value(QStringLiteral("authority")).toString() == QLatin1String("paper_only") &&
+        gate.value(QStringLiteral("paper_bids_authorized")).toBool() &&
+        !gate.value(QStringLiteral("live_orders_authorized")).toBool() &&
+        gate.value(QStringLiteral("evaluated")).toBool() &&
+        gate.value(QStringLiteral("verdict")).toString() ==
+            QLatin1String(services::prediction::kalshi_ns::KalshiCorridorGate::kVerdictPass);
+    if (own_pass)
+        return QStringLiteral("green");
+    const QString verdict = gate.value(QStringLiteral("verdict")).toString();
+    if (gate.value(QStringLiteral("strategy_family")).toString() ==
+            QLatin1String(services::prediction::kalshi_ns::KalshiCorridorGate::kFamily) &&
+        gate.value(QStringLiteral("evaluated")).toBool() &&
+        verdict != QLatin1String(services::prediction::kalshi_ns::KalshiCorridorGate::kVerdictPass))
+        return QStringLiteral("amber");
+    return QStringLiteral("grey");
 }
 
 /// Compact cadence status for orbit/KPI folding (no new nodes).
@@ -1333,7 +1427,10 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                                            const QJsonObject& postmortem_historic = {},
                                            const QJsonObject& commodities_hourly_report = {},
                                            const QJsonObject& commodities_daily_report = {},
-                                           const QJsonObject& kxbtc_daily_report = {}) {
+                                           const QJsonObject& kxbtc_daily_report = {},
+                                           const QJsonObject& corridor_scan = {},
+                                           const QJsonObject& corridor_gate = {},
+                                           int corridor_paper_bids = 0) {
     using namespace bot_cockpit_detail;
     BotCockpitScene scene;
     // Advisory strategy-grid line, read-only over the engine's verdict file.
@@ -1914,6 +2011,40 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                      QStringLiteral("grey"), false);
         }
     }
+
+    // BTC corridor is a structural two-leg strategy, not a directional
+    // KXBTCD forecast. It therefore gets its own watch and its own sealed
+    // PAPER gate. The directional `gate` object is never consulted here.
+    add_node(QStringLiteral("btc_corridor"),
+             QStringLiteral("BTC CORRIDOR WATCH · READ ONLY"),
+             corridor_watch_line(corridor_scan), corridor_watch_role(corridor_scan),
+             !corridor_scan.isEmpty(),
+             corridor_scan.isEmpty()
+                 ? QStringLiteral("Certificate-backed hourly lower-YES + higher-NO scanner. No order API.")
+                 : QStringLiteral("%1\ncertificate %2\nRead-only: this observation cannot place an order.")
+                       .arg(corridor_scan.value(QStringLiteral("evaluation")).toObject()
+                                .value(QStringLiteral("reason")).toString(),
+                            corridor_scan.value(QStringLiteral("certificate_sha256")).toString()),
+             /*row=*/0);
+    add_node(QStringLiteral("corridor_gate"),
+             QStringLiteral("CORRIDOR SEALED GATE · PAPER ONLY"),
+             corridor_gate_line(corridor_gate), corridor_gate_role(corridor_gate),
+             !corridor_gate.isEmpty(),
+             QStringLiteral("Separate strategy identity: btc_threshold_corridor.\n"
+                            "A directional KXBTCD gate cannot authorize it.\n"
+                            "Even PASS authorizes paper only; live orders remain unavailable."),
+             /*row=*/0);
+    add_node(QStringLiteral("corridor_paper"),
+             QStringLiteral("BTC CORRIDOR · PAPER LEDGER"),
+             corridor_paper_bids > 0
+                 ? QStringLiteral("%1 simulated opportunities · 0 live orders")
+                       .arg(corridor_paper_bids)
+                 : QStringLiteral("0 simulated opportunities · waiting for certified input · 0 live orders"),
+             corridor_paper_bids > 0 ? QStringLiteral("green") : QStringLiteral("grey"),
+             corridor_paper_bids > 0,
+             QStringLiteral("Append-only structural-strategy paper ledger.\n"
+                            "A simulation records the observed two-leg book; it submits nothing."),
+             /*row=*/0);
 
     // SETTLEMENTS / KPI — prefer CURRENT RULES postmortem (new trading
     // scorecard). Lifetime gate ledger stays on SEALED GATE + DRAWDOWN only;
@@ -2499,7 +2630,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     return scene;
 }
 
-/// The scene as the screen renders it: the four evidence files, read through
+/// The scene as the screen renders it: evidence files read through
 /// the one path module, and the BOT panel view built from three of them.
 /// `feed` is supplied by the caller (the view, from kalshi-ws-engine.json and
 /// the newest retained ticker event) — this function does no socket-health
@@ -2532,6 +2663,26 @@ inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qi
     const QJsonObject commodities_daily_report =
         read_report(kalshi_commodities_daily_calibrator_path());
     const QJsonObject kxbtc_daily_report = read_report(kalshi_kxbtc_daily_calibrator_path());
+    const QJsonObject corridor_gate = read_report(kalshi_corridor_gate_path());
+    QJsonObject corridor_scan;
+    QFile corridor_file(kalshi_corridor_evidence_path());
+    if (corridor_file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!corridor_file.atEnd()) {
+            const QJsonDocument document = QJsonDocument::fromJson(corridor_file.readLine());
+            if (document.isObject()) corridor_scan = document.object();
+        }
+    }
+    int corridor_paper_bids = 0;
+    QFile corridor_paper_file(kalshi_corridor_paper_ledger_path());
+    if (corridor_paper_file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!corridor_paper_file.atEnd()) {
+            const QJsonDocument document = QJsonDocument::fromJson(corridor_paper_file.readLine());
+            if (document.isObject() &&
+                document.object().value(QStringLiteral("event")).toString() ==
+                    QLatin1String(services::prediction::kalshi_ns::KalshiCorridorGate::kPaperBidEvent))
+                ++corridor_paper_bids;
+        }
+    }
     // The advisory strategy-grid verdict, read-only; missing/garbage/stale is
     // handled inside present_bot_cockpit (fails closed to UNAVAILABLE/STALE).
     QByteArray grid_json;
@@ -2547,7 +2698,8 @@ inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qi
                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed,
                                kxbtc15m_report, commodities_15m_report, postmortem_current,
                                postmortem_historic, commodities_hourly_report,
-                               commodities_daily_report, kxbtc_daily_report);
+                               commodities_daily_report, kxbtc_daily_report, corridor_scan,
+                               corridor_gate, corridor_paper_bids);
 }
 
 } // namespace openmarketterminal::screens::kalshi

@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CLI="${BUILD_DIR:?BUILD_DIR is required}/openterminalcli"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+export OPENTERMINAL_EVIDENCE_DIR="$TMP"
+export OPENTERMINAL_KALSHI_EVIDENCE_DIR="$TMP"
+
+PARAMS='{"max_bundles_per_opportunity":2,"max_cost_per_opportunity_usd":2.0,"max_scan_age_ms":60000}'
+"$CLI" --json kalshi bot corridor-gate seal "$PARAMS" >"$TMP/sealed.json"
+
+# With no evidence file at all, the paper experiment must arm. Requiring the
+# history that the experiment exists to collect would be a circular deadlock.
+"$CLI" --json kalshi bot corridor-gate >"$TMP/verdict.stdout.json"
+python3 - "$TMP/verdict.stdout.json" "$TMP/kalshi-btc-corridor-gate.json" <<'PY'
+import json, sys
+stdout = json.load(open(sys.argv[1], encoding="utf-8"))
+disk = json.load(open(sys.argv[2], encoding="utf-8"))
+assert stdout == disk
+assert disk["strategy_family"] == "btc_threshold_corridor"
+assert disk["authority"] == "paper_only"
+assert disk["verdict"] == "PASS"
+assert disk["evaluated"] is True
+assert disk["paper_bids_authorized"] is True
+assert disk["live_orders_authorized"] is False
+assert disk["evidence"]["scans"] == 0
+assert disk["evidence"]["distinct_events"] == 0
+assert disk["evidence"]["opportunity_scans"] == 0
+assert disk["params"] == json.loads('''{"max_bundles_per_opportunity":2,"max_cost_per_opportunity_usd":2.0,"max_scan_age_ms":60000}''')
+PY
+
+# The existing directional verdict path remains separate and absent.
+test ! -e "$TMP/kalshi-bot-gate.json"
+
+# A fresh, certificate-backed opportunity is consumed by the real paper tick,
+# once and only once. It lands in a separate paper ledger and cannot call the
+# exchange because the row explicitly records live_order_submitted=false.
+python3 - "$TMP/kalshi-btc-threshold-corridor.jsonl" <<'PY'
+import hashlib, json, sys
+from datetime import datetime, timezone
+certificate = {"event_ticker":"KXBTCD-E0","family":"btc_threshold_corridor"}
+digest = hashlib.sha256(json.dumps(certificate, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+row = {
+  "event":"kalshi_btc_threshold_corridor_scan", "family":"btc_threshold_corridor",
+  "received_at":datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+  "quantity":"1", "certificate":certificate, "certificate_sha256":digest,
+  "evaluation":{"state":"opportunity","pairs_evaluated":1,"opportunities":1,"pairs":[{
+    "lower_ticker":"KXBTCD-E0-T64000", "higher_ticker":"KXBTCD-E0-T65000",
+    "evaluation":{"state":"opportunity","quantity":"1","acquisition_cost":"0.80",
+      "fees":"0.05","execution_buffer":"0.02","net_edge_per_bundle":"0.13"}}]}}
+open(sys.argv[1], "w", encoding="utf-8").write(json.dumps(row, separators=(",", ":"))+"\n")
+PY
+
+"$CLI" --json kalshi bot once --no-auto-refresh-calibrators >"$TMP/tick1.json"
+"$CLI" --json kalshi bot once --no-auto-refresh-calibrators >"$TMP/tick2.json"
+python3 - "$TMP/tick1.json" "$TMP/tick2.json" "$TMP/kalshi-btc-corridor-paper.jsonl" <<'PY'
+import json, sys
+one=json.load(open(sys.argv[1])); two=json.load(open(sys.argv[2]))
+rows=[json.loads(line) for line in open(sys.argv[3], encoding="utf-8") if line.strip()]
+assert one["corridor_paper_bids"] == 1, one
+assert two["corridor_paper_bids"] == 0, two
+assert len(rows) == 1, rows
+assert rows[0]["event"] == "kalshi_btc_threshold_corridor_paper_bid"
+assert rows[0]["mode"] == "paper"
+assert rows[0]["live_order_submitted"] is False
+assert rows[0]["result"] == "SIMULATED_AT_OBSERVED_BOOK"
+PY

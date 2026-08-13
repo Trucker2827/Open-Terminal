@@ -1243,6 +1243,13 @@ add_test(NAME e2e_kalshi_bot_gate_cadence
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_gate_cadence.sh)
 
+# Separate structural-corridor gate through the shipped CLI: immutable seal,
+# 300 certificate-backed scans, published PASS, paper-only authority, and no
+# directional gate artifact created as a side effect.
+add_test(NAME e2e_kalshi_corridor_gate
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_corridor_gate.sh)
+
 # Issue #91 — tools/sign-release.sh probes notary credentials before any
 # download/sign work: a locked keychain (locked screen) must exit immediately
 # with the cause and fix, and a passing probe must leave the success path
@@ -1300,6 +1307,14 @@ add_executable(tst_kalshi_bot_cockpit tst_kalshi_bot_cockpit.cpp
 target_include_directories(tst_kalshi_bot_cockpit PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_bot_cockpit PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_bot_cockpit COMMAND tst_kalshi_bot_cockpit)
+
+# BTC threshold-corridor evidence has a sealed gate of its own. A directional
+# KXBTCD PASS cannot satisfy it, and even its PASS remains paper-only.
+add_executable(tst_kalshi_corridor_gate tst_kalshi_corridor_gate.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/prediction/kalshi/KalshiCorridorGate.cpp)
+target_include_directories(tst_kalshi_corridor_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_corridor_gate PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_corridor_gate COMMAND tst_kalshi_corridor_gate)
 
 # Kalshi CLI locator — the suffix-parameterized probe KalshiScreen::cli_path()
 # uses to find the bundled openterminalcli (".exe" on Windows). Header-only,

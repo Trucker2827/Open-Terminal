@@ -166,9 +166,34 @@ python3 scripts/kalshi_structural_arb.py corridor-scan reviewed-btc-ladder.json 
 
 python3 scripts/kalshi_structural_arb.py corridor-record reviewed-btc-ladder.json \
   --seconds 3600 --poll-seconds 1 \
-  --quantity 1 --execution-buffer 0.01 --min-net-edge 0.01 \
-  --out logs/btc-threshold-corridor.jsonl
+  --quantity 1 --execution-buffer 0.01 --min-net-edge 0.01
 ```
+
+`corridor-record` defaults to the application evidence file
+`kalshi-btc-threshold-corridor.jsonl`, so the Bot Cockpit can render the latest
+scan. `--out` remains available for an isolated experiment.
+
+The corridor has its own immutable sealed gate; the directional bot gate is
+not authority for this strategy:
+
+```bash
+openterminalcli kalshi bot corridor-gate seal \
+  '{"max_bundles_per_opportunity":2,"max_cost_per_opportunity_usd":2.0,"max_scan_age_ms":60000}'
+openterminalcli kalshi bot corridor-gate
+```
+
+The immutable seal activates bounded paper evidence collection immediately; it
+does **not** require historical scans or profitable events first. Those are the
+outcome the paper experiment exists to measure. Every proposed paper bid must
+still come from a fresh certificate-backed scan whose selected pair is a
+net-positive `opportunity`, was evaluated at the requested quantity, and fits
+the per-simulation cost limit. A passing gate sets
+`paper_bids_authorized=true` and always sets `live_orders_authorized=false`.
+
+Scan and opportunity totals remain visible in the Bot Cockpit as diagnostics.
+They cannot disable paper collection. Fill quality, partial-leg exposure,
+slippage, settlement and independent-event profitability belong to a separate
+future **live-promotion** gate; this paper seal can never authorize live orders.
 
 The commands remain read-only. No order operation is exposed. A positive row
 is evidence for latency, duration and partial-fill research—not permission to
