@@ -773,7 +773,7 @@ def _watch_book(args: argparse.Namespace, credentials: object) -> int:
             seconds=args.seconds,
         )
     )
-    cache = KalshiBookCache(args.ticker)
+    cache = KalshiBookCache(args.ticker, validate_sequence=True)
     updates = 0
     for message in messages:
         cache.apply(message)

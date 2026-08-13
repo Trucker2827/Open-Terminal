@@ -586,7 +586,7 @@ class DashboardEngine:
         spot_cache: SpotCache,
         cf_cache: CFValueCache | None,
     ) -> None:
-        cache = KalshiBookCache(market.ticker)
+        cache = KalshiBookCache(market.ticker, validate_sequence=True)
         ws_client = KalshiWebSocketClient(credentials=self.credentials, env=self.config.env)
         next_eval = 0.0
         self.set_snapshot(status="streaming", error=None, market=_market_payload(market))

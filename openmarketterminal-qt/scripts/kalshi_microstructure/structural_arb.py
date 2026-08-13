@@ -25,9 +25,6 @@ from .models import BinaryBook, Level, Market
 
 SCHEMA_VERSION = 1
 CENT = Decimal("0.01")
-# Kalshi's linear-cent grid has no zero-cent ask.  Every acquired leg costs at
-# least one cent, independent of liquidity, timing, order size, or fees.
-MIN_QUOTABLE_ASK = CENT
 ONE = Decimal("1")
 ZERO = Decimal("0")
 GENERAL_TAKER_RATE = Decimal("0.07")
@@ -67,6 +64,8 @@ SETTLEMENT_TERM_FIELDS = (
     "settlement_timer_seconds",
     "response_price_units",
     "notional_value",
+    "price_level_structure",
+    "price_ranges",
 )
 
 
@@ -116,12 +115,14 @@ class CertifiedLeg:
     ticker: str
     side: str
     payouts: tuple[Decimal, ...]
+    minimum_ask_price: Decimal
 
     def payload(self) -> dict[str, object]:
         return {
             "ticker": self.ticker,
             "side": self.side,
             "payouts": [str(value) for value in self.payouts],
+            "minimum_ask_price": str(self.minimum_ask_price),
         }
 
 
@@ -158,6 +159,9 @@ class PayoffCertificate:
             ticker = str(raw.get("ticker") or "").strip()
             side = str(raw.get("side") or "").strip().lower()
             payouts_raw = raw.get("payouts")
+            minimum_ask_price = _decimal(
+                raw.get("minimum_ask_price"), f"legs[{index}].minimum_ask_price"
+            )
             if not ticker or side not in {"yes", "no"}:
                 raise ValueError(f"legs[{index}] needs a ticker and yes/no side")
             if (ticker, side) in identities:
@@ -169,8 +173,15 @@ class PayoffCertificate:
             )
             if any(value not in {ZERO, ONE} for value in payouts):
                 raise ValueError("version 1 certificates allow only binary 0/1 payouts")
+            if minimum_ask_price <= ZERO:
+                raise ValueError(f"legs[{index}].minimum_ask_price must be positive")
             identities.add((ticker, side))
-            legs.append(CertifiedLeg(ticker=ticker, side=side, payouts=payouts))
+            legs.append(CertifiedLeg(
+                ticker=ticker,
+                side=side,
+                payouts=payouts,
+                minimum_ask_price=minimum_ask_price,
+            ))
 
         certificate = cls(
             bundle_id=bundle_id,
@@ -189,13 +200,7 @@ class PayoffCertificate:
                 raise ValueError(f"same-market YES/NO payouts must be complementary: {ticker}")
         if certificate.guaranteed_payout <= ZERO:
             raise ValueError("payoff matrix does not prove a positive payout in every outcome")
-        price_grid_floor = MIN_QUOTABLE_ASK * len(certificate.legs)
-        if certificate.guaranteed_payout <= price_grid_floor:
-            raise ValueError(
-                "price-grid floor precludes positive gross edge: "
-                f"{len(certificate.legs)} legs cost at least {price_grid_floor} "
-                f"for guaranteed payout {certificate.guaranteed_payout}"
-            )
+        require_price_grid_feasible(certificate)
         return certificate
 
     @property
@@ -221,6 +226,26 @@ class PayoffCertificate:
     def digest(self) -> str:
         encoded = json.dumps(self.payload(), sort_keys=True, separators=(",", ":")).encode()
         return hashlib.sha256(encoded).hexdigest()
+
+
+def require_price_grid_feasible(
+    certificate: PayoffCertificate,
+) -> None:
+    """Reject a bundle whose exchange-grid cost floor consumes its payout.
+
+    Each leg's minimum is explicit because Kalshi uses linear-cent, deci-cent,
+    and tapered grids.  Certificates derive it from the reviewed market's
+    ``price_ranges[].step`` rather than applying one constant exchange-wide.
+    """
+    price_grid_floor = sum(
+        (leg.minimum_ask_price for leg in certificate.legs), ZERO
+    )
+    if certificate.guaranteed_payout <= price_grid_floor:
+        raise ValueError(
+            "price-grid floor precludes positive gross edge: "
+            f"{len(certificate.legs)} legs cost at least {price_grid_floor} "
+            f"for guaranteed payout {certificate.guaranteed_payout}"
+        )
 
 
 def settlement_terms_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -264,6 +289,7 @@ class BtcThresholdCorridorCertificate:
     settlement_time_field: str
     settlement_time: str
     reviewed_at: str
+    minimum_ask_price: Decimal
     members: tuple[CorridorMember, ...]
 
     @classmethod
@@ -286,6 +312,7 @@ class BtcThresholdCorridorCertificate:
         settlement_time_field = str(payload.get("settlement_time_field") or "").strip()
         settlement_time = str(payload.get("settlement_time") or "").strip()
         reviewed_at = str(payload.get("reviewed_at") or "").strip()
+        minimum_ask_price = _decimal(payload.get("minimum_ask_price"), "minimum_ask_price")
         if underlier != "BTC":
             raise ValueError("underlier must be BTC")
         if not event_ticker or not settlement_time or not reviewed_at or not api_strike_type:
@@ -298,6 +325,8 @@ class BtcThresholdCorridorCertificate:
             raise ValueError("api_strike_type does not match the certified comparison")
         if settlement_time_field not in SETTLEMENT_TIME_FIELDS:
             raise ValueError("settlement_time_field is not a supported exact API field")
+        if minimum_ask_price <= ZERO:
+            raise ValueError("minimum_ask_price must be positive")
 
         members_raw = payload.get("markets")
         if not isinstance(members_raw, list) or len(members_raw) < 2:
@@ -329,6 +358,7 @@ class BtcThresholdCorridorCertificate:
             settlement_time_field=settlement_time_field,
             settlement_time=settlement_time,
             reviewed_at=reviewed_at,
+            minimum_ask_price=minimum_ask_price,
             members=tuple(sorted(members, key=lambda member: member.strike)),
         )
 
@@ -365,8 +395,18 @@ class BtcThresholdCorridorCertificate:
             ),
             "outcomes": list(outcomes),
             "legs": [
-                {"ticker": lower.ticker, "side": "yes", "payouts": [0, 1, 1]},
-                {"ticker": higher.ticker, "side": "no", "payouts": [1, 1, 0]},
+                {
+                    "ticker": lower.ticker,
+                    "side": "yes",
+                    "payouts": [0, 1, 1],
+                    "minimum_ask_price": str(self.minimum_ask_price),
+                },
+                {
+                    "ticker": higher.ticker,
+                    "side": "no",
+                    "payouts": [1, 1, 0],
+                    "minimum_ask_price": str(self.minimum_ask_price),
+                },
             ],
         })
 
@@ -383,6 +423,7 @@ class BtcThresholdCorridorCertificate:
             "settlement_time_field": self.settlement_time_field,
             "settlement_time": self.settlement_time,
             "reviewed_at": self.reviewed_at,
+            "minimum_ask_price": str(self.minimum_ask_price),
             "markets": [member.payload() for member in self.members],
         }
 
@@ -508,6 +549,22 @@ def _market_floor_strike(payload: Mapping[str, Any]) -> Decimal | None:
     return _decimal(value, "market floor strike")
 
 
+def market_minimum_ask_price(payload: Mapping[str, Any]) -> Decimal | None:
+    """Return the smallest positive reviewed grid step, or unknown."""
+    ranges = payload.get("price_ranges")
+    if not isinstance(ranges, list) or not ranges:
+        return None
+    steps: list[Decimal] = []
+    for index, value in enumerate(ranges):
+        if not isinstance(value, Mapping) or value.get("step") in (None, ""):
+            return None
+        step = _decimal(value["step"], f"price_ranges[{index}].step")
+        if step <= ZERO:
+            return None
+        steps.append(step)
+    return min(steps) if steps else None
+
+
 def validate_corridor_markets(
     certificate: BtcThresholdCorridorCertificate,
     markets: Mapping[str, Market],
@@ -528,6 +585,8 @@ def validate_corridor_markets(
             return f"API strike type changed: {member.ticker}"
         if _market_floor_strike(raw) != member.strike:
             return f"certified strike changed: {member.ticker}"
+        if market_minimum_ask_price(raw) != certificate.minimum_ask_price:
+            return f"certified price grid changed or is unavailable: {member.ticker}"
         if str(raw.get(certificate.settlement_time_field) or "") != certificate.settlement_time:
             return f"settlement time changed: {member.ticker}"
         if settlement_terms_sha256(raw) != member.terms_sha256:

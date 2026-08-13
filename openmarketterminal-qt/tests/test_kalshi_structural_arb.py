@@ -23,13 +23,20 @@ from scripts.kalshi_microstructure.structural_arb import (
     discovery_row,
     evaluate_corridor_family,
     evaluate_bundle,
+    market_minimum_ask_price,
+    require_price_grid_feasible,
     replay_evidence,
     settlement_terms_sha256,
 )
 
 
 def certificate(payload: dict) -> PayoffCertificate:
-    return PayoffCertificate.from_payload({"schema_version": 1, **payload})
+    normalized = {"schema_version": 1, **payload}
+    normalized["legs"] = [
+        {"minimum_ask_price": "0.01", **leg}
+        for leg in payload.get("legs", [])
+    ]
+    return PayoffCertificate.from_payload(normalized)
 
 
 def book(ticker: str, *, yes_bids=(), no_bids=()) -> BinaryBook:
@@ -60,6 +67,8 @@ def threshold_market(
         "expected_expiration_time": settlement,
         "rules_primary": rules,
         "rules_secondary": "No scalar payout; reviewed fixture",
+        "price_level_structure": "linear_cent",
+        "price_ranges": [{"start": "0.0000", "end": "1.0000", "step": "0.0100"}],
     })
 
 
@@ -79,6 +88,7 @@ def corridor_certificate(
         "settlement_time_field": "expected_expiration_time",
         "settlement_time": first.raw["expected_expiration_time"],
         "reviewed_at": "2026-08-12T17:00:00Z",
+        "minimum_ask_price": "0.01",
         "markets": [
             {
                 "ticker": market.ticker,
@@ -122,6 +132,39 @@ class StructuralArbitrageTest(unittest.TestCase):
             ],
         })
         self.assertEqual(cert.guaranteed_payout, Decimal("1"))
+        require_price_grid_feasible(cert)
+
+    def test_price_grid_is_explicit_and_supports_deci_cent(self) -> None:
+        leg_count = 188
+        cert = certificate({
+            "bundle_id": "deci-cent-partition",
+            "description": "Grid feasibility depends on reviewed market metadata",
+            "outcomes": [f"bucket-{index}" for index in range(leg_count)],
+            "legs": [
+                {
+                    "ticker": f"RANGE-{index}",
+                    "side": "yes",
+                    "payouts": [int(index == outcome) for outcome in range(leg_count)],
+                    "minimum_ask_price": "0.001",
+                }
+                for index in range(leg_count)
+            ],
+        })
+        # The same leg count is not arithmetically impossible on a 0.001 grid.
+        require_price_grid_feasible(cert)
+
+    def test_tapered_grid_uses_its_smallest_positive_step(self) -> None:
+        self.assertEqual(
+            market_minimum_ask_price({
+                "price_ranges": [
+                    {"start": "0", "end": "0.10", "step": "0.0010"},
+                    {"start": "0.10", "end": "0.90", "step": "0.0100"},
+                    {"start": "0.90", "end": "1", "step": "0.0010"},
+                ],
+            }),
+            Decimal("0.0010"),
+        )
+        self.assertIsNone(market_minimum_ask_price({"price_ranges": []}))
 
     def test_btc_threshold_corridor_has_three_exhaustive_payout_regions(self) -> None:
         markets = [threshold_market("BTC-64000", 64000), threshold_market("BTC-65000", 65000)]

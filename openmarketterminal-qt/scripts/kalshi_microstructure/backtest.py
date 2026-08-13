@@ -158,7 +158,7 @@ def replay_recording(config: BacktestConfig) -> BacktestResult:
 
         if event == "session_started":
             market = _market_from_record(row["market"])
-            cache = KalshiBookCache(market.ticker)
+            cache = KalshiBookCache(market.ticker, validate_sequence=True)
             continue
 
         if event == "spot":
@@ -266,7 +266,7 @@ def replay_recording_to_settlement(
 
         if event == "session_started":
             market = _market_from_record(row["market"])
-            cache = KalshiBookCache(market.ticker)
+            cache = KalshiBookCache(market.ticker, validate_sequence=True)
             continue
 
         if event == "spot":
@@ -364,7 +364,7 @@ def replay_cf_final_window(config: CFDecisionConfig) -> CFDecisionResult:
 
         if event == "session_started":
             market = _market_from_record(row["market"])
-            cache = KalshiBookCache(market.ticker)
+            cache = KalshiBookCache(market.ticker, validate_sequence=True)
             continue
 
         if event == "cf":

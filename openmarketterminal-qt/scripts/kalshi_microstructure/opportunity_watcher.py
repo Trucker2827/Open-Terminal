@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .auth import KalshiCredentials
-from .book_cache import KalshiBookCache
+from .book_cache import KalshiBookCache, ReconnectRequired
 from .cf_liquidity import CFLiquidityConfig, cf_liquidity_payload
 from .cfbenchmarks import (
     CF_INDEX_BY_SYMBOL,
@@ -187,19 +187,32 @@ async def _watch_target(
             if seconds_to_close is not None and seconds_to_close <= 0:
                 await asyncio.sleep(1.0)
                 continue
-            await _stream_market_window(
-                client,
-                credentials,
-                env,
-                config,
-                target,
-                market,
-                cf_cache,
-                deadline,
-                lock,
-                execution_lock,
-                live_state,
-            )
+            try:
+                await _stream_market_window(
+                    client,
+                    credentials,
+                    env,
+                    config,
+                    target,
+                    market,
+                    cf_cache,
+                    deadline,
+                    lock,
+                    execution_lock,
+                    live_state,
+                )
+            except ReconnectRequired as exc:
+                await _write_payload(
+                    config.out,
+                    {
+                        "event": "kalshi_book_reconnect_required",
+                        "ts": _utc_now(),
+                        "ticker": market.ticker,
+                        "reason": str(exc),
+                    },
+                    lock,
+                )
+                await asyncio.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
     finally:
         if cf_task is not None:
             cf_task.cancel()
@@ -222,7 +235,7 @@ async def _stream_market_window(
     execution_lock: asyncio.Lock,
     live_state: OpportunityLiveState,
 ) -> None:
-    cache = KalshiBookCache(market.ticker)
+    cache = KalshiBookCache(market.ticker, validate_sequence=True)
     ws_client = KalshiWebSocketClient(credentials=credentials, env=env)
     next_eval = 0.0
     async for message in ws_client.stream(market_tickers=[market.ticker], channels=["orderbook_delta"]):

@@ -40,9 +40,9 @@ Example structure (illustrative tickers only; not a live certificate):
   "description": "Exactly one reviewed range bucket settles YES",
   "outcomes": ["low", "middle", "high"],
   "legs": [
-    {"ticker": "REPLACE-LOW", "side": "yes", "payouts": [1, 0, 0]},
-    {"ticker": "REPLACE-MIDDLE", "side": "yes", "payouts": [0, 1, 0]},
-    {"ticker": "REPLACE-HIGH", "side": "yes", "payouts": [0, 0, 1]}
+    {"ticker": "REPLACE-LOW", "side": "yes", "payouts": [1, 0, 0], "minimum_ask_price": "0.01"},
+    {"ticker": "REPLACE-MIDDLE", "side": "yes", "payouts": [0, 1, 0], "minimum_ask_price": "0.01"},
+    {"ticker": "REPLACE-HIGH", "side": "yes", "payouts": [0, 0, 1], "minimum_ask_price": "0.01"}
   ]
 }
 ```
@@ -139,6 +139,7 @@ Illustrative schema (hashes and tickers are placeholders, not certification):
   "settlement_time_field": "expected_expiration_time",
   "settlement_time": "REPLACE-EXACT-API-VALUE",
   "reviewed_at": "REPLACE-REVIEW-TIME",
+  "minimum_ask_price": "0.01",
   "markets": [
     {"ticker": "REPLACE-LOW", "strike": "64000", "terms_sha256": "REPLACE-64-HEX"},
     {"ticker": "REPLACE-HIGH", "strike": "65000", "terms_sha256": "REPLACE-64-HEX"}
@@ -168,15 +169,18 @@ trade and not proof that two legs can fill atomically.
 ### Why the exhaustive 188-leg range partition is rejected
 
 An exhaustive KXBTC range event has a mathematically clean payoff—exactly one
-YES leg settles at $1—but it is not a viable bundle on Kalshi's linear-cent
-price grid. Every acquired leg has a minimum quotable ask of $0.01, so an
-`N`-leg structure can have positive gross edge only when its guaranteed payout
-is strictly greater than `N × $0.01`.
+YES leg settles at $1—but it is not a viable bundle on the reviewed event's
+linear-cent price grid. Every acquired leg has a minimum quotable ask of
+$0.01, so an `N`-leg structure can have positive gross edge only when its
+guaranteed payout is strictly greater than `N × $0.01`.
 
 For 188 range legs the cost floor is $1.88 for a maximum guaranteed payout of
 $1.00. Liquidity, faster WebSockets, order size, and lower fees cannot change
 that inequality. `PayoffCertificate` therefore rejects this structure before
-collecting quotes. The two-leg threshold corridor has a $0.02 grid floor
+collecting quotes. The grid value is explicit certificate data and is checked
+against every live market's `price_ranges[].step`; it is not an exchange-wide
+constant. Kalshi also has deci-cent and tapered grids. The two-leg threshold
+corridor has a $0.02 grid floor
 against a $1.00 guarantee and survives this preliminary test; it must still
 pass depth, fees, execution-buffer, and certification checks.
 
@@ -197,7 +201,12 @@ shared event ticker.
   refuses unknown or flat schedules rather than guessing.
 - Fee rounding is applied conservatively at every swept price level.
 - A positive snapshot is a research observation, not permission to trade.
-- A WebSocket sequence gap invalidates and clears the cached book. Later
-  deltas cannot silently heal it; a fresh snapshot is required.
+- WebSocket sequence numbers are tracked once per subscription id, not once
+  per market, and sid-tagged control frames advance the same counter. A gap
+  invalidates and clears every book under that subscription and raises a
+  reconnect-required signal. Re-subscribing on the same socket does not replay
+  snapshots, so recovery means closing the connection, opening a new one, and
+  waiting for fresh snapshots for every member. Multi-market coherence uses
+  each delta's exchange `ts_ms`, not local arrival order.
 - No live path should be designed until recorded opportunities survive
   duration, latency, partial-fill, and sequence-integrity analysis.
