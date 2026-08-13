@@ -12,6 +12,8 @@ class KalshiBookCache:
     yes: dict[float, float] = field(default_factory=dict)
     no: dict[float, float] = field(default_factory=dict)
     seq: int | None = None
+    valid: bool = False
+    gap_reason: str = "waiting for orderbook snapshot"
 
     def apply(self, message: dict[str, Any]) -> None:
         msg_type = message.get("type")
@@ -22,12 +24,32 @@ class KalshiBookCache:
             return
 
         if msg_type == "orderbook_snapshot":
-            self.yes = _levels_to_dict(msg.get("yes_dollars_fp") or msg.get("yes") or [])
-            self.no = _levels_to_dict(msg.get("no_dollars_fp") or msg.get("no") or [])
-            self.seq = _message_seq(message)
+            seq = _message_seq(message)
+            if seq is None:
+                self._invalidate("orderbook snapshot missing sequence")
+                return
+            self.yes = _levels_to_dict(
+                msg.get("yes_dollars_fp") or msg.get("yes_dollars") or msg.get("yes") or []
+            )
+            self.no = _levels_to_dict(
+                msg.get("no_dollars_fp") or msg.get("no_dollars") or msg.get("no") or []
+            )
+            self.seq = seq
+            self.valid = True
+            self.gap_reason = ""
             return
 
         if msg_type == "orderbook_delta":
+            if not self.valid or self.seq is None:
+                return
+            seq = _message_seq(message)
+            if seq is None:
+                self._invalidate("orderbook delta missing sequence")
+                return
+            expected = self.seq + 1
+            if seq != expected:
+                self._invalidate(f"orderbook sequence gap: expected {expected}, got {seq}")
+                return
             side = str(msg.get("side", "")).lower()
             if side not in {"yes", "no"}:
                 return
@@ -39,7 +61,16 @@ class KalshiBookCache:
                 ladder.pop(price, None)
             else:
                 ladder[price] = new_size
-            self.seq = _message_seq(message)
+            self.seq = seq
+
+    def _invalidate(self, reason: str) -> None:
+        # A dropped delta makes every later level suspect.  Empty the ladders
+        # and wait for a fresh snapshot rather than silently trading stale data.
+        self.yes.clear()
+        self.no.clear()
+        self.seq = None
+        self.valid = False
+        self.gap_reason = reason
 
     def to_book(self) -> BinaryBook:
         return BinaryBook(

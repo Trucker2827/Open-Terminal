@@ -91,6 +91,38 @@ def corridor_certificate(
 
 
 class StructuralArbitrageTest(unittest.TestCase):
+    def test_price_grid_rejects_188_leg_partition_before_quote_collection(self) -> None:
+        leg_count = 188
+        with self.assertRaisesRegex(
+            ValueError,
+            r"188 legs cost at least 1\.88 for guaranteed payout 1",
+        ):
+            certificate({
+                "bundle_id": "btc_range_partition:arithmetically-dead",
+                "description": "Each YES leg wins in exactly one partition bucket",
+                "outcomes": [f"bucket-{index}" for index in range(leg_count)],
+                "legs": [
+                    {
+                        "ticker": f"RANGE-{index}",
+                        "side": "yes",
+                        "payouts": [int(index == outcome) for outcome in range(leg_count)],
+                    }
+                    for index in range(leg_count)
+                ],
+            })
+
+    def test_price_grid_allows_two_leg_one_dollar_corridor(self) -> None:
+        cert = certificate({
+            "bundle_id": "btc_threshold_corridor:grid-feasible",
+            "description": "Two legs guarantee one dollar",
+            "outcomes": ["below", "middle", "above"],
+            "legs": [
+                {"ticker": "LOW", "side": "yes", "payouts": [0, 1, 1]},
+                {"ticker": "HIGH", "side": "no", "payouts": [1, 1, 0]},
+            ],
+        })
+        self.assertEqual(cert.guaranteed_payout, Decimal("1"))
+
     def test_btc_threshold_corridor_has_three_exhaustive_payout_regions(self) -> None:
         markets = [threshold_market("BTC-64000", 64000), threshold_market("BTC-65000", 65000)]
         cert = corridor_certificate(markets)

@@ -25,6 +25,9 @@ from .models import BinaryBook, Level, Market
 
 SCHEMA_VERSION = 1
 CENT = Decimal("0.01")
+# Kalshi's linear-cent grid has no zero-cent ask.  Every acquired leg costs at
+# least one cent, independent of liquidity, timing, order size, or fees.
+MIN_QUOTABLE_ASK = CENT
 ONE = Decimal("1")
 ZERO = Decimal("0")
 GENERAL_TAKER_RATE = Decimal("0.07")
@@ -186,6 +189,13 @@ class PayoffCertificate:
                 raise ValueError(f"same-market YES/NO payouts must be complementary: {ticker}")
         if certificate.guaranteed_payout <= ZERO:
             raise ValueError("payoff matrix does not prove a positive payout in every outcome")
+        price_grid_floor = MIN_QUOTABLE_ASK * len(certificate.legs)
+        if certificate.guaranteed_payout <= price_grid_floor:
+            raise ValueError(
+                "price-grid floor precludes positive gross edge: "
+                f"{len(certificate.legs)} legs cost at least {price_grid_floor} "
+                f"for guaranteed payout {certificate.guaranteed_payout}"
+            )
         return certificate
 
     @property

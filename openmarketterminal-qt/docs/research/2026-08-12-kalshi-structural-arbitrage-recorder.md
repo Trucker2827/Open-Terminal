@@ -165,6 +165,27 @@ The commands remain read-only. No order operation is exposed. A positive row
 is evidence for latency, duration and partial-fill research—not permission to
 trade and not proof that two legs can fill atomically.
 
+### Why the exhaustive 188-leg range partition is rejected
+
+An exhaustive KXBTC range event has a mathematically clean payoff—exactly one
+YES leg settles at $1—but it is not a viable bundle on Kalshi's linear-cent
+price grid. Every acquired leg has a minimum quotable ask of $0.01, so an
+`N`-leg structure can have positive gross edge only when its guaranteed payout
+is strictly greater than `N × $0.01`.
+
+For 188 range legs the cost floor is $1.88 for a maximum guaranteed payout of
+$1.00. Liquidity, faster WebSockets, order size, and lower fees cannot change
+that inequality. `PayoffCertificate` therefore rejects this structure before
+collecting quotes. The two-leg threshold corridor has a $0.02 grid floor
+against a $1.00 guarantee and survives this preliminary test; it must still
+pass depth, fees, execution-buffer, and certification checks.
+
+The range/threshold boundary rules also differ by `strike_type`; field names
+alone do not establish inclusion or exclusion. Cross-series KXBTC/KXBTCD
+bundles remain unsupported until a reviewed settlement-identity certificate
+can bind source, time, rule text, and strike operators without relying on a
+shared event ticker.
+
 ## Evidence and limitations
 
 - Books are fetched from Kalshi's multi-market batch endpoint, avoiding one
@@ -176,5 +197,7 @@ trade and not proof that two legs can fill atomically.
   refuses unknown or flat schedules rather than guessing.
 - Fee rounding is applied conservatively at every swept price level.
 - A positive snapshot is a research observation, not permission to trade.
+- A WebSocket sequence gap invalidates and clears the cached book. Later
+  deltas cannot silently heal it; a fresh snapshot is required.
 - No live path should be designed until recorded opportunities survive
   duration, latency, partial-fill, and sequence-integrity analysis.
