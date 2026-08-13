@@ -165,8 +165,9 @@ struct CategoryFilter {
 QStringList crypto_asset_keywords(const QString& asset) {
     const QString a = asset.trimmed().toUpper();
     if (a == QLatin1String("BTC"))
-        return {QStringLiteral("btc"), QStringLiteral("xbt"), QStringLiteral("bitcoin"),
-                QStringLiteral("kxbtc"), QStringLiteral("kxbtcd")};
+        // KXBTC15M, KXBTC and KXBTCD. Broad "btc"/"bitcoin" matching also
+        // admits KXBCH15M (Bitcoin Cash), wasting a bounded series probe.
+        return kalshi_btc_live_series_keywords();
     if (a == QLatin1String("ETH"))
         return {QStringLiteral("eth"), QStringLiteral("ethereum"), QStringLiteral("kxeth")};
     if (a == QLatin1String("SOL"))

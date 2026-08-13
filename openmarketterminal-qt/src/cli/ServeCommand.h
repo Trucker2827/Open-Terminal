@@ -7,6 +7,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVector>
+#include "services/prediction/PredictionTypes.h"
 namespace openmarketterminal::cli {
 // Run the daemon for `profile`. Blocks in the event loop until SIGTERM/SIGINT
 // or a fatal init error. Returns a process exit code (0 clean, 3 already-owned,
@@ -29,6 +30,13 @@ bool kalshi_account_reconciliation_due(bool live_session_active, bool pending,
                                        qint64 interval_ms);
 bool kalshi_universe_request_timed_out(bool pending, qint64 request_age_ms,
                                       qint64 timeout_ms);
+// Select the bounded WebSocket trigger surface without allowing an active
+// KXBTC range ladder to erase the KXBTCD threshold ladder at the same close.
+QVector<openmarketterminal::services::prediction::PredictionMarket>
+kalshi_select_live_event_markets(
+    const QVector<openmarketterminal::services::prediction::PredictionMarket>& markets,
+    qint64 now_ms, qint64 horizon_ms = 90 * 60 * 1000LL,
+    int max_cohorts = 4, int max_per_cohort = 16);
 bool kalshi_planner_process_timed_out(bool active, qint64 process_age_ms,
                                       qint64 timeout_ms);
 bool kalshi_non_execution_process_timed_out(bool active, qint64 process_age_ms,
