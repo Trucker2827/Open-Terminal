@@ -130,12 +130,13 @@ Illustrative schema (hashes and tickers are placeholders, not certification):
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "family": "btc_threshold_corridor",
   "underlier": "BTC",
   "rules_reviewed": true,
   "ordinary_binary_payouts_only": true,
   "event_ticker": "REPLACE-EVENT",
+  "series_ticker": "KXBTCD",
   "comparison": "greater_than_or_equal",
   "api_strike_type": "greater_equal",
   "settlement_time_field": "expected_expiration_time",
@@ -167,6 +168,10 @@ python3 scripts/kalshi_structural_arb.py corridor-record reviewed-btc-ladder.jso
 The commands remain read-only. No order operation is exposed. A positive row
 is evidence for latency, duration and partial-fill research—not permission to
 trade and not proof that two legs can fill atomically.
+
+The corridor commands use Kalshi's public market, event, series and batch-book
+endpoints and do not require account credentials. Other certificate commands
+retain their existing authentication behavior.
 
 ### Why the exhaustive 188-leg range partition is rejected
 
