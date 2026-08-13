@@ -514,6 +514,78 @@ class StructuralArbitrageTest(unittest.TestCase):
             path.write_text(json.dumps(row) + "\n", encoding="utf-8")
             self.assertFalse(replay_evidence(path)["valid"])
 
+    def test_corridor_collection_failure_replays_without_event_metadata(self) -> None:
+        market_list = [
+            threshold_market("BTC-64000", 64000),
+            threshold_market("BTC-65000", 65000),
+        ]
+        cert = corridor_certificate(market_list)
+
+        class Probe:
+            def get_event(self, ticker, *, with_nested_markets=False):
+                raise TimeoutError("event feed timed out")
+
+        row = collect_corridor_snapshot(Probe(), cert)
+        self.assertEqual(row["evaluation"]["state"], "unavailable")
+        self.assertIn("collection failed: TimeoutError", row["collection_error"])
+        self.assertEqual(row["event_metadata"], {"event_ticker": "", "series_ticker": ""})
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "corridor.jsonl"
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            report = replay_evidence(path)
+        self.assertTrue(report["valid"])
+        self.assertEqual(report["matches"], 1)
+        self.assertEqual(report["malformed"], 0)
+
+    def test_corridor_replay_accepts_version_one_evidence(self) -> None:
+        market_list = [
+            threshold_market("BTC-64000", 64000),
+            threshold_market("BTC-65000", 65000),
+        ]
+        payload = corridor_certificate(market_list).payload()
+        payload["schema_version"] = 1
+        payload.pop("series_ticker")
+        legacy = BtcThresholdCorridorCertificate.from_payload(payload, allow_legacy=True)
+        fees = {market.ticker: FeeSchedule("none", Decimal("1")) for market in market_list}
+        books = {
+            "BTC-64000": book("BTC-64000", no_bids=((0.70, 5),)),
+            "BTC-65000": book("BTC-65000", yes_bids=((0.60, 5),)),
+        }
+        evaluation = evaluate_corridor_family(
+            legacy,
+            {market.ticker: market for market in market_list},
+            books,
+            fees,
+        )
+        row = {
+            "schema_version": 1,
+            "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+            "certificate": legacy.payload(),
+            "certificate_sha256": legacy.digest,
+            "quantity": "1",
+            "execution_buffer_per_contract": "0",
+            "min_net_edge_per_bundle": "0",
+            "collection_error": None,
+            "markets": {market.ticker: market.raw for market in market_list},
+            "fees": {ticker: schedule.payload() for ticker, schedule in fees.items()},
+            "books": {
+                ticker: {
+                    "ticker": ticker,
+                    "yes_bids": [[str(level.price), str(level.size)] for level in value.yes_bids],
+                    "no_bids": [[str(level.price), str(level.size)] for level in value.no_bids],
+                }
+                for ticker, value in books.items()
+            },
+            "evaluation": evaluation,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "legacy-corridor.jsonl"
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            report = replay_evidence(path)
+        self.assertTrue(report["valid"])
+        self.assertEqual(report["matches"], 1)
+        self.assertEqual(report["malformed"], 0)
+
     def test_mutually_exclusive_metadata_never_auto_certifies_an_event(self) -> None:
         row = discovery_row(
             {

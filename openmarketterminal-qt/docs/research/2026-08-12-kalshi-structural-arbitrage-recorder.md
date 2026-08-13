@@ -150,6 +150,11 @@ Illustrative schema (hashes and tickers are placeholders, not certification):
 }
 ```
 
+New live corridor certificates must use schema version 2, which binds both the
+reviewed event and its series.  Replay remains read-only compatible with
+previously recorded version 1 evidence so an upgrade does not erase historical
+measurements; version 1 certificates cannot authorize a new live scan.
+
 One scan fetches the ladder's books in a single batch, enumerates every
 lower-YES/higher-NO pair, sweeps equal displayed depth, and records every pair
 under the family name:

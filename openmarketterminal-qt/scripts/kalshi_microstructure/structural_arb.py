@@ -309,6 +309,7 @@ class CorridorMember:
 class BtcThresholdCorridorCertificate:
     """Reviewed BTC threshold ladder; never inferred from market titles."""
 
+    schema_version: int
     event_ticker: str
     series_ticker: str
     underlier: str
@@ -322,9 +323,15 @@ class BtcThresholdCorridorCertificate:
 
     @classmethod
     def from_payload(
-        cls, payload: Mapping[str, Any]
+        cls, payload: Mapping[str, Any], *, allow_legacy: bool = False
     ) -> "BtcThresholdCorridorCertificate":
-        if payload.get("schema_version") != CORRIDOR_SCHEMA_VERSION:
+        schema_version = payload.get("schema_version")
+        supported_versions = (
+            {SCHEMA_VERSION, CORRIDOR_SCHEMA_VERSION}
+            if allow_legacy
+            else {CORRIDOR_SCHEMA_VERSION}
+        )
+        if schema_version not in supported_versions:
             raise ValueError(f"schema_version must be {CORRIDOR_SCHEMA_VERSION}")
         if payload.get("family") != BTC_THRESHOLD_CORRIDOR_FAMILY:
             raise ValueError(f"family must be {BTC_THRESHOLD_CORRIDOR_FAMILY}")
@@ -346,7 +353,7 @@ class BtcThresholdCorridorCertificate:
             raise ValueError("underlier must be BTC")
         if (
             not event_ticker
-            or not series_ticker
+            or (schema_version == CORRIDOR_SCHEMA_VERSION and not series_ticker)
             or not settlement_time
             or not reviewed_at
             or not api_strike_type
@@ -387,6 +394,7 @@ class BtcThresholdCorridorCertificate:
             members.append(CorridorMember(ticker, strike, terms_sha256))
 
         return cls(
+            schema_version=int(schema_version),
             event_ticker=event_ticker,
             series_ticker=series_ticker,
             underlier=underlier,
@@ -450,13 +458,12 @@ class BtcThresholdCorridorCertificate:
         })
 
     def payload(self) -> dict[str, object]:
-        return {
-            "schema_version": CORRIDOR_SCHEMA_VERSION,
+        payload: dict[str, object] = {
+            "schema_version": self.schema_version,
             "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
             "rules_reviewed": True,
             "ordinary_binary_payouts_only": True,
             "event_ticker": self.event_ticker,
-            "series_ticker": self.series_ticker,
             "underlier": self.underlier,
             "comparison": self.comparison,
             "api_strike_type": self.api_strike_type,
@@ -466,6 +473,9 @@ class BtcThresholdCorridorCertificate:
             "minimum_ask_price": str(self.minimum_ask_price),
             "markets": [member.payload() for member in self.members],
         }
+        if self.schema_version >= CORRIDOR_SCHEMA_VERSION:
+            payload["series_ticker"] = self.series_ticker
+        return payload
 
     @property
     def digest(self) -> str:
@@ -1193,21 +1203,24 @@ def replay_evidence(path: Path) -> dict[str, object]:
         try:
             row = json.loads(line)
             if row.get("family") == BTC_THRESHOLD_CORRIDOR_FAMILY:
-                certificate = BtcThresholdCorridorCertificate.from_payload(row["certificate"])
+                certificate = BtcThresholdCorridorCertificate.from_payload(
+                    row["certificate"], allow_legacy=True
+                )
                 if certificate.digest != row["certificate_sha256"]:
                     raise ValueError("certificate digest mismatch")
-                event = row.get("event_metadata")
-                if not isinstance(event, Mapping):
-                    raise ValueError("event metadata missing")
-                if str(event.get("event_ticker") or "") != certificate.event_ticker:
-                    raise ValueError("event_ticker changed")
-                if str(event.get("series_ticker") or "") != certificate.series_ticker:
-                    raise ValueError("series_ticker changed")
                 expected = row["evaluation"]
                 collection_error = row.get("collection_error")
                 if collection_error:
                     actual = _unavailable_corridor_result(certificate, str(collection_error))
                 else:
+                    if certificate.schema_version >= CORRIDOR_SCHEMA_VERSION:
+                        event = row.get("event_metadata")
+                        if not isinstance(event, Mapping):
+                            raise ValueError("event metadata missing")
+                        if str(event.get("event_ticker") or "") != certificate.event_ticker:
+                            raise ValueError("event_ticker changed")
+                        if str(event.get("series_ticker") or "") != certificate.series_ticker:
+                            raise ValueError("series_ticker changed")
                     markets = {
                         ticker: Market.from_api(payload)
                         for ticker, payload in row["markets"].items()
