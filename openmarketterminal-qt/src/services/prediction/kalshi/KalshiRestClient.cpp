@@ -380,7 +380,7 @@ void KalshiRestClient::fetch_series(const QString& status) {
 
 // ── fetch_category (category browse) ────────────────────────────────────────
 
-static bool series_matches_keywords(const QJsonObject& obj, const QStringList& keywords) {
+bool kalshi_series_matches_keywords(const QJsonObject& obj, const QStringList& keywords) {
     if (keywords.isEmpty())
         return true;
 
@@ -398,12 +398,80 @@ static bool series_matches_keywords(const QJsonObject& obj, const QStringList& k
     return false;
 }
 
+QStringList kalshi_btc_live_series_keywords() { return {QStringLiteral("kxbtc")}; }
+
 bool kalshi_series_fetch_precedes(const QString& freq_a, const QString& ts_a,
                                   const QString& freq_b, const QString& ts_b) {
     const bool a15 = freq_a == QLatin1String("fifteen_min");
     const bool b15 = freq_b == QLatin1String("fifteen_min");
     if (a15 != b15) return a15;   // fetch fifteen_min series before all others
     return ts_a > ts_b;           // then most-recently-updated first
+}
+
+int kalshi_series_probe_limit(int series_count, int result_limit) {
+    if (series_count <= 0 || result_limit <= 0) return 0;
+    constexpr int kMaxSeriesProbes = 20;
+    constexpr int kCoverageFloor = 6;
+    return qMin(series_count, qMin(kMaxSeriesProbes, qMax(kCoverageFloor, result_limit)));
+}
+
+namespace {
+template <typename Row, typename SeriesOf>
+QVector<Row> fair_series_rows(const QVector<Row>& rows, const QStringList& series_order,
+                              int limit, SeriesOf series_of) {
+    QVector<Row> out;
+    if (limit <= 0 || rows.isEmpty()) return out;
+    QHash<QString, QVector<Row>> buckets;
+    QStringList order;
+    QSet<QString> seen;
+    for (const QString& series : series_order) {
+        if (!series.isEmpty() && !seen.contains(series)) {
+            seen.insert(series);
+            order.push_back(series);
+        }
+    }
+    for (const Row& row : rows) {
+        QString series = series_of(row);
+        if (series.isEmpty()) series = QStringLiteral("__unknown__");
+        buckets[series].push_back(row);
+        if (!seen.contains(series)) {
+            seen.insert(series);
+            order.push_back(series);
+        }
+    }
+    QHash<QString, int> offsets;
+    out.reserve(qMin(limit, rows.size()));
+    while (out.size() < limit) {
+        bool added = false;
+        for (const QString& series : order) {
+            const int offset = offsets.value(series);
+            const auto& bucket = buckets[series];
+            if (offset >= bucket.size()) continue;
+            out.push_back(bucket[offset]);
+            offsets[series] = offset + 1;
+            added = true;
+            if (out.size() >= limit) break;
+        }
+        if (!added) break;
+    }
+    return out;
+}
+}  // namespace
+
+QVector<pr::PredictionMarket> kalshi_fair_series_markets(
+    const QVector<pr::PredictionMarket>& markets, const QStringList& series_order,
+    int limit) {
+    return fair_series_rows(markets, series_order, limit, [](const auto& market) {
+        return market.extras.value(QStringLiteral("series_ticker")).toString();
+    });
+}
+
+QVector<pr::PredictionEvent> kalshi_fair_series_events(
+    const QVector<pr::PredictionEvent>& events, const QStringList& series_order,
+    int limit) {
+    return fair_series_rows(events, series_order, limit, [](const auto& event) {
+        return event.extras.value(QStringLiteral("series_ticker")).toString();
+    });
 }
 
 void KalshiRestClient::fetch_category(const QString& category, const QStringList& frequencies,
@@ -449,7 +517,7 @@ void KalshiRestClient::fetch_category(const QString& category, const QStringList
                      if (!frequencies.isEmpty() &&
                          !frequencies.contains(o.value("frequency").toString()))
                          continue;
-                     if (!series_matches_keywords(o, series_keywords))
+                     if (!kalshi_series_matches_keywords(o, series_keywords))
                          continue;
                      ranked.push_back({o.value("frequency").toString(),
                                        o.value("last_updated_ts").toString(), t});
@@ -481,6 +549,7 @@ void KalshiRestClient::fan_out_series_markets(const QStringList& series,
     constexpr int kConcurrency = 5;
     struct State {
         QStringList series;
+        int probe_limit = 0;
         int next = 0;
         int in_flight = 0;
         bool emitted = false;
@@ -492,6 +561,7 @@ void KalshiRestClient::fan_out_series_markets(const QStringList& series,
     };
     auto st = std::make_shared<State>();
     st->series = series;
+    st->probe_limit = kalshi_series_probe_limit(series.size(), limit);
     st->limit = limit;
     st->per_series_cap = qBound(10, (limit + qMin(series.size(), kConcurrency) - 1) /
                                          qMax(1, qMin(series.size(), kConcurrency)), 100);
@@ -501,12 +571,8 @@ void KalshiRestClient::fan_out_series_markets(const QStringList& series,
     *pump = [self, st, pump, category]() {
         if (!self || st->emitted) return;
 
-        // Wait for the current fan-out batch before declaring the cap met.
-        // Otherwise one large series can fill the entire result before sibling
-        // series (for example BTC ranges vs BTC thresholds) are merged.
-        const bool enough = st->markets.size() >= st->limit && st->in_flight == 0;
-        const bool exhausted = st->next >= st->series.size() && st->in_flight == 0;
-        if (enough || exhausted) {
+        const bool coverage_complete = st->next >= st->probe_limit && st->in_flight == 0;
+        if (coverage_complete) {
             st->emitted = true;
             LOG_INFO(QStringLiteral("Kalshi.fetch_category.markets"),
                      QStringLiteral("fan-out done: %1 markets from %2 series probed "
@@ -515,8 +581,8 @@ void KalshiRestClient::fan_out_series_markets(const QStringList& series,
                          .arg(st->next)
                          .arg(st->limit)
                          .arg(st->error_count));
-            QVector<pr::PredictionMarket> out = st->markets;
-            if (out.size() > st->limit) out.resize(st->limit);
+            QVector<pr::PredictionMarket> out = kalshi_fair_series_markets(
+                st->markets, st->series.mid(0, st->probe_limit), st->limit);
             emit self->markets_ready(out, QString());
             if (out.isEmpty() && st->error_count > 0) {
                 emit self->request_error(QStringLiteral("Kalshi.fetch_category.markets"),
@@ -525,8 +591,7 @@ void KalshiRestClient::fan_out_series_markets(const QStringList& series,
             return;
         }
 
-        while (st->in_flight < kConcurrency && st->next < st->series.size() &&
-               st->markets.size() < st->limit) {
+        while (st->in_flight < kConcurrency && st->next < st->probe_limit) {
             const QString s = st->series[st->next++];
             ++st->in_flight;
 
@@ -588,15 +653,14 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
         return;
     }
 
-    // Throttled, early-stopping fan-out. `series` is recency-sorted (most-active
-    // first), so we fire only a few concurrent /events requests at a time and
-    // stop as soon as we've collected `limit` markets/events. This keeps us well
-    // under Kalshi's read rate limit (a 250-request burst returns HTTP 429), and
-    // typically completes in a handful of requests because active crypto series
-    // carry hundreds of markets each.
+    // Throttled, bounded fan-out. `series` is priority-sorted, but every series
+    // inside the probe budget gets one request before the global result cap is
+    // applied fairly. A 250-request burst returns HTTP 429; the bounded probe
+    // count avoids that without allowing one large series to erase its siblings.
     constexpr int kConcurrency = 5;
     struct State {
         QStringList series;
+        int probe_limit = 0;
         int next = 0;
         int in_flight = 0;
         bool emitted = false;
@@ -609,23 +673,18 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
     };
     auto st = std::make_shared<State>();
     st->series = series;
+    st->probe_limit = kalshi_series_probe_limit(series.size(), limit);
     st->as_events = as_events;
     st->limit = limit;
     QPointer<KalshiRestClient> self = this;
 
-    auto collected = [](const std::shared_ptr<State>& s) {
-        return s->as_events ? s->events.size() : s->market_count;
-    };
-
     auto pump = std::make_shared<std::function<void()>>();
-    *pump = [self, st, pump, collected]() {
+    *pump = [self, st, pump]() {
         if (!self || st->emitted) return;
 
-        const bool enough = collected(st) >= st->limit && st->in_flight == 0;
-        const bool exhausted = st->next >= st->series.size() && st->in_flight == 0;
-        if (enough || exhausted) {
-            // Emit once. If we hit `limit` with requests still in flight, emit
-            // immediately — the stragglers' replies are ignored (emitted flag).
+        const bool coverage_complete = st->next >= st->probe_limit && st->in_flight == 0;
+        if (coverage_complete) {
+            // Emit only after every series in the bounded probe set has replied.
             st->emitted = true;
             LOG_INFO(QStringLiteral("Kalshi.fetch_category"),
                      QStringLiteral("fan-out done: %1 events / %2 markets from %3 "
@@ -650,8 +709,8 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
                 return nearest_close(left) < nearest_close(right);
             });
             if (st->as_events) {
-                QVector<pr::PredictionEvent> out = ordered_events;
-                if (out.size() > st->limit) out.resize(st->limit);
+                QVector<pr::PredictionEvent> out = kalshi_fair_series_events(
+                    ordered_events, st->series.mid(0, st->probe_limit), st->limit);
                 emit self->events_ready(out, QString());
                 if (out.isEmpty() && st->error_count > 0) {
                     emit self->request_error(QStringLiteral("Kalshi.fetch_category.events"),
@@ -661,7 +720,8 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
                 QVector<pr::PredictionMarket> mkts;
                 for (const auto& e : ordered_events)
                     for (const auto& m : e.markets) mkts.push_back(m);
-                if (mkts.size() > st->limit) mkts.resize(st->limit);
+                mkts = kalshi_fair_series_markets(
+                    mkts, st->series.mid(0, st->probe_limit), st->limit);
                 emit self->markets_ready(mkts, QString());
                 if (mkts.isEmpty() && st->error_count > 0) {
                     emit self->request_error(QStringLiteral("Kalshi.fetch_category.events"),
@@ -672,8 +732,7 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
         }
 
         // Top up to the concurrency cap.
-        while (st->in_flight < kConcurrency && st->next < st->series.size() &&
-               collected(st) < st->limit) {
+        while (st->in_flight < kConcurrency && st->next < st->probe_limit) {
             const QString s = st->series[st->next++];
             ++st->in_flight;
 

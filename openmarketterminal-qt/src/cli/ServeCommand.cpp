@@ -19,6 +19,7 @@
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
+#include "services/prediction/kalshi/KalshiRestClient.h"
 #include "services/sandbox/MakerQuotes.h"
 #include "storage/repositories/EdgePredictionModelRepository.h"
 #include "storage/repositories/SettingsRepository.h"
@@ -91,6 +92,56 @@ bool kalshi_account_reconciliation_due(bool live_session_active, bool pending,
 bool kalshi_universe_request_timed_out(bool pending, qint64 request_age_ms,
                                       qint64 timeout_ms) {
     return pending && request_age_ms >= 0 && request_age_ms > timeout_ms;
+}
+
+QVector<services::prediction::PredictionMarket> kalshi_select_live_event_markets(
+    const QVector<services::prediction::PredictionMarket>& markets,
+    qint64 now_ms, qint64 horizon_ms, int max_cohorts, int max_per_cohort) {
+    struct Candidate {
+        services::prediction::PredictionMarket market;
+        qint64 close_ms = 0;
+        double activity = 0.0;
+    };
+    QVector<Candidate> candidates;
+    for (const auto& market : markets) {
+        const QString ticker = market.key.market_id.trimmed().toUpper();
+        if (!ticker.startsWith(QStringLiteral("KXBTC")) || market.closed || !market.active)
+            continue;
+        const QDateTime close = QDateTime::fromString(market.end_date_iso, Qt::ISODate);
+        if (!close.isValid()) continue;
+        const qint64 close_ms = close.toMSecsSinceEpoch();
+        if (close_ms <= now_ms || close_ms > now_ms + horizon_ms) continue;
+        candidates.append(Candidate{market, close_ms,
+                                    market.volume + 2.0 * market.liquidity +
+                                        0.25 * market.open_interest});
+    }
+    std::stable_sort(candidates.begin(), candidates.end(), [](const Candidate& a,
+                                                               const Candidate& b) {
+        if (a.close_ms != b.close_ms) return a.close_ms < b.close_ms;
+        return a.activity > b.activity;
+    });
+
+    QVector<qint64> cohorts;
+    QHash<qint64, QVector<services::prediction::PredictionMarket>> by_cohort;
+    for (const auto& candidate : candidates) {
+        if (!by_cohort.contains(candidate.close_ms)) {
+            if (cohorts.size() >= max_cohorts) continue;
+            cohorts.append(candidate.close_ms);
+        }
+        if (cohorts.contains(candidate.close_ms))
+            by_cohort[candidate.close_ms].append(candidate.market);
+    }
+
+    const QStringList preferred_series{QStringLiteral("KXBTC15M"),
+                                       QStringLiteral("KXBTCD"),
+                                       QStringLiteral("KXBTC")};
+    QVector<services::prediction::PredictionMarket> selected;
+    for (qint64 cohort : cohorts) {
+        const auto fair = services::prediction::kalshi_ns::kalshi_fair_series_markets(
+            by_cohort.value(cohort), preferred_series, max_per_cohort);
+        selected += fair;
+    }
+    return selected;
 }
 
 QString scalp_style_normalize(const QString& raw) {
@@ -1038,55 +1089,18 @@ class KalshiLiveEventEngine final : public QObject {
         if (!universe_request_pending_) return;
         universe_request_pending_ = false;
         universe_request_started_ms_ = 0;
-        struct Candidate {
-            const services::prediction::PredictionMarket* market = nullptr;
-            qint64 close_ms = 0;
-            double activity = 0.0;
-        };
-        QVector<Candidate> candidates;
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
         QSet<QString> next;
         QHash<QString, services::prediction::PredictionMarket> next_markets;
-        for (const auto& market : markets) {
-            const QString ticker = market.key.market_id.trimmed().toUpper();
-            if (!ticker.startsWith(QStringLiteral("KXBTC")) || market.closed || !market.active)
-                continue;
-            const QDateTime close = QDateTime::fromString(market.end_date_iso, Qt::ISODate);
-            if (!close.isValid()) continue;
-            const qint64 close_ms = close.toMSecsSinceEpoch();
-            // The event engine is for the presently tradable 15m/hourly race,
-            // not every future BTC ladder returned by the category endpoint.
-            // Still-open only: a just-closed cohort used to consume one of two
-            // slots for ~60s and left FLOW empty at the :00/:15/:30/:45 rollover
-            // whenever the next window was late to subscribe.
-            if (close_ms <= now_ms || close_ms > now_ms + 90 * 60 * 1000LL)
-                continue;
-            candidates.append(Candidate{&market, close_ms,
-                                        market.volume + 2.0 * market.liquidity +
-                                            0.25 * market.open_interest});
-        }
-        std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
-            if (a.close_ms != b.close_ms) return a.close_ms < b.close_ms;
-            return a.activity > b.activity;
-        });
         // Keep the nearest four still-open settlement cohorts (covers the next
-        // hour of 15m races) and at most 32 liquid contracts. The planner still
-        // obtains the complete ladder over REST; this bounded set is only the
-        // low-latency event trigger surface.
-        QVector<qint64> cohorts;
-        QHash<qint64, int> cohort_counts;
-        for (const Candidate& candidate : candidates) {
-            if (!cohorts.contains(candidate.close_ms)) {
-                if (cohorts.size() >= 4) continue;
-                cohorts.append(candidate.close_ms);
-            }
-            if (!cohorts.contains(candidate.close_ms) ||
-                cohort_counts.value(candidate.close_ms) >= 16)
-                continue;
-            for (const QString& asset_id : candidate.market->key.asset_ids)
+        // hour of 15m races) and at most 16 contracts per cohort. Selection is
+        // fair by series: an active KXBTC range ladder cannot erase every
+        // KXBTCD threshold contract before ladder diagnostics see it.
+        const auto selected = kalshi_select_live_event_markets(markets, now_ms);
+        for (const auto& market : selected) {
+            for (const QString& asset_id : market.key.asset_ids)
                 if (!asset_id.trimmed().isEmpty()) next.insert(asset_id);
-            next_markets.insert(candidate.market->key.market_id.trimmed().toUpper(), *candidate.market);
-            cohort_counts[candidate.close_ms] += 1;
+            next_markets.insert(market.key.market_id.trimmed().toUpper(), market);
         }
         QSet<QString> added = next;
         added.subtract(subscribed_asset_ids_);

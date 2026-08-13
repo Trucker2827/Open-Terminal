@@ -123,6 +123,117 @@ private slots:
                                               "fifteen_min", "2026-08-01T12:00:00Z"));
     }
 
+    void kalshi_btc_series_filter_excludes_bitcoin_cash() {
+        namespace ks = openmarketterminal::services::prediction::kalshi_ns;
+        const QStringList keywords = ks::kalshi_btc_live_series_keywords();
+        QVERIFY(ks::kalshi_series_matches_keywords(
+            QJsonObject{{QStringLiteral("ticker"), QStringLiteral("KXBTC15M")}}, keywords));
+        QVERIFY(ks::kalshi_series_matches_keywords(
+            QJsonObject{{QStringLiteral("ticker"), QStringLiteral("KXBTCD")}}, keywords));
+        QVERIFY(!ks::kalshi_series_matches_keywords(
+            QJsonObject{{QStringLiteral("ticker"), QStringLiteral("KXBCH15M")},
+                        {QStringLiteral("title"), QStringLiteral("Bitcoin Cash 15 Minute")}},
+            keywords));
+    }
+
+    void kalshi_series_cap_cannot_erase_btc_15m_or_hourly_thresholds() {
+        namespace ks = openmarketterminal::services::prediction::kalshi_ns;
+        namespace pr = openmarketterminal::services::prediction;
+        const QStringList order{QStringLiteral("KXBTC15M"), QStringLiteral("KXBTC"),
+                                QStringLiteral("KXBTCD")};
+        QVector<pr::PredictionMarket> rows;
+        const auto add = [&rows](const QString& series, int count) {
+            for (int i = 0; i < count; ++i) {
+                pr::PredictionMarket market;
+                market.key.market_id = series + QLatin1Char('-') + QString::number(i);
+                market.extras.insert(QStringLiteral("series_ticker"), series);
+                rows.push_back(market);
+            }
+        };
+        add(QStringLiteral("KXBTC"), 36'568);
+        add(QStringLiteral("KXBTC15M"), 200);
+        add(QStringLiteral("KXBTCD"), 188);
+        const auto selected = ks::kalshi_fair_series_markets(rows, order, 500);
+        QCOMPARE(selected.size(), 500);
+        QHash<QString, int> counts;
+        for (const auto& market : selected)
+            ++counts[market.extras.value(QStringLiteral("series_ticker")).toString()];
+        QVERIFY(counts.value(QStringLiteral("KXBTC15M")) > 0);
+        QVERIFY(counts.value(QStringLiteral("KXBTC")) > 0);
+        QVERIFY(counts.value(QStringLiteral("KXBTCD")) > 0);
+    }
+
+    void kalshi_gui_event_cap_uses_the_same_series_fairness() {
+        namespace ks = openmarketterminal::services::prediction::kalshi_ns;
+        namespace pr = openmarketterminal::services::prediction;
+        const QStringList order{QStringLiteral("KXBTC15M"), QStringLiteral("KXBTC"),
+                                QStringLiteral("KXBTCD")};
+        QVector<pr::PredictionEvent> rows;
+        const auto add = [&rows](const QString& series, int count) {
+            for (int i = 0; i < count; ++i) {
+                pr::PredictionEvent event;
+                event.key.event_id = series + QLatin1Char('-') + QString::number(i);
+                event.extras.insert(QStringLiteral("series_ticker"), series);
+                rows.push_back(event);
+            }
+        };
+        add(QStringLiteral("KXBTC"), 100);
+        add(QStringLiteral("KXBTC15M"), 4);
+        add(QStringLiteral("KXBTCD"), 4);
+        const auto selected = ks::kalshi_fair_series_events(rows, order, 3);
+        QCOMPARE(selected.size(), 3);
+        QCOMPARE(selected[0].extras.value(QStringLiteral("series_ticker")).toString(),
+                 QStringLiteral("KXBTC15M"));
+        QCOMPARE(selected[1].extras.value(QStringLiteral("series_ticker")).toString(),
+                 QStringLiteral("KXBTC"));
+        QCOMPARE(selected[2].extras.value(QStringLiteral("series_ticker")).toString(),
+                 QStringLiteral("KXBTCD"));
+    }
+
+    void kalshi_series_probe_budget_covers_weather_without_unbounded_fanout() {
+        using openmarketterminal::services::prediction::kalshi_ns::kalshi_series_probe_limit;
+        QCOMPARE(kalshi_series_probe_limit(3, 500), 3);
+        QCOMPARE(kalshi_series_probe_limit(6, 200), 6);
+        QCOMPARE(kalshi_series_probe_limit(272, 200), 20);
+        QCOMPARE(kalshi_series_probe_limit(10, 2), 6);
+    }
+
+    void kalshi_daemon_cohort_cap_preserves_hourly_ranges_and_thresholds() {
+        namespace pr = openmarketterminal::services::prediction;
+        const qint64 now_ms = QDateTime::fromString(
+            QStringLiteral("2026-08-13T12:00:00Z"), Qt::ISODate).toMSecsSinceEpoch();
+        const QString close = QStringLiteral("2026-08-13T13:00:00Z");
+        QVector<pr::PredictionMarket> rows;
+        const auto add = [&rows, &close](const QString& series, int count, double activity) {
+            for (int i = 0; i < count; ++i) {
+                pr::PredictionMarket market;
+                market.key.market_id = series + QLatin1Char('-') + QString::number(i);
+                market.key.asset_ids = {market.key.market_id + QStringLiteral(":yes"),
+                                        market.key.market_id + QStringLiteral(":no")};
+                market.end_date_iso = close;
+                market.active = true;
+                market.volume = activity - i;
+                market.extras.insert(QStringLiteral("series_ticker"), series);
+                rows.push_back(market);
+            }
+        };
+        // Range markets are deliberately much more active: the old activity-
+        // only cap selected sixteen KXBTC rows and zero KXBTCD thresholds.
+        add(QStringLiteral("KXBTC"), 188, 100000.0);
+        add(QStringLiteral("KXBTCD"), 188, 100.0);
+        const auto selected = kalshi_select_live_event_markets(rows, now_ms);
+        QCOMPARE(selected.size(), 16);
+        int ranges = 0;
+        int thresholds = 0;
+        for (const auto& market : selected) {
+            const QString series = market.extras.value(QStringLiteral("series_ticker")).toString();
+            ranges += series == QStringLiteral("KXBTC");
+            thresholds += series == QStringLiteral("KXBTCD");
+        }
+        QCOMPARE(ranges, 8);
+        QCOMPARE(thresholds, 8);
+    }
+
     void kalshi_watchdog_bounds_non_execution_processes() {
         QVERIFY(!kalshi_non_execution_process_timed_out(false, 60000, 25000));
         QVERIFY(!kalshi_non_execution_process_timed_out(true, -1, 25000));

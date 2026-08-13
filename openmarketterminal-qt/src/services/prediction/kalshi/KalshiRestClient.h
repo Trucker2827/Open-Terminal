@@ -18,14 +18,37 @@ class QNetworkAccessManager;
 namespace openmarketterminal::services::prediction::kalshi_ns {
 
 /// Fan-out order for a category's series: `fifteen_min` series come first, then
-/// most-recent-updated first. The per-series market fan-out early-stops once it
-/// has enough markets to dodge Kalshi's rate limiter; an hourly BTC series
-/// exposes ~185 strikes and fills that budget before the fan-out ever reaches
-/// the 15-minute series, silently starving KXBTC15M out of the tradable surface.
-/// Fetching fifteen_min first guarantees the fast race is never the one dropped.
-/// Pure + unit-tested so the ordering is verified without any network I/O.
+/// most-recent-updated first. Fair selection below now prevents a large hourly
+/// ladder from consuming the output cap; this order still determines which
+/// bounded set of broad-category series is probed first.
 bool kalshi_series_fetch_precedes(const QString& freq_a, const QString& ts_a,
                                   const QString& freq_b, const QString& ts_b);
+
+/// Match a catalog series against the adapter's asset keywords. Exposed so
+/// mistaken underliers (BTC vs Bitcoin Cash) are regression-tested directly.
+bool kalshi_series_matches_keywords(const QJsonObject& series,
+                                    const QStringList& keywords);
+
+/// Exact prefix for BTC's short-horizon KXBTC* families. Broad "bitcoin"
+/// matching also admits KXBCH15M (Bitcoin Cash), which is a different asset.
+QStringList kalshi_btc_live_series_keywords();
+
+/// Apply a global market cap without letting one large series consume it all.
+/// Selection is round-robin by series and stable within each series.
+QVector<openmarketterminal::services::prediction::PredictionMarket>
+kalshi_fair_series_markets(
+    const QVector<openmarketterminal::services::prediction::PredictionMarket>& markets,
+    const QStringList& series_order, int limit);
+
+/// Event equivalent used by the GUI category browser.
+QVector<openmarketterminal::services::prediction::PredictionEvent>
+kalshi_fair_series_events(
+    const QVector<openmarketterminal::services::prediction::PredictionEvent>& events,
+    const QStringList& series_order, int limit);
+
+/// Bounded number of series probed once per category fan-out. The floor covers
+/// the six weather series; the ceiling prevents a broad-category request burst.
+int kalshi_series_probe_limit(int series_count, int result_limit);
 
 /// Public (unsigned) REST client for the Kalshi v2 API.
 ///
