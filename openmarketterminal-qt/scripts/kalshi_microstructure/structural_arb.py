@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_CEILING
+from itertools import combinations
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -27,6 +28,43 @@ CENT = Decimal("0.01")
 ONE = Decimal("1")
 ZERO = Decimal("0")
 GENERAL_TAKER_RATE = Decimal("0.07")
+BTC_THRESHOLD_CORRIDOR_FAMILY = "btc_threshold_corridor"
+CORRIDOR_COMPARISONS = {"greater_than", "greater_than_or_equal"}
+API_STRIKE_COMPARISONS = {
+    "greater": "greater_than",
+    "greater_than": "greater_than",
+    "greater_equal": "greater_than_or_equal",
+    "greater_than_or_equal": "greater_than_or_equal",
+}
+SETTLEMENT_TIME_FIELDS = {
+    "close_time",
+    "expiration_time",
+    "expected_expiration_time",
+    "latest_expiration_time",
+}
+SETTLEMENT_TERM_FIELDS = (
+    "ticker",
+    "event_ticker",
+    "series_ticker",
+    "rules_primary",
+    "rules_secondary",
+    "strike_type",
+    "floor_strike",
+    "cap_strike",
+    "custom_strike",
+    "functional_strike",
+    "settlement_source_url",
+    "settlement_sources",
+    "close_time",
+    "expiration_time",
+    "expected_expiration_time",
+    "latest_expiration_time",
+    "early_close_condition",
+    "can_close_early",
+    "settlement_timer_seconds",
+    "response_price_units",
+    "notional_value",
+)
 
 
 @dataclass(frozen=True)
@@ -175,6 +213,181 @@ class PayoffCertificate:
         return hashlib.sha256(encoded).hexdigest()
 
 
+def settlement_terms_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the non-quote fields bound by a corridor review.
+
+    Hashing the complete market response would make bids, status, volume and
+    other volatile data invalidate a review.  This explicit allow-list binds
+    the settlement and strike fields that give the pair its payoff shape.
+    Adding a newly relevant API field therefore requires a schema review,
+    rather than silently broadening an old certificate.
+    """
+    return {field: payload.get(field) for field in SETTLEMENT_TERM_FIELDS}
+
+
+def settlement_terms_sha256(payload: Mapping[str, Any]) -> str:
+    return _canonical_digest(settlement_terms_payload(payload))
+
+
+@dataclass(frozen=True)
+class CorridorMember:
+    ticker: str
+    strike: Decimal
+    terms_sha256: str
+
+    def payload(self) -> dict[str, str]:
+        return {
+            "ticker": self.ticker,
+            "strike": str(self.strike),
+            "terms_sha256": self.terms_sha256,
+        }
+
+
+@dataclass(frozen=True)
+class BtcThresholdCorridorCertificate:
+    """Reviewed BTC threshold ladder; never inferred from market titles."""
+
+    event_ticker: str
+    underlier: str
+    comparison: str
+    api_strike_type: str
+    settlement_time_field: str
+    settlement_time: str
+    reviewed_at: str
+    members: tuple[CorridorMember, ...]
+
+    @classmethod
+    def from_payload(
+        cls, payload: Mapping[str, Any]
+    ) -> "BtcThresholdCorridorCertificate":
+        if payload.get("schema_version") != SCHEMA_VERSION:
+            raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        if payload.get("family") != BTC_THRESHOLD_CORRIDOR_FAMILY:
+            raise ValueError(f"family must be {BTC_THRESHOLD_CORRIDOR_FAMILY}")
+        if payload.get("rules_reviewed") is not True:
+            raise ValueError("rules_reviewed must be explicitly true")
+        if payload.get("ordinary_binary_payouts_only") is not True:
+            raise ValueError("ordinary_binary_payouts_only must be explicitly true")
+
+        event_ticker = str(payload.get("event_ticker") or "").strip()
+        underlier = str(payload.get("underlier") or "").strip().upper()
+        comparison = str(payload.get("comparison") or "").strip().lower()
+        api_strike_type = str(payload.get("api_strike_type") or "").strip().lower()
+        settlement_time_field = str(payload.get("settlement_time_field") or "").strip()
+        settlement_time = str(payload.get("settlement_time") or "").strip()
+        reviewed_at = str(payload.get("reviewed_at") or "").strip()
+        if underlier != "BTC":
+            raise ValueError("underlier must be BTC")
+        if not event_ticker or not settlement_time or not reviewed_at or not api_strike_type:
+            raise ValueError(
+                "event_ticker, api_strike_type, settlement_time, and reviewed_at are required"
+            )
+        if comparison not in CORRIDOR_COMPARISONS:
+            raise ValueError(f"unsupported comparison: {comparison or 'missing'}")
+        if API_STRIKE_COMPARISONS.get(api_strike_type) != comparison:
+            raise ValueError("api_strike_type does not match the certified comparison")
+        if settlement_time_field not in SETTLEMENT_TIME_FIELDS:
+            raise ValueError("settlement_time_field is not a supported exact API field")
+
+        members_raw = payload.get("markets")
+        if not isinstance(members_raw, list) or len(members_raw) < 2:
+            raise ValueError("a corridor family requires at least two reviewed markets")
+        members: list[CorridorMember] = []
+        tickers: set[str] = set()
+        strikes: set[Decimal] = set()
+        for index, raw in enumerate(members_raw):
+            if not isinstance(raw, Mapping):
+                raise ValueError(f"markets[{index}] must be an object")
+            ticker = str(raw.get("ticker") or "").strip()
+            strike = _decimal(raw.get("strike"), f"markets[{index}].strike")
+            terms_sha256 = str(raw.get("terms_sha256") or "").strip().lower()
+            if not ticker or strike <= ZERO:
+                raise ValueError(f"markets[{index}] needs a ticker and positive strike")
+            if len(terms_sha256) != 64 or any(c not in "0123456789abcdef" for c in terms_sha256):
+                raise ValueError(f"markets[{index}].terms_sha256 must be lowercase SHA-256")
+            if ticker in tickers or strike in strikes:
+                raise ValueError("corridor market tickers and strikes must be unique")
+            tickers.add(ticker)
+            strikes.add(strike)
+            members.append(CorridorMember(ticker, strike, terms_sha256))
+
+        return cls(
+            event_ticker=event_ticker,
+            underlier=underlier,
+            comparison=comparison,
+            api_strike_type=api_strike_type,
+            settlement_time_field=settlement_time_field,
+            settlement_time=settlement_time,
+            reviewed_at=reviewed_at,
+            members=tuple(sorted(members, key=lambda member: member.strike)),
+        )
+
+    @property
+    def tickers(self) -> tuple[str, ...]:
+        return tuple(member.ticker for member in self.members)
+
+    @property
+    def pairs(self) -> tuple[tuple[CorridorMember, CorridorMember], ...]:
+        return tuple(combinations(self.members, 2))
+
+    def pair_certificate(
+        self, lower: CorridorMember, higher: CorridorMember
+    ) -> PayoffCertificate:
+        if lower.strike >= higher.strike:
+            raise ValueError("corridor lower strike must be below higher strike")
+        if self.comparison == "greater_than_or_equal":
+            outcomes = (
+                "below_lower",
+                "at_or_above_lower_below_higher",
+                "at_or_above_higher",
+            )
+        else:
+            outcomes = (
+                "at_or_below_lower",
+                "above_lower_at_or_below_higher",
+                "above_higher",
+            )
+        return PayoffCertificate.from_payload({
+            "schema_version": SCHEMA_VERSION,
+            "bundle_id": f"{BTC_THRESHOLD_CORRIDOR_FAMILY}:{lower.ticker}:{higher.ticker}",
+            "description": (
+                f"Certified lower YES {lower.strike} plus higher NO {higher.strike}"
+            ),
+            "outcomes": list(outcomes),
+            "legs": [
+                {"ticker": lower.ticker, "side": "yes", "payouts": [0, 1, 1]},
+                {"ticker": higher.ticker, "side": "no", "payouts": [1, 1, 0]},
+            ],
+        })
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+            "rules_reviewed": True,
+            "ordinary_binary_payouts_only": True,
+            "event_ticker": self.event_ticker,
+            "underlier": self.underlier,
+            "comparison": self.comparison,
+            "api_strike_type": self.api_strike_type,
+            "settlement_time_field": self.settlement_time_field,
+            "settlement_time": self.settlement_time,
+            "reviewed_at": self.reviewed_at,
+            "markets": [member.payload() for member in self.members],
+        }
+
+    @property
+    def digest(self) -> str:
+        return _canonical_digest(self.payload())
+
+
+def load_corridor_certificate(path: Path) -> BtcThresholdCorridorCertificate:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("corridor certificate root must be an object")
+    return BtcThresholdCorridorCertificate.from_payload(payload)
+
+
 @dataclass(frozen=True)
 class FeeSchedule:
     fee_type: str
@@ -263,6 +476,121 @@ def load_certificate(path: Path) -> PayoffCertificate:
 def _canonical_digest(payload: Mapping[str, Any]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _market_api_strike_type(payload: Mapping[str, Any]) -> str:
+    direct = str(payload.get("strike_type") or "").strip().lower()
+    custom = payload.get("custom_strike")
+    if not direct and isinstance(custom, Mapping):
+        direct = str(custom.get("strike_type") or "").strip().lower()
+    return direct
+
+
+def _market_floor_strike(payload: Mapping[str, Any]) -> Decimal | None:
+    value = payload.get("floor_strike")
+    custom = payload.get("custom_strike")
+    if value in (None, "") and isinstance(custom, Mapping):
+        value = custom.get("floor_strike", custom.get("strike"))
+    if value in (None, ""):
+        value = payload.get("strike")
+    if value in (None, ""):
+        return None
+    return _decimal(value, "market floor strike")
+
+
+def validate_corridor_markets(
+    certificate: BtcThresholdCorridorCertificate,
+    markets: Mapping[str, Market],
+) -> str:
+    """Return an empty string only when live metadata matches the review."""
+    for member in certificate.members:
+        market = markets.get(member.ticker)
+        if market is None:
+            return f"missing certified market: {member.ticker}"
+        if market.ticker != member.ticker or str(market.raw.get("ticker") or "") != member.ticker:
+            return f"market ticker changed: {member.ticker}"
+        if market.status.lower() not in {"active", "open"}:
+            return f"market is not open: {member.ticker} ({market.status})"
+        raw = market.raw
+        if str(raw.get("event_ticker") or "") != certificate.event_ticker:
+            return f"event_ticker changed: {member.ticker}"
+        if _market_api_strike_type(raw) != certificate.api_strike_type:
+            return f"API strike type changed: {member.ticker}"
+        if _market_floor_strike(raw) != member.strike:
+            return f"certified strike changed: {member.ticker}"
+        if str(raw.get(certificate.settlement_time_field) or "") != certificate.settlement_time:
+            return f"settlement time changed: {member.ticker}"
+        if settlement_terms_sha256(raw) != member.terms_sha256:
+            return f"reviewed settlement terms changed: {member.ticker}"
+    return ""
+
+
+def evaluate_corridor_family(
+    certificate: BtcThresholdCorridorCertificate,
+    markets: Mapping[str, Market],
+    books: Mapping[str, BinaryBook],
+    fees: Mapping[str, FeeSchedule],
+    *,
+    quantity: Decimal = ONE,
+    execution_buffer_per_contract: Decimal = ZERO,
+    min_net_edge_per_bundle: Decimal = ZERO,
+) -> dict[str, object]:
+    validation_error = validate_corridor_markets(certificate, markets)
+    if validation_error:
+        return {
+            "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+            "state": "unavailable",
+            "reason": validation_error,
+            "certificate_sha256": certificate.digest,
+            "pairs_evaluated": 0,
+            "opportunities": 0,
+            "pairs": [],
+        }
+
+    rows: list[dict[str, object]] = []
+    for lower, higher in certificate.pairs:
+        pair_certificate = certificate.pair_certificate(lower, higher)
+        evaluation = evaluate_bundle(
+            pair_certificate,
+            books,
+            fees,
+            quantity=quantity,
+            execution_buffer_per_contract=execution_buffer_per_contract,
+            min_net_edge_per_bundle=min_net_edge_per_bundle,
+        )
+        rows.append({
+            "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+            "event_ticker": certificate.event_ticker,
+            "lower_ticker": lower.ticker,
+            "lower_strike": str(lower.strike),
+            "higher_ticker": higher.ticker,
+            "higher_strike": str(higher.strike),
+            "comparison": certificate.comparison,
+            "evaluation": evaluation.payload(),
+        })
+    opportunities = sum(
+        row["evaluation"]["state"] == "opportunity"  # type: ignore[index]
+        for row in rows
+    )
+    available = [
+        row for row in rows if row["evaluation"]["state"] != "unavailable"  # type: ignore[index]
+    ]
+    state = "opportunity" if opportunities else ("not_profitable" if available else "unavailable")
+    return {
+        "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+        "state": state,
+        "reason": (
+            "one or more certified corridors clear the threshold"
+            if opportunities
+            else "no certified corridor clears the threshold"
+            if available
+            else "all certified corridors are unavailable"
+        ),
+        "certificate_sha256": certificate.digest,
+        "pairs_evaluated": len(rows),
+        "opportunities": opportunities,
+        "pairs": rows,
+    }
 
 
 def discovery_row(event: Mapping[str, Any], *, observed_at: str) -> dict[str, object]:
@@ -556,6 +884,127 @@ def collect_snapshot(
     }
 
 
+def _unavailable_corridor_result(
+    certificate: BtcThresholdCorridorCertificate, reason: str
+) -> dict[str, object]:
+    return {
+        "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+        "state": "unavailable",
+        "reason": reason,
+        "certificate_sha256": certificate.digest,
+        "pairs_evaluated": 0,
+        "opportunities": 0,
+        "pairs": [],
+    }
+
+
+def collect_corridor_snapshot(
+    client: Any,
+    certificate: BtcThresholdCorridorCertificate,
+    *,
+    quantity: Decimal = ONE,
+    execution_buffer_per_contract: Decimal = ZERO,
+    min_net_edge_per_bundle: Decimal = ZERO,
+) -> dict[str, object]:
+    """Collect one synchronized snapshot for the certified corridor family."""
+    requested_at = datetime.now(timezone.utc)
+    markets: dict[str, Market] = {}
+    schedules: dict[str, FeeSchedule] = {}
+    series_payloads: dict[str, dict[str, Any]] = {}
+    books: dict[str, BinaryBook] = {}
+    unavailable_reason = ""
+    try:
+        for ticker in certificate.tickers:
+            market = client.get_market(ticker)
+            markets[ticker] = market
+        unavailable_reason = validate_corridor_markets(certificate, markets)
+        if not unavailable_reason:
+            for ticker, market in markets.items():
+                series_ticker = str(market.raw.get("series_ticker") or "")
+                if not series_ticker:
+                    unavailable_reason = f"market has no series_ticker: {ticker}"
+                    break
+                if series_ticker not in series_payloads:
+                    series_payloads[series_ticker] = client.get_series(series_ticker)
+                try:
+                    schedules[ticker] = FeeSchedule.from_payload(series_payloads[series_ticker])
+                except ValueError as exc:
+                    unavailable_reason = f"{ticker}: {exc}"
+                    break
+        if not unavailable_reason:
+            books = client.get_orderbooks(list(certificate.tickers))
+    except Exception as exc:  # noqa: BLE001 - persist telemetry failure as evidence.
+        unavailable_reason = f"collection failed: {type(exc).__name__}: {exc}"
+    received_at = datetime.now(timezone.utc)
+    evaluation = (
+        _unavailable_corridor_result(certificate, unavailable_reason)
+        if unavailable_reason
+        else evaluate_corridor_family(
+            certificate,
+            markets,
+            books,
+            schedules,
+            quantity=quantity,
+            execution_buffer_per_contract=execution_buffer_per_contract,
+            min_net_edge_per_bundle=min_net_edge_per_bundle,
+        )
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "event": "kalshi_btc_threshold_corridor_scan",
+        "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+        "requested_at": requested_at.isoformat(),
+        "received_at": received_at.isoformat(),
+        "request_duration_ms": int((received_at - requested_at).total_seconds() * 1000),
+        "certificate": certificate.payload(),
+        "certificate_sha256": certificate.digest,
+        "quantity": str(quantity),
+        "execution_buffer_per_contract": str(execution_buffer_per_contract),
+        "min_net_edge_per_bundle": str(min_net_edge_per_bundle),
+        "collection_error": unavailable_reason or None,
+        "markets": {ticker: market.raw for ticker, market in markets.items()},
+        "series": series_payloads,
+        "fees": {ticker: schedule.payload() for ticker, schedule in schedules.items()},
+        "books": {ticker: _book_payload(book) for ticker, book in books.items()},
+        "evaluation": evaluation,
+    }
+
+
+def record_corridor_snapshots(
+    client: Any,
+    certificate: BtcThresholdCorridorCertificate,
+    *,
+    out: Path,
+    seconds: float,
+    poll_seconds: float,
+    quantity: Decimal,
+    execution_buffer_per_contract: Decimal,
+    min_net_edge_per_bundle: Decimal,
+) -> int:
+    if seconds <= 0 or poll_seconds <= 0:
+        raise ValueError("seconds and poll_seconds must be positive")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + seconds
+    scans = 0
+    with out.open("a", encoding="utf-8") as handle:
+        while True:
+            row = collect_corridor_snapshot(
+                client,
+                certificate,
+                quantity=quantity,
+                execution_buffer_per_contract=execution_buffer_per_contract,
+                min_net_edge_per_bundle=min_net_edge_per_bundle,
+            )
+            handle.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
+            handle.flush()
+            scans += 1
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(poll_seconds, remaining))
+    return scans
+
+
 def record_snapshots(
     client: Any,
     certificate: PayoffCertificate,
@@ -600,6 +1049,48 @@ def replay_evidence(path: Path) -> dict[str, object]:
         scans += 1
         try:
             row = json.loads(line)
+            if row.get("family") == BTC_THRESHOLD_CORRIDOR_FAMILY:
+                certificate = BtcThresholdCorridorCertificate.from_payload(row["certificate"])
+                if certificate.digest != row["certificate_sha256"]:
+                    raise ValueError("certificate digest mismatch")
+                expected = row["evaluation"]
+                collection_error = row.get("collection_error")
+                if collection_error:
+                    actual = _unavailable_corridor_result(certificate, str(collection_error))
+                else:
+                    markets = {
+                        ticker: Market.from_api(payload)
+                        for ticker, payload in row["markets"].items()
+                    }
+                    books = {
+                        ticker: _book_from_payload(payload)
+                        for ticker, payload in row["books"].items()
+                    }
+                    schedules = {
+                        ticker: FeeSchedule.from_payload(payload)
+                        for ticker, payload in row["fees"].items()
+                    }
+                    actual = evaluate_corridor_family(
+                        certificate,
+                        markets,
+                        books,
+                        schedules,
+                        quantity=_decimal(row["quantity"], "quantity"),
+                        execution_buffer_per_contract=_decimal(
+                            row["execution_buffer_per_contract"],
+                            "execution_buffer_per_contract",
+                        ),
+                        min_net_edge_per_bundle=_decimal(
+                            row["min_net_edge_per_bundle"], "min_net_edge_per_bundle"
+                        ),
+                    )
+                state = str(expected.get("state") or "unknown")
+                states[state] = states.get(state, 0) + 1
+                if actual == expected:
+                    matches += 1
+                else:
+                    mismatches += 1
+                continue
             certificate = PayoffCertificate.from_payload(row["certificate"])
             if certificate.digest != row["certificate_sha256"]:
                 raise ValueError("certificate digest mismatch")

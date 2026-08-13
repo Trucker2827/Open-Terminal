@@ -10,16 +10,21 @@ from decimal import Decimal
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from scripts.kalshi_microstructure.kalshi import KalshiRestClient
-from scripts.kalshi_microstructure.models import BinaryBook, Level
+from scripts.kalshi_microstructure.models import BinaryBook, Level, Market
 from scripts.kalshi_microstructure.structural_arb import (
+    BTC_THRESHOLD_CORRIDOR_FAMILY,
+    BtcThresholdCorridorCertificate,
     FeeSchedule,
     PayoffCertificate,
     ReadOnlyKalshiClient,
+    collect_corridor_snapshot,
     collect_snapshot,
     discover_candidates,
     discovery_row,
+    evaluate_corridor_family,
     evaluate_bundle,
     replay_evidence,
+    settlement_terms_sha256,
 )
 
 
@@ -35,7 +40,234 @@ def book(ticker: str, *, yes_bids=(), no_bids=()) -> BinaryBook:
     )
 
 
+def threshold_market(
+    ticker: str,
+    strike: int,
+    *,
+    event: str = "KXBTC-20260812",
+    settlement: str = "2026-08-12T20:00:00Z",
+    strike_type: str = "greater_equal",
+    rules: str = "BTC price at settlement; ordinary binary payout",
+) -> Market:
+    return Market.from_api({
+        "ticker": ticker,
+        "event_ticker": event,
+        "series_ticker": "KXBTC",
+        "title": f"BTC at or above ${strike:,}",
+        "status": "active",
+        "strike_type": strike_type,
+        "floor_strike": strike,
+        "expected_expiration_time": settlement,
+        "rules_primary": rules,
+        "rules_secondary": "No scalar payout; reviewed fixture",
+    })
+
+
+def corridor_certificate(
+    markets: list[Market], *, comparison: str = "greater_than_or_equal"
+) -> BtcThresholdCorridorCertificate:
+    first = markets[0]
+    return BtcThresholdCorridorCertificate.from_payload({
+        "schema_version": 1,
+        "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+        "underlier": "BTC",
+        "rules_reviewed": True,
+        "ordinary_binary_payouts_only": True,
+        "event_ticker": first.raw["event_ticker"],
+        "comparison": comparison,
+        "api_strike_type": first.raw["strike_type"],
+        "settlement_time_field": "expected_expiration_time",
+        "settlement_time": first.raw["expected_expiration_time"],
+        "reviewed_at": "2026-08-12T17:00:00Z",
+        "markets": [
+            {
+                "ticker": market.ticker,
+                "strike": market.raw["floor_strike"],
+                "terms_sha256": settlement_terms_sha256(market.raw),
+            }
+            for market in markets
+        ],
+    })
+
+
 class StructuralArbitrageTest(unittest.TestCase):
+    def test_btc_threshold_corridor_has_three_exhaustive_payout_regions(self) -> None:
+        markets = [threshold_market("BTC-64000", 64000), threshold_market("BTC-65000", 65000)]
+        cert = corridor_certificate(markets)
+        pair = cert.pair_certificate(cert.members[0], cert.members[1])
+        self.assertEqual(cert.payload()["family"], BTC_THRESHOLD_CORRIDOR_FAMILY)
+        self.assertEqual(pair.outcomes, (
+            "below_lower",
+            "at_or_above_lower_below_higher",
+            "at_or_above_higher",
+        ))
+        self.assertEqual(pair.legs[0].side, "yes")
+        self.assertEqual(pair.legs[0].payouts, (Decimal("0"), Decimal("1"), Decimal("1")))
+        self.assertEqual(pair.legs[1].side, "no")
+        self.assertEqual(pair.legs[1].payouts, (Decimal("1"), Decimal("1"), Decimal("0")))
+        self.assertEqual(pair.guaranteed_payout, Decimal("1"))
+
+    def test_corridor_ladder_evaluates_every_lower_higher_pair_separately(self) -> None:
+        market_list = [
+            threshold_market("BTC-64000", 64000),
+            threshold_market("BTC-65000", 65000),
+            threshold_market("BTC-66000", 66000),
+        ]
+        cert = corridor_certificate(market_list)
+        books = {
+            # Lower YES asks are 0.31/0.41/0.51; higher NO asks are
+            # 0.59/0.49/0.39. Only 64k YES + 66k NO costs 0.70.
+            "BTC-64000": book("BTC-64000", yes_bids=((0.41, 10),), no_bids=((0.69, 10),)),
+            "BTC-65000": book("BTC-65000", yes_bids=((0.51, 10),), no_bids=((0.59, 10),)),
+            "BTC-66000": book("BTC-66000", yes_bids=((0.61, 10),), no_bids=((0.49, 10),)),
+        }
+        fees = {ticker: FeeSchedule("none", Decimal("1")) for ticker in books}
+        result = evaluate_corridor_family(
+            cert,
+            {market.ticker: market for market in market_list},
+            books,
+            fees,
+            execution_buffer_per_contract=Decimal("0.01"),
+            min_net_edge_per_bundle=Decimal("0.20"),
+        )
+        self.assertEqual(result["family"], BTC_THRESHOLD_CORRIDOR_FAMILY)
+        self.assertEqual(result["pairs_evaluated"], 3)
+        self.assertEqual(result["opportunities"], 1)
+        profitable = [
+            row for row in result["pairs"] if row["evaluation"]["state"] == "opportunity"
+        ]
+        self.assertEqual(
+            (profitable[0]["lower_strike"], profitable[0]["higher_strike"]),
+            ("64000", "66000"),
+        )
+        self.assertEqual(profitable[0]["evaluation"]["net_profit"], "0.28")
+
+    def test_corridor_refuses_uncertified_rules_or_non_btc_underlier(self) -> None:
+        market_list = [threshold_market("BTC-64000", 64000), threshold_market("BTC-65000", 65000)]
+        payload = corridor_certificate(market_list).payload()
+        payload["rules_reviewed"] = False
+        with self.assertRaisesRegex(ValueError, "rules_reviewed"):
+            BtcThresholdCorridorCertificate.from_payload(payload)
+        payload["rules_reviewed"] = True
+        payload["underlier"] = "ETH"
+        with self.assertRaisesRegex(ValueError, "underlier must be BTC"):
+            BtcThresholdCorridorCertificate.from_payload(payload)
+
+    def test_corridor_refuses_mismatched_boundary_semantics(self) -> None:
+        market_list = [threshold_market("BTC-64000", 64000), threshold_market("BTC-65000", 65000)]
+        payload = corridor_certificate(market_list).payload()
+        payload["comparison"] = "greater_than"
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            BtcThresholdCorridorCertificate.from_payload(payload)
+
+    def test_corridor_refuses_different_event_horizon_or_changed_rules(self) -> None:
+        market_list = [threshold_market("BTC-64000", 64000), threshold_market("BTC-65000", 65000)]
+        cert = corridor_certificate(market_list)
+        fees = {market.ticker: FeeSchedule("none", Decimal("1")) for market in market_list}
+        books = {market.ticker: book(market.ticker, yes_bids=((0.50, 2),), no_bids=((0.50, 2),))
+                 for market in market_list}
+
+        wrong_event = threshold_market("BTC-65000", 65000, event="OTHER-EVENT")
+        result = evaluate_corridor_family(
+            cert,
+            {market_list[0].ticker: market_list[0], wrong_event.ticker: wrong_event},
+            books,
+            fees,
+        )
+        self.assertEqual(result["state"], "unavailable")
+        self.assertIn("event_ticker changed", result["reason"])
+
+        wrong_time = threshold_market(
+            "BTC-65000", 65000, settlement="2026-08-12T21:00:00Z"
+        )
+        result = evaluate_corridor_family(
+            cert,
+            {market_list[0].ticker: market_list[0], wrong_time.ticker: wrong_time},
+            books,
+            fees,
+        )
+        self.assertIn("settlement time changed", result["reason"])
+
+        changed_rules = threshold_market("BTC-65000", 65000, rules="Different settlement source")
+        result = evaluate_corridor_family(
+            cert,
+            {market_list[0].ticker: market_list[0], changed_rules.ticker: changed_rules},
+            books,
+            fees,
+        )
+        self.assertIn("reviewed settlement terms changed", result["reason"])
+
+    def test_corridor_depth_fees_and_buffer_can_erase_apparent_gap(self) -> None:
+        market_list = [threshold_market("BTC-64000", 64000), threshold_market("BTC-65000", 65000)]
+        cert = corridor_certificate(market_list)
+        markets = {market.ticker: market for market in market_list}
+        books = {
+            "BTC-64000": book("BTC-64000", no_bids=((0.52, 2),)),  # YES ask .48
+            "BTC-65000": book("BTC-65000", yes_bids=((0.53, 2),)),  # NO ask .47
+        }
+        fee = FeeSchedule("quadratic", Decimal("1"))
+        result = evaluate_corridor_family(
+            cert,
+            markets,
+            books,
+            {ticker: fee for ticker in books},
+            execution_buffer_per_contract=Decimal("0.01"),
+            min_net_edge_per_bundle=Decimal("0.01"),
+        )
+        evaluation = result["pairs"][0]["evaluation"]
+        self.assertEqual(evaluation["acquisition_cost"], "0.95")
+        self.assertEqual(evaluation["fees"], "0.04")
+        self.assertEqual(evaluation["execution_buffer"], "0.02")
+        self.assertEqual(evaluation["state"], "not_profitable")
+
+        shallow = dict(books)
+        shallow["BTC-65000"] = book("BTC-65000", yes_bids=((0.53, 0.5),))
+        unavailable = evaluate_corridor_family(
+            cert, markets, shallow, {ticker: fee for ticker in books}, quantity=Decimal("1")
+        )
+        self.assertEqual(unavailable["pairs"][0]["evaluation"]["state"], "unavailable")
+
+    def test_corridor_snapshot_is_replayable_and_has_no_order_path(self) -> None:
+        market_list = [threshold_market("BTC-64000", 64000), threshold_market("BTC-65000", 65000)]
+        cert = corridor_certificate(market_list)
+
+        class Probe:
+            order_calls = 0
+
+            def __init__(self) -> None:
+                self.book_calls = []
+
+            def get_market(self, ticker):
+                return {market.ticker: market for market in market_list}[ticker]
+
+            def get_series(self, ticker):
+                return {"fee_type": "none", "fee_multiplier": 1}
+
+            def get_orderbooks(self, tickers):
+                self.book_calls.append(tuple(tickers))
+                return {
+                    "BTC-64000": book("BTC-64000", no_bids=((0.70, 5),)),
+                    "BTC-65000": book("BTC-65000", yes_bids=((0.60, 5),)),
+                }
+
+            def create_order(self, payload):
+                self.order_calls += 1
+                raise AssertionError("corridor scanner called create_order")
+
+        probe = Probe()
+        row = collect_corridor_snapshot(probe, cert)
+        self.assertEqual(row["family"], BTC_THRESHOLD_CORRIDOR_FAMILY)
+        self.assertEqual(row["evaluation"]["state"], "opportunity")
+        self.assertEqual(probe.order_calls, 0)
+        self.assertEqual(probe.book_calls, [("BTC-64000", "BTC-65000")])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "corridor.jsonl"
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            self.assertTrue(replay_evidence(path)["valid"])
+            row["evaluation"]["opportunities"] = 99
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            self.assertFalse(replay_evidence(path)["valid"])
+
     def test_mutually_exclusive_metadata_never_auto_certifies_an_event(self) -> None:
         row = discovery_row(
             {

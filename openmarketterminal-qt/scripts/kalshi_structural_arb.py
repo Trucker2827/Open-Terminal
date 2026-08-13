@@ -11,10 +11,13 @@ from pathlib import Path
 from kalshi_microstructure.auth import DEFAULT_KEYS_PATH, load_credentials
 from kalshi_microstructure.kalshi import KalshiRestClient
 from kalshi_microstructure.structural_arb import (
+    collect_corridor_snapshot,
     collect_snapshot,
     discover_candidates,
     load_certificate,
+    load_corridor_certificate,
     ReadOnlyKalshiClient,
+    record_corridor_snapshots,
     record_snapshots,
     replay_evidence,
 )
@@ -56,6 +59,22 @@ def main(argv: list[str] | None = None) -> int:
     record.add_argument("--seconds", type=float, default=60.0)
     record.add_argument("--poll-seconds", type=float, default=1.0)
     record.add_argument("--out", required=True)
+
+    corridor_scan = commands.add_parser(
+        "corridor-scan",
+        help="Evaluate every pair in a reviewed BTC threshold-corridor family.",
+    )
+    _common(corridor_scan)
+    corridor_scan.add_argument("--out", help="Optionally append the evidence row to JSONL.")
+
+    corridor_record = commands.add_parser(
+        "corridor-record",
+        help="Record repeated reviewed BTC threshold-corridor snapshots.",
+    )
+    _common(corridor_record)
+    corridor_record.add_argument("--seconds", type=float, default=60.0)
+    corridor_record.add_argument("--poll-seconds", type=float, default=1.0)
+    corridor_record.add_argument("--out", required=True)
 
     replay = commands.add_parser("replay", help="Recompute and audit recorded evidence.")
     replay.add_argument("path")
@@ -100,8 +119,35 @@ def main(argv: list[str] | None = None) -> int:
     client = ReadOnlyKalshiClient(
         KalshiRestClient(env=args.env, credentials=load_credentials(args.keys))
     )
-    certificate = load_certificate(Path(args.certificate))
     quantity, execution_buffer, min_edge = _values(args)
+    if args.command in {"corridor-scan", "corridor-record"}:
+        certificate = load_corridor_certificate(Path(args.certificate))
+        if args.command == "corridor-scan":
+            row = collect_corridor_snapshot(
+                client,
+                certificate,
+                quantity=quantity,
+                execution_buffer_per_contract=execution_buffer,
+                min_net_edge_per_bundle=min_edge,
+            )
+            if args.out:
+                _append(Path(args.out), row)
+            print(json.dumps(row["evaluation"], indent=2, sort_keys=True))
+            return 0 if row["evaluation"]["state"] != "unavailable" else 2  # type: ignore[index]
+        scans = record_corridor_snapshots(
+            client,
+            certificate,
+            out=Path(args.out),
+            seconds=args.seconds,
+            poll_seconds=args.poll_seconds,
+            quantity=quantity,
+            execution_buffer_per_contract=execution_buffer,
+            min_net_edge_per_bundle=min_edge,
+        )
+        print(f"recorded {scans} BTC threshold-corridor scans to {args.out}")
+        return 0
+
+    certificate = load_certificate(Path(args.certificate))
     if args.command == "scan":
         row = collect_snapshot(
             client,

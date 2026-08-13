@@ -95,6 +95,76 @@ Replay recomputes the evaluation from the recorded certificate, batch books,
 fee schedules, quantity, and buffers. It fails if the certificate digest or a
 recorded result was changed.
 
+## BTC threshold-corridor family
+
+`btc_threshold_corridor` is a distinct structural-measurement family. It is
+not `KXBTC15M`, does not make a directional Bitcoin prediction, and cannot
+inherit a directional model's admission verdict. For two thresholds `L < H`
+with identical reviewed settlement terms, it measures equal-sized purchases
+of:
+
+- YES on "BTC at/above L"; and
+- NO on "BTC at/above H".
+
+The certified payout is $1 below `L`, $2 in the corridor `[L,H)`, and $1 at or
+above `H`. Thus the conservative guaranteed payout is $1; the extra dollar in
+the middle is upside, not part of the arbitrage test. With strict `>` contracts
+the boundary labels change, and the certificate must say so explicitly.
+
+The family certificate binds all members of one reviewed threshold ladder:
+
+- underlier `BTC`, exact event ticker, API strike type and comparison;
+- exact settlement-time field and value;
+- every ticker and strike; and
+- a SHA-256 of each market's settlement/strike terms.
+
+Both `rules_reviewed` and `ordinary_binary_payouts_only` must be explicitly
+true. Titles, similar wording, and proximity in time never create a
+certificate. A change to any bound term makes the entire family unavailable.
+This is deliberately strict because scalar payouts, cancellations, differing
+price sources, or mismatched boundary rules can destroy the payoff proof.
+
+Illustrative schema (hashes and tickers are placeholders, not certification):
+
+```json
+{
+  "schema_version": 1,
+  "family": "btc_threshold_corridor",
+  "underlier": "BTC",
+  "rules_reviewed": true,
+  "ordinary_binary_payouts_only": true,
+  "event_ticker": "REPLACE-EVENT",
+  "comparison": "greater_than_or_equal",
+  "api_strike_type": "greater_equal",
+  "settlement_time_field": "expected_expiration_time",
+  "settlement_time": "REPLACE-EXACT-API-VALUE",
+  "reviewed_at": "REPLACE-REVIEW-TIME",
+  "markets": [
+    {"ticker": "REPLACE-LOW", "strike": "64000", "terms_sha256": "REPLACE-64-HEX"},
+    {"ticker": "REPLACE-HIGH", "strike": "65000", "terms_sha256": "REPLACE-64-HEX"}
+  ]
+}
+```
+
+One scan fetches the ladder's books in a single batch, enumerates every
+lower-YES/higher-NO pair, sweeps equal displayed depth, and records every pair
+under the family name:
+
+```bash
+python3 scripts/kalshi_structural_arb.py corridor-scan reviewed-btc-ladder.json \
+  --quantity 1 --execution-buffer 0.01 --min-net-edge 0.01 \
+  --out logs/btc-threshold-corridor.jsonl
+
+python3 scripts/kalshi_structural_arb.py corridor-record reviewed-btc-ladder.json \
+  --seconds 3600 --poll-seconds 1 \
+  --quantity 1 --execution-buffer 0.01 --min-net-edge 0.01 \
+  --out logs/btc-threshold-corridor.jsonl
+```
+
+The commands remain read-only. No order operation is exposed. A positive row
+is evidence for latency, duration and partial-fill research—not permission to
+trade and not proof that two legs can fill atomically.
+
 ## Evidence and limitations
 
 - Books are fetched from Kalshi's multi-market batch endpoint, avoiding one
