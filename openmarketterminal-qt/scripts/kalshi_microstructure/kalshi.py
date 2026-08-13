@@ -152,6 +152,18 @@ class KalshiRestClient:
         events = [event for event in payload.get("events", []) if isinstance(event, dict)]
         return events, payload.get("cursor")
 
+    def get_event(
+        self, ticker: str, *, with_nested_markets: bool = False
+    ) -> dict[str, Any]:
+        payload = self.get_json(
+            f"/events/{ticker}",
+            {"with_nested_markets": str(with_nested_markets).lower()},
+        )
+        event = payload.get("event")
+        if not isinstance(event, dict):
+            raise ValueError(f"Kalshi returned no event metadata for {ticker}")
+        return event
+
     def get_series(self, ticker: str) -> dict[str, Any]:
         payload = self.get_json(f"/series/{ticker}")
         series = payload.get("series")

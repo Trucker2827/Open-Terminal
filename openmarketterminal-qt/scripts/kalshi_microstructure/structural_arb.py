@@ -24,6 +24,7 @@ from .models import BinaryBook, Level, Market
 
 
 SCHEMA_VERSION = 1
+CORRIDOR_SCHEMA_VERSION = 2
 CENT = Decimal("0.01")
 ONE = Decimal("1")
 ZERO = Decimal("0")
@@ -92,6 +93,11 @@ class ReadOnlyKalshiClient:
             cursor=cursor,
             with_nested_markets=with_nested_markets,
         )
+
+    def get_event(
+        self, ticker: str, *, with_nested_markets: bool = False
+    ) -> dict[str, Any]:
+        return self.client.get_event(ticker, with_nested_markets=with_nested_markets)
 
     def get_series(self, ticker: str) -> dict[str, Any]:
         return self.client.get_series(ticker)
@@ -277,6 +283,14 @@ def settlement_terms_sha256(payload: Mapping[str, Any]) -> str:
     return _canonical_digest(settlement_terms_payload(payload))
 
 
+def event_identity_payload(payload: Mapping[str, Any]) -> dict[str, str]:
+    """Persist the reviewed event identity without duplicating its markets."""
+    return {
+        "event_ticker": str(payload.get("event_ticker") or ""),
+        "series_ticker": str(payload.get("series_ticker") or ""),
+    }
+
+
 @dataclass(frozen=True)
 class CorridorMember:
     ticker: str
@@ -295,7 +309,9 @@ class CorridorMember:
 class BtcThresholdCorridorCertificate:
     """Reviewed BTC threshold ladder; never inferred from market titles."""
 
+    schema_version: int
     event_ticker: str
+    series_ticker: str
     underlier: str
     comparison: str
     api_strike_type: str
@@ -307,10 +323,16 @@ class BtcThresholdCorridorCertificate:
 
     @classmethod
     def from_payload(
-        cls, payload: Mapping[str, Any]
+        cls, payload: Mapping[str, Any], *, allow_legacy: bool = False
     ) -> "BtcThresholdCorridorCertificate":
-        if payload.get("schema_version") != SCHEMA_VERSION:
-            raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        schema_version = payload.get("schema_version")
+        supported_versions = (
+            {SCHEMA_VERSION, CORRIDOR_SCHEMA_VERSION}
+            if allow_legacy
+            else {CORRIDOR_SCHEMA_VERSION}
+        )
+        if schema_version not in supported_versions:
+            raise ValueError(f"schema_version must be {CORRIDOR_SCHEMA_VERSION}")
         if payload.get("family") != BTC_THRESHOLD_CORRIDOR_FAMILY:
             raise ValueError(f"family must be {BTC_THRESHOLD_CORRIDOR_FAMILY}")
         if payload.get("rules_reviewed") is not True:
@@ -319,6 +341,7 @@ class BtcThresholdCorridorCertificate:
             raise ValueError("ordinary_binary_payouts_only must be explicitly true")
 
         event_ticker = str(payload.get("event_ticker") or "").strip()
+        series_ticker = str(payload.get("series_ticker") or "").strip()
         underlier = str(payload.get("underlier") or "").strip().upper()
         comparison = str(payload.get("comparison") or "").strip().lower()
         api_strike_type = str(payload.get("api_strike_type") or "").strip().lower()
@@ -328,9 +351,16 @@ class BtcThresholdCorridorCertificate:
         minimum_ask_price = _decimal(payload.get("minimum_ask_price"), "minimum_ask_price")
         if underlier != "BTC":
             raise ValueError("underlier must be BTC")
-        if not event_ticker or not settlement_time or not reviewed_at or not api_strike_type:
+        if (
+            not event_ticker
+            or (schema_version == CORRIDOR_SCHEMA_VERSION and not series_ticker)
+            or not settlement_time
+            or not reviewed_at
+            or not api_strike_type
+        ):
             raise ValueError(
-                "event_ticker, api_strike_type, settlement_time, and reviewed_at are required"
+                "event_ticker, series_ticker, api_strike_type, settlement_time, "
+                "and reviewed_at are required"
             )
         if comparison not in CORRIDOR_COMPARISONS:
             raise ValueError(f"unsupported comparison: {comparison or 'missing'}")
@@ -364,7 +394,9 @@ class BtcThresholdCorridorCertificate:
             members.append(CorridorMember(ticker, strike, terms_sha256))
 
         return cls(
+            schema_version=int(schema_version),
             event_ticker=event_ticker,
+            series_ticker=series_ticker,
             underlier=underlier,
             comparison=comparison,
             api_strike_type=api_strike_type,
@@ -426,8 +458,8 @@ class BtcThresholdCorridorCertificate:
         })
 
     def payload(self) -> dict[str, object]:
-        return {
-            "schema_version": SCHEMA_VERSION,
+        payload: dict[str, object] = {
+            "schema_version": self.schema_version,
             "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
             "rules_reviewed": True,
             "ordinary_binary_payouts_only": True,
@@ -441,6 +473,9 @@ class BtcThresholdCorridorCertificate:
             "minimum_ask_price": str(self.minimum_ask_price),
             "markets": [member.payload() for member in self.members],
         }
+        if self.schema_version >= CORRIDOR_SCHEMA_VERSION:
+            payload["series_ticker"] = self.series_ticker
+        return payload
 
     @property
     def digest(self) -> str:
@@ -1019,18 +1054,28 @@ def collect_corridor_snapshot(
     schedules: dict[str, FeeSchedule] = {}
     series_payloads: dict[str, dict[str, Any]] = {}
     books: dict[str, BinaryBook] = {}
+    event: dict[str, Any] = {}
     unavailable_reason = ""
     try:
-        for ticker in certificate.tickers:
-            market = client.get_market(ticker)
-            markets[ticker] = market
-        unavailable_reason = validate_corridor_markets(certificate, markets)
+        event = client.get_event(certificate.event_ticker, with_nested_markets=True)
+        if str(event.get("event_ticker") or "") != certificate.event_ticker:
+            unavailable_reason = "event_ticker changed"
+        elif str(event.get("series_ticker") or "") != certificate.series_ticker:
+            unavailable_reason = "series_ticker changed"
+        nested_markets = event.get("markets")
+        if not isinstance(nested_markets, list):
+            unavailable_reason = "event has no nested markets"
+        else:
+            markets = {
+                market.ticker: market
+                for raw in nested_markets
+                if isinstance(raw, dict) and (market := Market.from_api(raw)).ticker
+            }
+        if not unavailable_reason:
+            unavailable_reason = validate_corridor_markets(certificate, markets)
         if not unavailable_reason:
             for ticker, market in markets.items():
-                series_ticker = str(market.raw.get("series_ticker") or "")
-                if not series_ticker:
-                    unavailable_reason = f"market has no series_ticker: {ticker}"
-                    break
+                series_ticker = certificate.series_ticker
                 if series_ticker not in series_payloads:
                     series_payloads[series_ticker] = client.get_series(series_ticker)
                 try:
@@ -1065,6 +1110,7 @@ def collect_corridor_snapshot(
         "request_duration_ms": int((received_at - requested_at).total_seconds() * 1000),
         "certificate": certificate.payload(),
         "certificate_sha256": certificate.digest,
+        "event_metadata": event_identity_payload(event),
         "quantity": str(quantity),
         "execution_buffer_per_contract": str(execution_buffer_per_contract),
         "min_net_edge_per_bundle": str(min_net_edge_per_bundle),
@@ -1157,7 +1203,9 @@ def replay_evidence(path: Path) -> dict[str, object]:
         try:
             row = json.loads(line)
             if row.get("family") == BTC_THRESHOLD_CORRIDOR_FAMILY:
-                certificate = BtcThresholdCorridorCertificate.from_payload(row["certificate"])
+                certificate = BtcThresholdCorridorCertificate.from_payload(
+                    row["certificate"], allow_legacy=True
+                )
                 if certificate.digest != row["certificate_sha256"]:
                     raise ValueError("certificate digest mismatch")
                 expected = row["evaluation"]
@@ -1165,6 +1213,14 @@ def replay_evidence(path: Path) -> dict[str, object]:
                 if collection_error:
                     actual = _unavailable_corridor_result(certificate, str(collection_error))
                 else:
+                    if certificate.schema_version >= CORRIDOR_SCHEMA_VERSION:
+                        event = row.get("event_metadata")
+                        if not isinstance(event, Mapping):
+                            raise ValueError("event metadata missing")
+                        if str(event.get("event_ticker") or "") != certificate.event_ticker:
+                            raise ValueError("event_ticker changed")
+                        if str(event.get("series_ticker") or "") != certificate.series_ticker:
+                            raise ValueError("series_ticker changed")
                     markets = {
                         ticker: Market.from_api(payload)
                         for ticker, payload in row["markets"].items()

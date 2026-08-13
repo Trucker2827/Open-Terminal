@@ -95,12 +95,13 @@ def corridor_certificate(
 ) -> BtcThresholdCorridorCertificate:
     first = markets[0]
     return BtcThresholdCorridorCertificate.from_payload({
-        "schema_version": 1,
+        "schema_version": 2,
         "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
         "underlier": "BTC",
         "rules_reviewed": True,
         "ordinary_binary_payouts_only": True,
         "event_ticker": first.raw["event_ticker"],
+        "series_ticker": first.raw["series_ticker"],
         "comparison": comparison,
         "api_strike_type": first.raw["strike_type"],
         "settlement_time_field": "expected_expiration_time",
@@ -329,9 +330,18 @@ class StructuralArbitrageTest(unittest.TestCase):
 
             def __init__(self) -> None:
                 self.book_calls = []
+                self.market_calls = 0
 
             def get_market(self, ticker):
-                return {market.ticker: market for market in market_list}[ticker]
+                self.market_calls += 1
+                raise AssertionError("corridor scanner used sequential market fetch")
+
+            def get_event(self, ticker, *, with_nested_markets=False):
+                return {
+                    "event_ticker": ticker,
+                    "series_ticker": "KXBTC",
+                    "markets": [market.raw for market in market_list],
+                }
 
             def get_series(self, ticker):
                 return {"fee_type": "none", "fee_multiplier": 1}
@@ -352,6 +362,7 @@ class StructuralArbitrageTest(unittest.TestCase):
         self.assertEqual(row["family"], BTC_THRESHOLD_CORRIDOR_FAMILY)
         self.assertEqual(row["evaluation"]["state"], "opportunity")
         self.assertEqual(probe.order_calls, 0)
+        self.assertEqual(probe.market_calls, 0)
         self.assertEqual(probe.book_calls, [("BTC-64000", "BTC-65000")])
         with tempfile.TemporaryDirectory() as tmp:
             path = pathlib.Path(tmp) / "corridor.jsonl"
@@ -360,6 +371,220 @@ class StructuralArbitrageTest(unittest.TestCase):
             row["evaluation"]["opportunities"] = 99
             path.write_text(json.dumps(row) + "\n", encoding="utf-8")
             self.assertFalse(replay_evidence(path)["valid"])
+
+    def test_corridor_uses_reviewed_event_series_when_market_omits_series(self) -> None:
+        market_list = [
+            threshold_market("BTC-64000", 64000),
+            threshold_market("BTC-65000", 65000),
+        ]
+        cert = corridor_certificate(market_list)
+        live_markets = {
+            market.ticker: Market.from_api({
+                key: value
+                for key, value in market.raw.items()
+                if key != "series_ticker"
+            })
+            for market in market_list
+        }
+        payload = cert.payload()
+        payload["markets"] = [
+            {
+                "ticker": market.ticker,
+                "strike": market.raw["floor_strike"],
+                "terms_sha256": settlement_terms_sha256(live_markets[market.ticker].raw),
+            }
+            for market in market_list
+        ]
+        cert = BtcThresholdCorridorCertificate.from_payload(payload)
+
+        class Probe:
+            def __init__(self) -> None:
+                self.series_calls = []
+                self.book_calls = []
+
+            def get_event(self, ticker, *, with_nested_markets=False):
+                return {
+                    "event_ticker": ticker,
+                    "series_ticker": "KXBTC",
+                    "markets": [market.raw for market in live_markets.values()],
+                }
+
+            def get_series(self, ticker):
+                self.series_calls.append(ticker)
+                return {"fee_type": "none", "fee_multiplier": 1}
+
+            def get_orderbooks(self, tickers):
+                self.book_calls.append(tuple(tickers))
+                return {
+                    "BTC-64000": book("BTC-64000", no_bids=((0.70, 5),)),
+                    "BTC-65000": book("BTC-65000", yes_bids=((0.60, 5),)),
+                }
+
+        probe = Probe()
+        row = collect_corridor_snapshot(probe, cert)
+        self.assertEqual(row["evaluation"]["state"], "opportunity")
+        self.assertEqual(row["event_metadata"]["series_ticker"], "KXBTC")
+        self.assertEqual(probe.series_calls, ["KXBTC"])
+        self.assertEqual(probe.book_calls, [("BTC-64000", "BTC-65000")])
+
+    def test_corridor_refuses_event_that_moved_to_another_series(self) -> None:
+        market_list = [
+            threshold_market("BTC-64000", 64000),
+            threshold_market("BTC-65000", 65000),
+        ]
+        cert = corridor_certificate(market_list)
+
+        class Probe:
+            book_calls = 0
+
+            def get_event(self, ticker, *, with_nested_markets=False):
+                return {
+                    "event_ticker": ticker,
+                    "series_ticker": "OTHER",
+                    "markets": [market.raw for market in market_list],
+                }
+
+            def get_orderbooks(self, tickers):
+                self.book_calls += 1
+                return {}
+
+        probe = Probe()
+        row = collect_corridor_snapshot(probe, cert)
+        self.assertEqual(row["evaluation"]["state"], "unavailable")
+        self.assertIn("series_ticker changed", row["evaluation"]["reason"])
+        self.assertEqual(probe.book_calls, 0)
+
+    def test_corridor_refuses_event_missing_a_certified_market(self) -> None:
+        market_list = [
+            threshold_market("BTC-64000", 64000),
+            threshold_market("BTC-65000", 65000),
+        ]
+        cert = corridor_certificate(market_list)
+
+        class Probe:
+            book_calls = 0
+
+            def get_event(self, ticker, *, with_nested_markets=False):
+                return {
+                    "event_ticker": ticker,
+                    "series_ticker": "KXBTC",
+                    "markets": [market_list[0].raw],
+                }
+
+            def get_orderbooks(self, tickers):
+                self.book_calls += 1
+                return {}
+
+        probe = Probe()
+        row = collect_corridor_snapshot(probe, cert)
+        self.assertEqual(row["evaluation"]["state"], "unavailable")
+        self.assertIn("missing certified market", row["evaluation"]["reason"])
+        self.assertEqual(probe.book_calls, 0)
+
+    def test_corridor_replay_rejects_tampered_event_series_provenance(self) -> None:
+        market_list = [
+            threshold_market("BTC-64000", 64000),
+            threshold_market("BTC-65000", 65000),
+        ]
+        cert = corridor_certificate(market_list)
+
+        class Probe:
+            def get_event(self, ticker, *, with_nested_markets=False):
+                return {
+                    "event_ticker": ticker,
+                    "series_ticker": "KXBTC",
+                    "markets": [market.raw for market in market_list],
+                }
+
+            def get_series(self, ticker):
+                return {"fee_type": "none", "fee_multiplier": 1}
+
+            def get_orderbooks(self, tickers):
+                return {
+                    "BTC-64000": book("BTC-64000", no_bids=((0.70, 5),)),
+                    "BTC-65000": book("BTC-65000", yes_bids=((0.60, 5),)),
+                }
+
+        row = collect_corridor_snapshot(Probe(), cert)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "corridor.jsonl"
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            self.assertTrue(replay_evidence(path)["valid"])
+            row["event_metadata"]["series_ticker"] = "OTHER"
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            self.assertFalse(replay_evidence(path)["valid"])
+
+    def test_corridor_collection_failure_replays_without_event_metadata(self) -> None:
+        market_list = [
+            threshold_market("BTC-64000", 64000),
+            threshold_market("BTC-65000", 65000),
+        ]
+        cert = corridor_certificate(market_list)
+
+        class Probe:
+            def get_event(self, ticker, *, with_nested_markets=False):
+                raise TimeoutError("event feed timed out")
+
+        row = collect_corridor_snapshot(Probe(), cert)
+        self.assertEqual(row["evaluation"]["state"], "unavailable")
+        self.assertIn("collection failed: TimeoutError", row["collection_error"])
+        self.assertEqual(row["event_metadata"], {"event_ticker": "", "series_ticker": ""})
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "corridor.jsonl"
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            report = replay_evidence(path)
+        self.assertTrue(report["valid"])
+        self.assertEqual(report["matches"], 1)
+        self.assertEqual(report["malformed"], 0)
+
+    def test_corridor_replay_accepts_version_one_evidence(self) -> None:
+        market_list = [
+            threshold_market("BTC-64000", 64000),
+            threshold_market("BTC-65000", 65000),
+        ]
+        payload = corridor_certificate(market_list).payload()
+        payload["schema_version"] = 1
+        payload.pop("series_ticker")
+        legacy = BtcThresholdCorridorCertificate.from_payload(payload, allow_legacy=True)
+        fees = {market.ticker: FeeSchedule("none", Decimal("1")) for market in market_list}
+        books = {
+            "BTC-64000": book("BTC-64000", no_bids=((0.70, 5),)),
+            "BTC-65000": book("BTC-65000", yes_bids=((0.60, 5),)),
+        }
+        evaluation = evaluate_corridor_family(
+            legacy,
+            {market.ticker: market for market in market_list},
+            books,
+            fees,
+        )
+        row = {
+            "schema_version": 1,
+            "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+            "certificate": legacy.payload(),
+            "certificate_sha256": legacy.digest,
+            "quantity": "1",
+            "execution_buffer_per_contract": "0",
+            "min_net_edge_per_bundle": "0",
+            "collection_error": None,
+            "markets": {market.ticker: market.raw for market in market_list},
+            "fees": {ticker: schedule.payload() for ticker, schedule in fees.items()},
+            "books": {
+                ticker: {
+                    "ticker": ticker,
+                    "yes_bids": [[str(level.price), str(level.size)] for level in value.yes_bids],
+                    "no_bids": [[str(level.price), str(level.size)] for level in value.no_bids],
+                }
+                for ticker, value in books.items()
+            },
+            "evaluation": evaluation,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "legacy-corridor.jsonl"
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            report = replay_evidence(path)
+        self.assertTrue(report["valid"])
+        self.assertEqual(report["matches"], 1)
+        self.assertEqual(report["malformed"], 0)
 
     def test_mutually_exclusive_metadata_never_auto_certifies_an_event(self) -> None:
         row = discovery_row(
@@ -751,7 +976,7 @@ class BatchOrderbooksTest(unittest.TestCase):
         self.assertFalse(hasattr(facade, "cancel_order"))
         self.assertEqual(
             {name for name in dir(facade) if name.startswith("get_")},
-            {"get_events", "get_market", "get_orderbooks", "get_series"},
+            {"get_event", "get_events", "get_market", "get_orderbooks", "get_series"},
         )
 
     def test_client_parses_one_batch_snapshot(self) -> None:
@@ -827,6 +1052,37 @@ class BatchOrderbooksTest(unittest.TestCase):
              }):
             rc = cli.main(["discover", "--out", str(pathlib.Path(tmp) / "rows.jsonl")])
         self.assertEqual(rc, 0)
+
+    def test_corridor_scan_cli_does_not_load_account_credentials(self) -> None:
+        from unittest.mock import patch
+        import contextlib
+        import io
+
+        scripts_dir = pathlib.Path(__file__).resolve().parents[1] / "scripts"
+        sys.path.insert(0, str(scripts_dir))
+        try:
+            import kalshi_structural_arb as cli
+        finally:
+            sys.path.remove(str(scripts_dir))
+
+        market_list = [
+            threshold_market("BTC-64000", 64000),
+            threshold_market("BTC-65000", 65000),
+        ]
+        cert = corridor_certificate(market_list)
+        output = io.StringIO()
+        row = {
+            "evaluation": {"state": "not_profitable"},
+        }
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(cli, "load_credentials", side_effect=AssertionError("secret read")), \
+             patch.object(cli, "collect_corridor_snapshot", return_value=row), \
+             contextlib.redirect_stdout(output):
+            certificate_path = pathlib.Path(tmp) / "certificate.json"
+            certificate_path.write_text(json.dumps(cert.payload()), encoding="utf-8")
+            rc = cli.main(["corridor-scan", str(certificate_path)])
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(output.getvalue())["state"], "not_profitable")
 
     def test_discover_cli_reports_transport_failure_as_unavailable(self) -> None:
         from unittest.mock import patch

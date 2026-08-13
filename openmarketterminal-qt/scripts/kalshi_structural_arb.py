@@ -116,8 +116,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     # Only read methods are exposed to the scanner. There is no facade method
     # for create_order/cancel_order and no bot/execution module import.
+    corridor_command = args.command in {"corridor-scan", "corridor-record"}
     client = ReadOnlyKalshiClient(
-        KalshiRestClient(env=args.env, credentials=load_credentials(args.keys))
+        KalshiRestClient(
+            env=args.env,
+            credentials=None if corridor_command else load_credentials(args.keys),
+        )
     )
     quantity, execution_buffer, min_edge = _values(args)
     if args.command in {"corridor-scan", "corridor-record"}:
