@@ -81,6 +81,10 @@ inline constexpr auto kKalshiKxbtcDailyCalibratorFile = "kxbtc-daily-calibrator.
 inline constexpr auto kKalshiCorridorEvidenceFile = "kalshi-btc-threshold-corridor.jsonl";
 inline constexpr auto kKalshiCorridorGateFile = "kalshi-btc-corridor-gate.json";
 inline constexpr auto kKalshiCorridorPaperLedgerFile = "kalshi-btc-corridor-paper.jsonl";
+inline constexpr auto kKalshiCorridorMicroLiveParamsFile =
+    "kalshi-btc-corridor-micro-live-params.json";
+inline constexpr auto kKalshiCorridorMicroLiveLedgerFile =
+    "kalshi-btc-corridor-micro-live.jsonl";
 
 inline QString kalshi_calibrator_path() {
     return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiCalibratorFile));
@@ -112,6 +116,16 @@ inline QString kalshi_corridor_gate_path() {
 
 inline QString kalshi_corridor_paper_ledger_path() {
     return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiCorridorPaperLedgerFile));
+}
+
+inline QString kalshi_corridor_micro_live_params_path() {
+    return cli::kalshi_evidence_path(
+        QString::fromLatin1(kKalshiCorridorMicroLiveParamsFile));
+}
+
+inline QString kalshi_corridor_micro_live_ledger_path() {
+    return cli::kalshi_evidence_path(
+        QString::fromLatin1(kKalshiCorridorMicroLiveLedgerFile));
 }
 
 /// Latest scanner row, shown as a watch rather than trading authority.
@@ -190,6 +204,17 @@ inline QString corridor_gate_role(const QJsonObject& gate) {
         verdict != QLatin1String(services::prediction::kalshi_ns::KalshiCorridorGate::kVerdictPass))
         return QStringLiteral("amber");
     return QStringLiteral("grey");
+}
+
+inline QString corridor_micro_live_line(const QJsonObject& seal, int executions,
+                                        const QString& latest_status) {
+    if (seal.isEmpty())
+        return QStringLiteral("UNSEALED · $0 LIVE AUTHORITY · production live HARD-OFF");
+    const QJsonObject params = seal.value(QStringLiteral("params")).toObject();
+    return QStringLiteral("MICRO-LIVE ARMED · <=$%1 EACH LEG · <=$4 PAIR · %2 executions · latest %3 · production live HARD-OFF")
+        .arg(params.value(QStringLiteral("max_all_in_per_leg_usd")).toDouble(), 0, 'f', 2)
+        .arg(executions)
+        .arg(latest_status.isEmpty() ? QStringLiteral("none") : latest_status.toUpper());
 }
 
 /// Compact cadence status for orbit/KPI folding (no new nodes).
@@ -1430,7 +1455,10 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                                            const QJsonObject& kxbtc_daily_report = {},
                                            const QJsonObject& corridor_scan = {},
                                            const QJsonObject& corridor_gate = {},
-                                           int corridor_paper_bids = 0) {
+                                           int corridor_paper_bids = 0,
+                                           const QJsonObject& corridor_micro_live_seal = {},
+                                           int corridor_micro_live_executions = 0,
+                                           const QString& corridor_micro_live_status = {}) {
     using namespace bot_cockpit_detail;
     BotCockpitScene scene;
     // Advisory strategy-grid line, read-only over the engine's verdict file.
@@ -2044,6 +2072,20 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
              corridor_paper_bids > 0,
              QStringLiteral("Append-only structural-strategy paper ledger.\n"
                             "A simulation records the observed two-leg book; it submits nothing."),
+             /*row=*/0);
+    add_node(QStringLiteral("corridor_micro_live"),
+             QStringLiteral("BTC CORRIDOR · TWO-LEG MICRO-LIVE"),
+             corridor_micro_live_line(corridor_micro_live_seal,
+                                      corridor_micro_live_executions,
+                                      corridor_micro_live_status),
+             corridor_micro_live_seal.isEmpty() ? QStringLiteral("grey")
+                 : corridor_micro_live_status == QLatin1String("halted_unsafe") ||
+                           corridor_micro_live_status == QLatin1String("reconciliation_required")
+                       ? QStringLiteral("red") : QStringLiteral("amber"),
+             !corridor_micro_live_seal.isEmpty(),
+             QStringLiteral("Dedicated atomic bundle protocol: lower YES + higher NO.\n"
+                            "The ordinary directional bidder cannot execute it.\n"
+                            "Hard cap: $2 all-in per leg, $4 per pair. Production tier unavailable."),
              /*row=*/0);
 
     // SETTLEMENTS / KPI — prefer CURRENT RULES postmortem (new trading
@@ -2683,6 +2725,23 @@ inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qi
                 ++corridor_paper_bids;
         }
     }
+    const QJsonObject corridor_micro_live_seal =
+        read_report(kalshi_corridor_micro_live_params_path());
+    int corridor_micro_live_executions = 0;
+    QString corridor_micro_live_status;
+    QFile corridor_micro_file(kalshi_corridor_micro_live_ledger_path());
+    if (corridor_micro_file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!corridor_micro_file.atEnd()) {
+            const QJsonDocument document = QJsonDocument::fromJson(corridor_micro_file.readLine());
+            if (!document.isObject()) continue;
+            const QJsonObject row = document.object();
+            if (row.value(QStringLiteral("event")).toString() !=
+                QLatin1String(services::prediction::kalshi_ns::KalshiCorridorGate::kMicroLiveExecutionEvent))
+                continue;
+            ++corridor_micro_live_executions;
+            corridor_micro_live_status = row.value(QStringLiteral("status")).toString();
+        }
+    }
     // The advisory strategy-grid verdict, read-only; missing/garbage/stale is
     // handled inside present_bot_cockpit (fails closed to UNAVAILABLE/STALE).
     QByteArray grid_json;
@@ -2699,7 +2758,8 @@ inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qi
                                kxbtc15m_report, commodities_15m_report, postmortem_current,
                                postmortem_historic, commodities_hourly_report,
                                commodities_daily_report, kxbtc_daily_report, corridor_scan,
-                               corridor_gate, corridor_paper_bids);
+                               corridor_gate, corridor_paper_bids, corridor_micro_live_seal,
+                               corridor_micro_live_executions, corridor_micro_live_status);
 }
 
 } // namespace openmarketterminal::screens::kalshi

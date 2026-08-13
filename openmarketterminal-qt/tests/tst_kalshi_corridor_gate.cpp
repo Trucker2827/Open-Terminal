@@ -39,7 +39,18 @@ QJsonObject scan(int index, bool opportunity = true, bool unavailable = false,
                        {"acquisition_cost", "0.80"},
                        {"fees", "0.05"},
                        {"execution_buffer", "0.02"},
-                       {"net_edge_per_bundle", opportunity ? "0.15" : "0.000"}};
+                       {"net_edge_per_bundle", opportunity ? "0.15" : "0.000"},
+                       {"legs", QJsonArray{
+                           QJsonObject{{"ticker", "KXBTCD-E-T64000"}, {"side", "yes"},
+                                       {"contracts", "1"}, {"cost", "0.42"},
+                                       {"fee", "0.01"},
+                                       {"fills", QJsonArray{QJsonObject{{"price", "0.42"},
+                                                                          {"contracts", "1"}}}}},
+                           QJsonObject{{"ticker", "KXBTCD-E-T65000"}, {"side", "no"},
+                                       {"contracts", "1"}, {"cost", "0.53"},
+                                       {"fee", "0.01"},
+                                       {"fills", QJsonArray{QJsonObject{{"price", "0.53"},
+                                                                          {"contracts", "1"}}}}}}}};
     QJsonObject evaluation{{"state", unavailable ? "unavailable"
                                                    : opportunity ? "opportunity"
                                                                  : "not_profitable"},
@@ -145,6 +156,54 @@ class TstKalshiCorridorGate : public QObject {
         QCOMPARE(KalshiCorridorGate::evaluate(QJsonValue(QJsonValue::Undefined), {}, kNow + 1)
                      .value("verdict").toString(),
                  QStringLiteral("NOT_PREREGISTERED"));
+    }
+
+    void separate_micro_live_seal_enforces_two_dollars_on_each_leg() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QJsonObject micro_params{{"max_bundles_per_opportunity", 2},
+                                       {"max_all_in_per_leg_usd", 2.0},
+                                       {"max_scan_age_ms", 60'000},
+                                       {"max_executions_per_hour", 3}};
+        QString error;
+        const QJsonObject sealed = KalshiCorridorGate::preregister_micro_live(
+            dir.filePath(KalshiCorridorGate::kMicroLiveParamsFile), micro_params,
+            kNow, &error);
+        QVERIFY2(!sealed.isEmpty(), qPrintable(error));
+        QVERIFY(KalshiCorridorGate::seal_valid(sealed));
+        QCOMPARE(sealed.value("authority").toString(), QStringLiteral("micro_live_only"));
+        QVERIFY(!sealed.value("production_live_authorized").toBool());
+        QString reason;
+        QVERIFY2(KalshiCorridorGate::permits_micro_live(
+                     sealed, scan(0), 0, 1, kNow + 2, &reason), qPrintable(reason));
+
+        QJsonObject expensive = scan(0);
+        QJsonObject evaluation = expensive.value("evaluation").toObject();
+        QJsonArray pairs = evaluation.value("pairs").toArray();
+        QJsonObject pair = pairs[0].toObject();
+        QJsonObject result = pair.value("evaluation").toObject();
+        QJsonArray legs = result.value("legs").toArray();
+        QJsonObject first = legs[0].toObject();
+        first["cost"] = QStringLiteral("2.00"); // + fee + half buffer > $2
+        legs[0] = first;
+        result["legs"] = legs;
+        pair["evaluation"] = result;
+        pairs[0] = pair;
+        evaluation["pairs"] = pairs;
+        expensive["evaluation"] = evaluation;
+        QVERIFY(!KalshiCorridorGate::permits_micro_live(
+            sealed, expensive, 0, 1, kNow + 2, &reason));
+        QVERIFY(reason.contains(QStringLiteral("$2")));
+    }
+
+    void paper_gate_never_substitutes_for_micro_live_authority() {
+        QTemporaryDir dir;
+        QString error;
+        const QJsonObject paper = KalshiCorridorGate::preregister(
+            dir.filePath(KalshiCorridorGate::kParamsFile), params(), kNow, &error);
+        QVERIFY(!KalshiCorridorGate::permits_micro_live(
+            paper, scan(0), 0, 1, kNow + 2, &error));
+        QVERIFY(error.contains(QStringLiteral("micro-live-only")));
     }
 
     void evidence_is_diagnostic_and_never_a_paper_prerequisite() {

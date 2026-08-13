@@ -1316,6 +1316,17 @@ target_include_directories(tst_kalshi_corridor_gate PRIVATE ${CMAKE_SOURCE_DIR}/
 target_link_libraries(tst_kalshi_corridor_gate PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_corridor_gate COMMAND tst_kalshi_corridor_gate)
 
+# Two-leg corridor micro-live execution protocol. It proves leg ordering,
+# idempotent client IDs, cancel-before-dependent-submit, partial-fill unwind,
+# and the compile-time production hard-off. No adapter or network target is
+# linked, so this test cannot place an exchange order.
+add_executable(tst_kalshi_corridor_live_executor
+    tst_kalshi_corridor_live_executor.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/prediction/kalshi/KalshiCorridorLiveExecutor.cpp)
+target_include_directories(tst_kalshi_corridor_live_executor PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_corridor_live_executor PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_corridor_live_executor COMMAND tst_kalshi_corridor_live_executor)
+
 # Kalshi CLI locator — the suffix-parameterized probe KalshiScreen::cli_path()
 # uses to find the bundled openterminalcli (".exe" on Windows). Header-only,
 # no DB/Widgets.

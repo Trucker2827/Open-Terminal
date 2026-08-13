@@ -6,9 +6,20 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export OPENTERMINAL_EVIDENCE_DIR="$TMP"
 export OPENTERMINAL_KALSHI_EVIDENCE_DIR="$TMP"
+export HOME="$TMP/home"
+mkdir -p "$HOME"
 
 PARAMS='{"max_bundles_per_opportunity":2,"max_cost_per_opportunity_usd":2.0,"max_scan_age_ms":60000}'
 "$CLI" --json kalshi bot corridor-gate seal "$PARAMS" >"$TMP/sealed.json"
+MICRO_PARAMS='{"max_bundles_per_opportunity":2,"max_all_in_per_leg_usd":2.0,"max_scan_age_ms":60000,"max_executions_per_hour":3}'
+"$CLI" --json kalshi bot corridor-micro-live seal "$MICRO_PARAMS" >"$TMP/micro-sealed.json"
+python3 - "$TMP/micro-sealed.json" <<'PY'
+import json, sys
+seal=json.load(open(sys.argv[1], encoding="utf-8"))
+assert seal["authority"] == "micro_live_only"
+assert seal["production_live_authorized"] is False
+assert seal["params"]["max_all_in_per_leg_usd"] == 2.0
+PY
 
 # With no evidence file at all, the paper experiment must arm. Requiring the
 # history that the experiment exists to collect would be a circular deadlock.
@@ -66,3 +77,29 @@ assert rows[0]["mode"] == "paper"
 assert rows[0]["live_order_submitted"] is False
 assert rows[0]["result"] == "SIMULATED_AT_OBSERVED_BOOK"
 PY
+
+# A micro-live seal is not sufficient by itself. Reach the handler through the
+# headless Authenticated/destructive boundary by enabling the BASE trading
+# capability in this throwaway profile, while deliberately leaving the global
+# LIVE arm off and creating no bounded human session. The handler itself must
+# then refuse before any credential or order call and leave the execution
+# ledger absent. This setup is explicit so the test cannot depend on the host
+# user's persisted authentication/trading state.
+"$CLI" --headless mcp list >/dev/null
+DB="$(find "$HOME" -name openmarketterminal.db -type f -print -quit)"
+test -n "$DB"
+sqlite3 "$DB" \
+  "INSERT OR REPLACE INTO settings(key,value,category,updated_at) VALUES('cli.allow_trading','true','cli','2026-01-01'),('cli.live_trading_armed','false','cli','2026-01-01');"
+set +e
+"$CLI" --json kalshi bot corridor-micro-live once >"$TMP/micro-refused.json"
+rc=$?
+set -e
+test "$rc" -eq 6
+python3 - "$TMP/micro-refused.json" <<'PY'
+import json, sys
+row=json.load(open(sys.argv[1], encoding="utf-8"))
+assert row["status"] == "rejected", row
+assert ("not armed" in row["reason"] or
+        "current bounded human session" in row["reason"]), row
+PY
+test ! -e "$TMP/kalshi-btc-corridor-micro-live.jsonl"
