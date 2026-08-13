@@ -8,6 +8,8 @@ import os
 from decimal import Decimal
 from pathlib import Path
 
+from openterminal_paths import evidence_file
+
 from kalshi_microstructure.auth import DEFAULT_KEYS_PATH, load_credentials
 from kalshi_microstructure.kalshi import KalshiRestClient
 from kalshi_microstructure.structural_arb import (
@@ -74,7 +76,11 @@ def main(argv: list[str] | None = None) -> int:
     _common(corridor_record)
     corridor_record.add_argument("--seconds", type=float, default=60.0)
     corridor_record.add_argument("--poll-seconds", type=float, default=1.0)
-    corridor_record.add_argument("--out", required=True)
+    corridor_record.add_argument(
+        "--out",
+        default=evidence_file("kalshi-btc-threshold-corridor.jsonl"),
+        help="Evidence JSONL (default: Bot Cockpit evidence directory).",
+    )
 
     replay = commands.add_parser("replay", help="Recompute and audit recorded evidence.")
     replay.add_argument("path")

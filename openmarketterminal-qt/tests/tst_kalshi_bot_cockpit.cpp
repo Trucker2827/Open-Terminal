@@ -1768,9 +1768,10 @@ class KalshiBotCockpitTest : public QObject {
                  QStringLiteral("1 watched contracts · all drawn · L→R · threshold first · ambition "
                                 "KXBTCD · 1 threshold · 0 kxbtc15m · 0 commodities15m · 0 "
                                 "commodities_hourly · 0 commodities_daily · 0 kxbtc_daily"));
-        // Row 0: BTC 1H, BTC 15M, BRIER, SETTLEMENTS, GATE, KILL, EXPOSURE (7).
+        // Row 0 additionally includes the structural corridor watch + its own
+        // paper-only gate. They are always visible, even before evidence.
         // Row 1: GOLD, SILVER, WTI (3). Total 10 — metals never share a box.
-        QCOMPARE(baseline.nodes.size(), 10);
+        QCOMPARE(baseline.nodes.size(), 12);
         QVERIFY(!baseline.node(QStringLiteral("kxbtc15m"))->detail.isEmpty());
         QVERIFY(!baseline.node(QStringLiteral("gold"))->detail.isEmpty());
         QVERIFY(baseline.node(QStringLiteral("calibrator")) != nullptr);
@@ -1787,6 +1788,8 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(baseline.node(QStringLiteral("gate")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("kill_switch")) != nullptr);
         QVERIFY(baseline.node(QStringLiteral("exposure")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("btc_corridor")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("corridor_gate")) != nullptr);
         QCOMPARE(baseline.pulses.size(), 1);
         QCOMPARE(baseline.pulses.first().kind, QStringLiteral("calibrator"));
         QVERIFY(!baseline.lessons_available);
@@ -2076,6 +2079,50 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(scene.node(QStringLiteral("gate"))->value.startsWith(QStringLiteral("FAIL")));
         QVERIFY(scene.node(QStringLiteral("gate"))
                     ->value.contains(QStringLiteral("KXGOLDH FAIL")));
+    }
+
+    void corridor_watch_and_gate_are_visible_and_strategy_separate() {
+        const QJsonObject scan{
+            {"event", "kalshi_btc_threshold_corridor_scan"},
+            {"family", "btc_threshold_corridor"},
+            {"certificate", QJsonObject{{"event_ticker", "KXBTCD-26AUG1314"}}},
+            {"certificate_sha256", "reviewed-digest"},
+            {"evaluation", QJsonObject{{"state", "opportunity"},
+                                        {"reason", "certified corridor clears"},
+                                        {"pairs_evaluated", 6},
+                                        {"opportunities", 1},
+                                        {"pairs", QJsonArray{QJsonObject{{"evaluation", QJsonObject{
+                                            {"state", "opportunity"},
+                                            {"net_edge_per_bundle", "0.031"}}}}}}}}};
+        const QJsonObject corridor_gate{{"strategy_family", "btc_threshold_corridor"},
+                                        {"authority", "paper_only"},
+                                        {"paper_bids_authorized", true},
+                                        {"live_orders_authorized", false},
+                                        {"evaluated", true},
+                                        {"verdict", "PASS"},
+                                        {"evidence", QJsonObject{{"scans", 300},
+                                                                  {"distinct_events", 3},
+                                                                  {"opportunity_scans", 10}}}};
+        const BotCockpitScene scene = present_bot_cockpit(
+            panel_for({}), {}, {}, {}, {}, kNow, QByteArray(), kBotCockpitMaxColumns,
+            kBotCockpitMaxPulses, {}, {}, {}, {}, {}, {}, {}, {}, scan, corridor_gate);
+        QCOMPARE(scene.node(QStringLiteral("btc_corridor"))->role, QStringLiteral("green"));
+        QVERIFY(scene.node(QStringLiteral("btc_corridor"))->value.contains(QStringLiteral("$0.0310")));
+        QCOMPARE(scene.node(QStringLiteral("corridor_gate"))->role, QStringLiteral("green"));
+        QVERIFY(scene.node(QStringLiteral("corridor_gate"))->value.contains(QStringLiteral("PAPER ONLY")));
+        QVERIFY(scene.node(QStringLiteral("corridor_gate"))->value.contains(QStringLiteral("LIVE NEVER")));
+
+        // A directional PASS is not a corridor PASS, even though both inspect
+        // KXBTCD contracts.
+        const QJsonObject directional{{"strategy_family", "KXBTCD"},
+                                      {"authority", "live_if_armed"},
+                                      {"evaluated", true},
+                                      {"verdict", "PASS"}};
+        const BotCockpitScene separated = present_bot_cockpit(
+            panel_for({}, directional), {}, directional, {}, {}, kNow, QByteArray(),
+            kBotCockpitMaxColumns, kBotCockpitMaxPulses, {}, {}, {}, {}, {}, {}, {}, {}, scan,
+            directional);
+        QCOMPARE(separated.node(QStringLiteral("corridor_gate"))->role, QStringLiteral("grey"));
     }
 
 };

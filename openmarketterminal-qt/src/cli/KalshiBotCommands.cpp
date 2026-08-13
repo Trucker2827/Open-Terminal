@@ -80,6 +80,7 @@
 #include "services/prediction/kalshi/KalshiBotDecision.h"
 #include "services/prediction/kalshi/KalshiBotFunnel.h"
 #include "services/prediction/kalshi/KalshiBotGate.h"
+#include "services/prediction/kalshi/KalshiCorridorGate.h"
 #include "services/prediction/kalshi/KalshiBotLive.h"
 #include "services/prediction/kalshi/KalshiBotOrders.h"
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
@@ -1183,6 +1184,8 @@ void bot_usage() {
                  "       kalshi bot run [--interval N] [--iterations N]\n"
                  "       kalshi bot gate [--json]\n"
                  "       kalshi bot gate seal '{\"min_settled_bids\":300,\"max_drawdown_usd\":5}'\n"
+                 "       kalshi bot corridor-gate [--json]\n"
+                 "       kalshi bot corridor-gate seal '{\"min_scans\":300,\"min_distinct_events\":3,\"min_opportunity_scans\":10,\"min_opportunity_events\":3,\"min_best_net_edge_usd\":0.01,\"max_unavailable_rate\":0.10}'\n"
                  "       kalshi bot stop [--reason \"why\"]   throw the kill switch\n"
                  "       kalshi bot resume                  clear it\n"
                  "       kalshi bot status                  what the GUI BOT chip shows\n"
@@ -1238,6 +1241,9 @@ void bot_usage() {
                  "journals one SIGNAL_UNTRUSTED pass.\n"
                  "`gate` scores the PAPER ledger against sealed, preregistered criteria and\n"
                  "writes the verdict to %s. It never acts on it.\n"
+                 "`corridor-gate` is separate: it scores only certificate-backed BTC corridor\n"
+                 "scans and can authorize only a paper corridor experiment. It never authorizes\n"
+                 "directional bids or live orders.\n"
                  "\n"
                  "--mode live is REFUSED (rc 4) unless every one of these holds right now:\n"
                  "  * a human armed the shared Kalshi live session (`kalshi auto live session`)\n"
@@ -1358,6 +1364,85 @@ int gate_command(const GlobalOpts& opts, QStringList args) {
     const QString evidence_path = kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile));
     print_gate(opts, out, evidence_path);
     // A refusal is not a verdict about the record, so it does not exit 0.
+    return out.value(QStringLiteral("evaluated")).toBool() ? 0 : 3;
+}
+
+int corridor_gate_seal(const GlobalOpts& opts, const QString& raw_params) {
+    const QString path =
+        kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kParamsFile));
+    QJsonParseError parse_error;
+    const QJsonDocument document = QJsonDocument::fromJson(raw_params.toUtf8(), &parse_error);
+    if (!document.isObject()) {
+        std::fprintf(stderr, "kalshi bot corridor-gate seal: params must be a JSON object (%s)\n",
+                     qUtf8Printable(parse_error.errorString()));
+        return 2;
+    }
+    QString error;
+    const QJsonObject record = KalshiCorridorGate::preregister(
+        path, document.object(), QDateTime::currentMSecsSinceEpoch(), &error);
+    if (record.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot corridor-gate seal: %s\n", qUtf8Printable(error));
+        return 3;
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(record).toJson(QJsonDocument::Compact).constData());
+    } else {
+        std::printf("KALSHI BTC CORRIDOR GATE · SEALED · PAPER ONLY\n");
+        std::printf("  gate %s\n", qUtf8Printable(record.value(QStringLiteral("gate_id")).toString()));
+        std::printf("  params %s\n",
+                    QJsonDocument(record.value(QStringLiteral("params")).toObject())
+                        .toJson(QJsonDocument::Compact).constData());
+        std::printf("  written read-only to %s\n", qUtf8Printable(path));
+    }
+    return 0;
+}
+
+int corridor_gate_command(const GlobalOpts& opts, QStringList args) {
+    if (!args.isEmpty() && args.first().trimmed().toLower() == QStringLiteral("seal")) {
+        args.removeFirst();
+        if (args.size() != 1) {
+            bot_usage();
+            return 2;
+        }
+        return corridor_gate_seal(opts, args.first());
+    }
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot corridor-gate: unknown argument '%s'\n",
+                     qUtf8Printable(args.first()));
+        return 2;
+    }
+    const QString evidence_path =
+        kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kEvidenceFile));
+    const QJsonArray evidence = read_jsonl(evidence_path, [](const QJsonObject&) { return true; });
+    const QJsonValue params = KalshiCorridorGate::load_params_file(
+        kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kParamsFile)));
+    const QJsonObject out =
+        KalshiCorridorGate::evaluate(params, evidence, QDateTime::currentMSecsSinceEpoch());
+    const QString verdict_path =
+        kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kVerdictFile));
+    if (!write_json_file(verdict_path, out)) {
+        std::fprintf(stderr, "kalshi bot corridor-gate: cannot write %s\n",
+                     qUtf8Printable(verdict_path));
+        return 4;
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+    } else {
+        std::printf("KALSHI BTC CORRIDOR GATE · %s · PAPER ONLY\n",
+                    qUtf8Printable(out.value(QStringLiteral("verdict")).toString()));
+        std::printf("  %s\n", qUtf8Printable(out.value(QStringLiteral("reason")).toString()));
+        const QJsonObject observed = out.value(QStringLiteral("evidence")).toObject();
+        if (!observed.isEmpty()) {
+            std::printf("  scans %d · events %d · opportunity scans %d · unavailable %.2f%% · best edge $%.4f\n",
+                        observed.value(QStringLiteral("scans")).toInt(),
+                        observed.value(QStringLiteral("distinct_events")).toInt(),
+                        observed.value(QStringLiteral("opportunity_scans")).toInt(),
+                        observed.value(QStringLiteral("unavailable_rate")).toDouble() * 100.0,
+                        observed.value(QStringLiteral("best_net_edge_usd")).toDouble());
+        }
+        std::printf("  verdict written to %s\n", qUtf8Printable(verdict_path));
+        std::printf("  live orders authorized: NO\n");
+    }
     return out.value(QStringLiteral("evaluated")).toBool() ? 0 : 3;
 }
 
@@ -2186,6 +2271,7 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     static const QStringList kSubcommands{QStringLiteral("once"),
                                           QStringLiteral("run"),
                                           QStringLiteral("gate"),
+                                          QStringLiteral("corridor-gate"),
                                           QStringLiteral("status"),
                                           QStringLiteral("stop"),
                                           QStringLiteral("resume"),
@@ -2204,6 +2290,7 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     // mode or cap flags apply to any of them, so they branch before those are
     // parsed.
     if (sub == QStringLiteral("gate")) return gate_command(opts, args);
+    if (sub == QStringLiteral("corridor-gate")) return corridor_gate_command(opts, args);
     if (sub == QStringLiteral("status")) return bot_status_command(opts, args);
     if (sub == QStringLiteral("stop")) return bot_stop_command(opts, args);
     if (sub == QStringLiteral("resume")) return bot_resume_command(opts, args);

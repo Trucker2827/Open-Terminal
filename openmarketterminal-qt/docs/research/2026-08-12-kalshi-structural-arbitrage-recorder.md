@@ -166,9 +166,25 @@ python3 scripts/kalshi_structural_arb.py corridor-scan reviewed-btc-ladder.json 
 
 python3 scripts/kalshi_structural_arb.py corridor-record reviewed-btc-ladder.json \
   --seconds 3600 --poll-seconds 1 \
-  --quantity 1 --execution-buffer 0.01 --min-net-edge 0.01 \
-  --out logs/btc-threshold-corridor.jsonl
+  --quantity 1 --execution-buffer 0.01 --min-net-edge 0.01
 ```
+
+`corridor-record` defaults to the application evidence file
+`kalshi-btc-threshold-corridor.jsonl`, so the Bot Cockpit can render the latest
+scan. `--out` remains available for an isolated experiment.
+
+The corridor has its own immutable sealed gate; the directional bot gate is
+not authority for this strategy:
+
+```bash
+openterminalcli kalshi bot corridor-gate seal \
+  '{"min_scans":300,"min_distinct_events":3,"min_opportunity_scans":10,"min_opportunity_events":3,"min_best_net_edge_usd":0.01,"max_unavailable_rate":0.10}'
+openterminalcli kalshi bot corridor-gate
+```
+
+Only evidence observed after the gate was sealed counts. A PASS sets
+`paper_bids_authorized=true` and still sets `live_orders_authorized=false`.
+There is no live corridor order path.
 
 The commands remain read-only. No order operation is exposed. A positive row
 is evidence for latency, duration and partial-fill research—not permission to
