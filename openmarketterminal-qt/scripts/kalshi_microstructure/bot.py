@@ -177,7 +177,7 @@ async def run_websocket_bot(
                         logger.write("market_closed", {"ticker": market.ticker})
                         break
 
-                    if cache.seq is None or now < next_eval:
+                    if not cache.valid or now < next_eval:
                         continue
 
                     evaluate_cached_book(

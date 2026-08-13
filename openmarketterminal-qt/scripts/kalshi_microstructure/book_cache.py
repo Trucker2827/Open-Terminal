@@ -12,7 +12,12 @@ class ReconnectRequired(RuntimeError):
 
 @dataclass
 class KalshiBookCache:
-    """One market's ladder; sequence continuity belongs to its subscription."""
+    """One market's ladder; sequence continuity belongs to its subscription.
+
+    An invalidated instance is terminal.  Recovery requires a fresh WebSocket
+    connection *and* a newly constructed cache; reusing this instance would
+    compare the new subscription's sequence against the abandoned one.
+    """
 
     ticker: str
     # True only when this cache sees every sequenced message for its sid (the
@@ -28,6 +33,8 @@ class KalshiBookCache:
     gap_reason: str = "waiting for orderbook snapshot"
 
     def apply(self, message: dict[str, Any]) -> None:
+        if not self.valid and self.gap_reason != "waiting for orderbook snapshot":
+            raise ReconnectRequired(self.gap_reason)
         msg_type = message.get("type")
         if self.validate_sequence:
             if not self._advance_subscription_sequence(message):
@@ -114,7 +121,9 @@ class KalshiBookCache:
     def _invalidate(self, reason: str) -> None:
         # A dropped delta makes every later level suspect. Empty the ladders;
         # the transport must replace this socket because re-subscribe on the
-        # same Kalshi connection does not replay snapshots.
+        # same Kalshi connection does not replay snapshots. Keep sid/seq so a
+        # caller that wrongly reuses this terminal instance cannot appear to
+        # heal it with a fresh connection's sequence.
         self.yes.clear()
         self.no.clear()
         self.ts_ms = None
@@ -200,15 +209,18 @@ class KalshiSubscriptionBookCache:
     def ready(self) -> bool:
         return self.valid and all(book.valid for book in self.books.values())
 
-    def coherent_within(self, max_span_ms: int) -> bool:
-        """Whether every member has a timestamp within one exchange-time band."""
-        if not self.ready or max_span_ms < 0:
-            return False
-        timestamps = [book.ts_ms for book in self.books.values()]
-        if any(value is None for value in timestamps):
-            return False
-        values = [value for value in timestamps if value is not None]
-        return max(values) - min(values) <= max_span_ms
+    def delta_timestamp_span_ms(self) -> int | None:
+        """Diagnostic spread among members that have received a delta.
+
+        Kalshi snapshots carry no exchange timestamp. A quiet member can
+        therefore remain ``None`` while its book is fully trustworthy under
+        an uninterrupted subscription sequence. This diagnostic must never
+        be used as an availability or liveness gate.
+        """
+        if not self.ready:
+            return None
+        values = [book.ts_ms for book in self.books.values() if book.ts_ms is not None]
+        return max(values) - min(values) if values else None
 
     def to_books(self) -> dict[str, BinaryBook]:
         return (

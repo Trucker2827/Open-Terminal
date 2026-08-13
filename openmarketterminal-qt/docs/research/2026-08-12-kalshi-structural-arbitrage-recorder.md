@@ -208,11 +208,21 @@ shared event ticker.
   messages, so current one-market callers are not actively affected by control
   traffic. The uniform rule protects the latent case where an in-connection
   command produces a sequenced `ok` frame.
+- `record_session` opens exactly one ticker per WebSocket subscription, and
+  `record_series` invokes it separately for each ticker. The offline backtests'
+  single-market sequence validator is therefore correct for repository-made
+  recordings; an externally produced multi-market recording is not compatible
+  with those readers and must use the subscription-level cache.
 - A sequence gap invalidates and clears every book under that subscription and
   raises a reconnect-required signal. Re-subscribing on the same socket does
-  not replay snapshots, so recovery means closing the connection, opening a
-  new one, and waiting for fresh snapshots for every member. Multi-market
-  coherence uses each delta's exchange `ts_ms`, not local arrival order.
+  not replay snapshots, so recovery means closing the connection, constructing
+  a new cache, opening a new connection, and waiting for fresh snapshots for
+  every member. An invalidated cache is deliberately not reusable.
+- Kalshi snapshots have no `ts_ms`; only deltas do. Bundle availability is
+  therefore established by a snapshot for every member plus an uninterrupted
+  subscription sequence. A quiet leg with no delta remains available. The
+  spread among delta timestamps is published only as a diagnostic of when
+  changed legs changed, never as a liveness or coherence gate.
 - A live near-money single-market sample delivered 1,429 deltas in 90 seconds
   (about 16 per second). That is modest for the present two-leg research scope,
   but it is a concrete reason not to expand to a full ladder casually.

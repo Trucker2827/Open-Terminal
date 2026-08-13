@@ -158,6 +158,8 @@ def replay_recording(config: BacktestConfig) -> BacktestResult:
 
         if event == "session_started":
             market = _market_from_record(row["market"])
+            # Repository recordings use one ticker per WebSocket subscription;
+            # multi-market captures require KalshiSubscriptionBookCache instead.
             cache = KalshiBookCache(market.ticker, validate_sequence=True)
             continue
 
@@ -228,7 +230,7 @@ def replay_recording(config: BacktestConfig) -> BacktestResult:
         )
         last_entry_at = now
 
-    if cache is not None:
+    if cache is not None and cache.valid:
         book = cache.to_book()
         final_time = datetime.now(timezone.utc)
         closed, open_positions = _close_all(open_positions, book, final_time, "end_of_replay", config)
@@ -266,6 +268,7 @@ def replay_recording_to_settlement(
 
         if event == "session_started":
             market = _market_from_record(row["market"])
+            # Repository recordings use one ticker per WebSocket subscription.
             cache = KalshiBookCache(market.ticker, validate_sequence=True)
             continue
 
@@ -364,6 +367,7 @@ def replay_cf_final_window(config: CFDecisionConfig) -> CFDecisionResult:
 
         if event == "session_started":
             market = _market_from_record(row["market"])
+            # Repository recordings use one ticker per WebSocket subscription.
             cache = KalshiBookCache(market.ticker, validate_sequence=True)
             continue
 
@@ -372,7 +376,7 @@ def replay_cf_final_window(config: CFDecisionConfig) -> CFDecisionResult:
             if isinstance(state, dict):
                 latest_state = state
                 final_side = _final_side_from_cf_state(state) or final_side
-            if market is not None and cache is not None:
+            if market is not None and cache is not None and cache.valid:
                 position = _cf_decision_entry(
                     market=market,
                     book=cache.to_book(),

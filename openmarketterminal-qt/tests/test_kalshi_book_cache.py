@@ -82,6 +82,13 @@ class KalshiBookCacheTest(unittest.TestCase):
         self.assertEqual(cache.no, {})
         self.assertEqual(cache.gap_reason, "subscription sequence gap: expected 11, got 12")
 
+        # An invalidated cache is terminal even if a later frame would happen
+        # to look contiguous. Recovery requires a new connection and instance.
+        with self.assertRaisesRegex(ReconnectRequired, "expected 11, got 12"):
+            cache.apply(snapshot(11, yes=(("0.99", "99"),)))
+        self.assertFalse(cache.valid)
+        self.assertEqual(cache.yes, {})
+
         # Later deltas cannot silently heal a corrupted ladder.
         # The transport must tear down this connection. Recovery is a new
         # cache on a new connection, because re-subscribe yields no snapshot.
@@ -102,9 +109,9 @@ class KalshiBookCacheTest(unittest.TestCase):
 
     def test_multi_market_sequence_is_global_not_per_market(self) -> None:
         cache = KalshiSubscriptionBookCache(("A", "B", "C"))
-        cache.apply(snapshot(1, ticker="A", ts_ms=1000, yes=(("0.40", "2"),)))
-        cache.apply(snapshot(2, ticker="B", ts_ms=1001, yes=(("0.41", "2"),)))
-        cache.apply(snapshot(3, ticker="C", ts_ms=1002, yes=(("0.42", "2"),)))
+        cache.apply(snapshot(1, ticker="A", yes=(("0.40", "2"),)))
+        cache.apply(snapshot(2, ticker="B", yes=(("0.41", "2"),)))
+        cache.apply(snapshot(3, ticker="C", yes=(("0.42", "2"),)))
         cache.apply(delta(4, ticker="C", ts_ms=1003))
         cache.apply(delta(5, ticker="B", ts_ms=1004))
         cache.apply(delta(6, ticker="C", ts_ms=1005))
@@ -114,8 +121,18 @@ class KalshiBookCacheTest(unittest.TestCase):
         self.assertEqual(cache.books["A"].seq, 7)  # 1 -> 7 is valid for market A.
         self.assertEqual(cache.books["B"].seq, 5)
         self.assertEqual(cache.books["C"].seq, 6)
-        self.assertTrue(cache.coherent_within(2))
-        self.assertFalse(cache.coherent_within(1))
+        self.assertEqual(cache.delta_timestamp_span_ms(), 2)
+
+    def test_quiet_snapshot_only_members_are_ready_without_timestamps(self) -> None:
+        cache = KalshiSubscriptionBookCache(("A", "B"))
+        cache.apply(snapshot(1, ticker="A", yes=(("0.01", "100"),)))
+        cache.apply(snapshot(2, ticker="B", yes=(("0.99", "100"),)))
+
+        self.assertTrue(cache.ready)
+        self.assertEqual(set(cache.to_books()), {"A", "B"})
+        self.assertIsNone(cache.books["A"].ts_ms)
+        self.assertIsNone(cache.books["B"].ts_ms)
+        self.assertIsNone(cache.delta_timestamp_span_ms())
 
     def test_control_frame_advances_shared_sequence(self) -> None:
         cache = KalshiSubscriptionBookCache(("A", "B"))
@@ -132,6 +149,14 @@ class KalshiBookCacheTest(unittest.TestCase):
         single.apply(delta(12))
         self.assertTrue(single.valid)
         self.assertEqual(single.seq, 12)
+
+    def test_sequenced_control_before_snapshot_does_not_make_book_ready(self) -> None:
+        cache = KalshiBookCache("BTC", validate_sequence=True)
+        cache.apply(control(1))
+
+        self.assertEqual(cache.seq, 1)
+        self.assertFalse(cache.valid)
+        self.assertEqual(cache.gap_reason, "waiting for orderbook snapshot")
 
     def test_subscription_gap_invalidates_every_market(self) -> None:
         cache = KalshiSubscriptionBookCache(("A", "B"))

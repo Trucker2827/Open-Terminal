@@ -182,7 +182,7 @@ def summarize_cf_liquidity_recording(
         if event == "kalshi" and cache is not None:
             cache.apply(row.get("message") or {})
             continue
-        if event != "cf" or cache is None:
+        if event != "cf" or cache is None or not cache.valid:
             continue
         payload = cf_liquidity_payload(row.get("settlement_state"), cache.to_book(), config)
         summary.add(payload)

@@ -244,6 +244,8 @@ async def _stream_market_window(
         cache.apply(message)
         if message.get("type") not in {"orderbook_snapshot", "orderbook_delta"}:
             continue
+        if not cache.valid:
+            continue
         now_mono = time.monotonic()
         if now_mono < next_eval:
             continue
