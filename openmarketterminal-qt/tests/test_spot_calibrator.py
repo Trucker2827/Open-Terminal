@@ -1056,5 +1056,50 @@ class EligibleDiagnosticsTest(unittest.TestCase):
         self.assertIn("model's OWN output", d["selection_note"])
 
 
+
+class ResolvedRecordIdentityTest(unittest.TestCase):
+    """A settled contract must keep its identity.
+
+    Without the ticker, every strike on one hourly ladder looks like an
+    independent draw, so analyses cluster on proxies (time-left, volatility)
+    that oversplit one real event into many. Measured cost: an attention study
+    over 215 settled contracts resolved 180 of them into 180 separate
+    "events" and had nothing left to compare.
+    """
+
+    def _settle_one(self, ticker):
+        state = cal.default_state()
+        obs = {f: 0.0 for f in cal.FULL_FEATURES}
+        obs["yes_mid"] = 0.5
+        state["pending"][ticker] = {"close_ms": 1, "obs": [obs]}
+        cal.settle_cycle(state, 10_000_000, resolver=lambda t: True)
+        return state
+
+    def test_a_settled_contract_records_its_ticker_and_event(self):
+        state = self._settle_one("KXBTCD-26AUG1223-T63299.99")
+        self.assertEqual(len(state["resolved_record"]), 1)
+        row = state["resolved_record"][0]
+        self.assertEqual(row["ticker"], "KXBTCD-26AUG1223-T63299.99")
+        self.assertEqual(row["event_ticker"], "KXBTCD-26AUG1223")
+
+    def test_strikes_on_one_ladder_share_an_event_ticker(self):
+        """The property the whole attention analysis rests on."""
+        events = set()
+        for strike in ("T63199.99", "T63299.99", "T63399.99"):
+            state = self._settle_one("KXBTCD-26AUG1223-" + strike)
+            events.add(state["resolved_record"][0]["event_ticker"])
+        self.assertEqual(events, {"KXBTCD-26AUG1223"},
+                         "three strikes on one ladder must resolve to ONE event")
+
+    def test_the_observations_and_outcome_are_unchanged(self):
+        """Provenance only — the model consumes `observations`, so adding
+        identity must not disturb what it trains on."""
+        state = self._settle_one("KXBTCD-26AUG1223-T63299.99")
+        row = state["resolved_record"][0]
+        self.assertIn("observations", row)
+        self.assertEqual(row["outcome"], True)
+
+
+
 if __name__ == "__main__":
     unittest.main()

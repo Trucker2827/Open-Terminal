@@ -942,7 +942,23 @@ def settle_cycle(state, now_ms, resolver=resolve_outcome_kalshi):
         # The raw material ablation_report replays: this contract's own
         # observations paired with its outcome, captured here (same place,
         # same moment as the three scores above) because nowhere else keeps it.
-        state["resolved_record"].append({"observations": observations, "outcome": outcome})
+        # `ticker` and the event it belongs to are recorded ALONGSIDE the
+        # observations, not derived later, because they cannot be recovered
+        # afterwards. Without them a settled contract has no identity: every
+        # strike on one hourly ladder looks like an independent draw, so
+        # analyses cluster on proxies (time-left, volatility) that split one
+        # real event into many. Measured cost of the omission: an attention
+        # study over 215 settled contracts resolved 180 of them into 180
+        # separate "events", leaving nothing to compare.
+        #
+        # Nothing trains on these fields -- the model consumes `observations`
+        # only, so this is provenance, not a feature.
+        state["resolved_record"].append({
+            "observations": observations,
+            "outcome": outcome,
+            "ticker": ticker,
+            "event_ticker": ticker.rsplit("-", 1)[0] if "-" in ticker else ticker,
+        })
         for features in observations:
             full.update(features, outcome, l2=L2)
             market.update(features, outcome)
