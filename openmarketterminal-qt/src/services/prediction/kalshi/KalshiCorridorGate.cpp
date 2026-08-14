@@ -384,7 +384,8 @@ QJsonObject KalshiCorridorGate::parse_micro_live_params(const QJsonObject& raw,
         QStringLiteral("max_bundles_per_opportunity"),
         QStringLiteral("max_all_in_per_leg_usd"),
         QStringLiteral("max_scan_age_ms"),
-        QStringLiteral("max_executions_per_hour")};
+        QStringLiteral("max_executions_per_hour"),
+        QStringLiteral("series_policy_sha256")};
     QStringList unknown;
     for (auto it = raw.constBegin(); it != raw.constEnd(); ++it)
         if (!allowed.contains(it.key())) unknown.append(it.key());
@@ -406,6 +407,8 @@ QJsonObject KalshiCorridorGate::parse_micro_live_params(const QJsonObject& raw,
                                kMicroLiveMaxExecutionsPerHour);
     const QJsonValue leg_cap_value = raw.value(QStringLiteral("max_all_in_per_leg_usd"));
     const double leg_cap = leg_cap_value.isDouble() ? leg_cap_value.toDouble() : -1.0;
+    const QString policy_sha = raw.value(QStringLiteral("series_policy_sha256"))
+                                   .toString().trimmed().toLower();
     if (bundles < 0)
         return fail(QStringLiteral("max_bundles_per_opportunity must be a bounded positive integer"));
     if (!std::isfinite(leg_cap) || leg_cap <= 0.0 ||
@@ -415,11 +418,18 @@ QJsonObject KalshiCorridorGate::parse_micro_live_params(const QJsonObject& raw,
         return fail(QStringLiteral("max_scan_age_ms is outside the corridor freshness bounds"));
     if (hourly < 0)
         return fail(QStringLiteral("max_executions_per_hour must be in [1, 5]"));
+    if (policy_sha.size() != 64 ||
+        std::any_of(policy_sha.cbegin(), policy_sha.cend(), [](QChar c) {
+            return !((c >= QLatin1Char('0') && c <= QLatin1Char('9')) ||
+                     (c >= QLatin1Char('a') && c <= QLatin1Char('f')));
+        }))
+        return fail(QStringLiteral("series_policy_sha256 must be lowercase SHA-256"));
     if (error) error->clear();
     return QJsonObject{{QStringLiteral("max_bundles_per_opportunity"), bundles},
                        {QStringLiteral("max_all_in_per_leg_usd"), leg_cap},
                        {QStringLiteral("max_scan_age_ms"), age},
-                       {QStringLiteral("max_executions_per_hour"), hourly}};
+                       {QStringLiteral("max_executions_per_hour"), hourly},
+                       {QStringLiteral("series_policy_sha256"), policy_sha}};
 }
 
 QJsonObject KalshiCorridorGate::preregister_micro_live(
@@ -488,6 +498,28 @@ bool KalshiCorridorGate::permits_micro_live(const QJsonValue& params_record,
     if (certificate.value(QStringLiteral("event_ticker")).toString().isEmpty() ||
         certificate_sha.isEmpty() || canonical_sha256(certificate) != certificate_sha)
         return refuse(QStringLiteral("proposal has no intact reviewed certificate identity"));
+    const QJsonObject policy = scan.value(QStringLiteral("series_policy")).toObject();
+    const QString policy_sha = scan.value(QStringLiteral("series_policy_sha256"))
+                                   .toString().trimmed().toLower();
+    const QJsonObject derivation = certificate.value(QStringLiteral("derivation")).toObject();
+    if (policy.isEmpty() || canonical_sha256(policy) != policy_sha ||
+        policy_sha != params.value(QStringLiteral("series_policy_sha256")).toString() ||
+        policy.value(QStringLiteral("authority")).toString() !=
+            QLatin1String("reviewed_series_policy") ||
+        policy.value(QStringLiteral("family")).toString() != QLatin1String(kFamily) ||
+        policy.value(QStringLiteral("series_ticker")).toString() != QLatin1String("KXBTCD") ||
+        policy.value(QStringLiteral("cadence")).toString() != QLatin1String("hourly") ||
+        policy.value(QStringLiteral("rules_template")).toString() !=
+            QLatin1String("kxbtcd_cf_brti_60s_above_v1") ||
+        !policy.value(QStringLiteral("rules_reviewed")).toBool() ||
+        certificate.value(QStringLiteral("schema_version")).toInt() != 3 ||
+        certificate.value(QStringLiteral("series_ticker")).toString() != QLatin1String("KXBTCD") ||
+        derivation.value(QStringLiteral("kind")).toString() !=
+            QLatin1String("reviewed_series_policy") ||
+        derivation.value(QStringLiteral("series_policy_sha256")).toString() != policy_sha ||
+        derivation.value(QStringLiteral("rules_template")).toString() !=
+            policy.value(QStringLiteral("rules_template")).toString())
+        return refuse(QStringLiteral("proposal is not derived from the sealed reviewed KXBTCD hourly policy"));
     const qint64 received_ms = QDateTime::fromString(
         scan.value(QStringLiteral("received_at")).toString(), Qt::ISODateWithMs).toMSecsSinceEpoch();
     if (received_ms <= 0 || received_ms > now_ms + 5'000 ||

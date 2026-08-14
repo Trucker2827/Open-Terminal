@@ -75,7 +75,9 @@ class KalshiCorridorGate {
     /// Separate authority for REAL micro-live corridor execution. It is never
     /// derived from the paper verdict. A valid seal authorizes at most $2
     /// all-in on EACH leg ($4 for the pair), and every call still requires the
-    /// current fresh certificate-backed opportunity.
+    /// current fresh certificate-backed opportunity. The immutable seal also
+    /// pins the reviewed hourly KXBTCD series-policy SHA-256; a hand-written
+    /// event certificate or a policy-drifted rotation can never satisfy it.
     static QJsonObject parse_micro_live_params(const QJsonObject& raw, QString* error);
     static QJsonObject preregister_micro_live(const QString& path,
                                               const QJsonObject& raw_params,

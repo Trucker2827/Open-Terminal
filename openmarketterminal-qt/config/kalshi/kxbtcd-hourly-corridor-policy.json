@@ -1,0 +1,28 @@
+{
+  "api_strike_type": "greater",
+  "authority": "reviewed_series_policy",
+  "cadence": "hourly",
+  "comparison": "greater_than",
+  "contract_terms_url": "https://assets.kalshi.com/contract_terms/BTC.pdf",
+  "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/BTC.pdf",
+  "family": "btc_threshold_corridor",
+  "maximum_synchronized_markets": 100,
+  "minimum_ask_price": "0.01",
+  "reviewed_at": "2026-08-14T00:53:35.960526+00:00",
+  "reviewed_reference_event": "KXBTCD-26AUG1321",
+  "rules_reviewed": true,
+  "rules_secondary": "Not all cryptocurrency price data is the same. While checking a source like Google or Coinbase may help guide your decision, the price used to determine this market is based on CF Benchmarks' corresponding Real Time Index (RTI). At the last minute before expiration, 60 RTI prices are collected. The official and final value is the average of these prices.",
+  "rules_template": "kxbtcd_cf_brti_60s_above_v1",
+  "schema_version": 1,
+  "selection": "middle_by_strike",
+  "series_frequency": "hourly",
+  "series_ticker": "KXBTCD",
+  "settlement_sources": [
+    {
+      "name": "CF Benchmarks",
+      "url": "https://www.cfbenchmarks.com/data/indices/BRTI?ref=blog.cfbenchmarks.com"
+    }
+  ],
+  "settlement_time_field": "close_time",
+  "settlement_timer_seconds": 60
+}

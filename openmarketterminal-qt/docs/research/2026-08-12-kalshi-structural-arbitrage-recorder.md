@@ -150,9 +150,11 @@ Illustrative schema (hashes and tickers are placeholders, not certification):
 }
 ```
 
-New live corridor certificates must use schema version 2, which binds both the
-reviewed event and its series.  Replay remains read-only compatible with
-previously recorded version 1 evidence so an upgrade does not erase historical
+Manually reviewed live corridor certificates use schema version 2, which binds
+both the reviewed event and its series. Policy-derived hourly certificates use
+schema version 3 and additionally bind the reviewed series-policy SHA-256 and
+named rules template. Replay remains read-only compatible with previously
+recorded version 1 evidence so an upgrade does not erase historical
 measurements; version 1 certificates cannot authorize a new live scan.
 
 One scan fetches the ladder's books in a single batch, enumerates every
@@ -172,6 +174,47 @@ python3 scripts/kalshi_structural_arb.py corridor-record reviewed-btc-ladder.jso
 `corridor-record` defaults to the application evidence file
 `kalshi-btc-threshold-corridor.jsonl`, so the Bot Cockpit can render the latest
 scan. `--out` remains available for an isolated experiment.
+
+### Unattended hourly certificate rotation
+
+The reviewed policy at
+`config/kalshi/kxbtcd-hourly-corridor-policy.json` replaces daily manual event
+approval without turning the series ticker into blanket trust. It accepts only
+KXBTCD events whose cadence, CF Benchmarks source, strict `greater` operator,
+exact 60-second-average rule prose, $1 binary payout, settlement timing, price
+grid and every active market reproduce the reviewed template. Any drift is
+written to rotation status and produces no certificate.
+
+```bash
+python3 scripts/kalshi_structural_arb.py corridor-rotate \
+  config/kalshi/kxbtcd-hourly-corridor-policy.json \
+  --seconds 21600 --poll-seconds 10 --quantity 2 \
+  --execution-buffer 0.01 --min-net-edge 0.01
+```
+
+The service discovers only open KXBTCD events, keeps the current and next
+hourly expirations active together when both are published, and writes
+`kalshi-btc-corridor-rotation-status.json`. An hourly ladder currently has 188
+strikes while Kalshi's synchronized batch endpoint accepts at most 100. The
+policy therefore validates all 188 settlement contracts, then certifies one
+deterministic contiguous 100-strike middle window. It never combines two
+sequential book calls and presents them as one executable snapshot.
+
+The rotating service evaluates all 4,950 pairs in that 100-strike window but
+stores only rows that are actual opportunities. The record retains the raw
+books, fees, certificate, full `pairs_evaluated` count and summary state;
+`corridor-replay` reconstructs the complete matrix before applying the same
+projection. This keeps ordinary no-edge scans below the multi-megabyte size of
+the full research format without weakening deterministic verification.
+The live file rotates before 64 MiB and keeps one previous generation, bounding
+this diagnostic feed near 128 MiB. The immutable bot decision ledger remains a
+separate keep-all-generations record.
+
+Micro-live authorization pins `series_policy_sha256` inside its own immutable
+seal. A schema-v2 hand-written certificate, a different locally generated
+policy, or any scan whose embedded policy/certificate hashes disagree is
+refused. The paper and micro-live loops each consider the newest scan for every
+overlapped event rather than silently acting only on the last JSONL row.
 
 The corridor has its own immutable sealed gate; the directional bot gate is
 not authority for this strategy:

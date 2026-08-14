@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -13,15 +14,21 @@ from openterminal_paths import evidence_file
 from kalshi_microstructure.auth import DEFAULT_KEYS_PATH, load_credentials
 from kalshi_microstructure.kalshi import KalshiRestClient
 from kalshi_microstructure.structural_arb import (
+    BtcCorridorSeriesPolicy,
     collect_corridor_snapshot,
     collect_snapshot,
+    derive_corridor_certificate,
     discover_candidates,
     load_certificate,
     load_corridor_certificate,
+    load_corridor_series_policy,
     ReadOnlyKalshiClient,
     record_corridor_snapshots,
     record_snapshots,
+    reviewed_kxbtcd_series_policy_payload,
     replay_evidence,
+    rotate_corridor_snapshots,
+    validate_corridor_series_metadata,
 )
 
 
@@ -82,6 +89,31 @@ def main(argv: list[str] | None = None) -> int:
         help="Evidence JSONL (default: Bot Cockpit evidence directory).",
     )
 
+    policy_create = commands.add_parser(
+        "corridor-policy-create",
+        help="Validate a reviewed hourly KXBTCD reference and write one immutable series policy.",
+    )
+    policy_create.add_argument("reference_event")
+    policy_create.add_argument("--out", required=True)
+
+    corridor_rotate = commands.add_parser(
+        "corridor-rotate",
+        help="Derive and overlap hourly event certificates under a reviewed series policy.",
+    )
+    corridor_rotate.add_argument("policy")
+    corridor_rotate.add_argument("--quantity", default="1")
+    corridor_rotate.add_argument("--execution-buffer", default="0.01")
+    corridor_rotate.add_argument("--min-net-edge", default="0.01")
+    corridor_rotate.add_argument("--seconds", type=float, default=3600.0)
+    corridor_rotate.add_argument("--poll-seconds", type=float, default=10.0)
+    corridor_rotate.add_argument("--max-evidence-bytes", type=int, default=64 * 1024 * 1024)
+    corridor_rotate.add_argument(
+        "--out", default=evidence_file("kalshi-btc-threshold-corridor.jsonl")
+    )
+    corridor_rotate.add_argument(
+        "--status-out", default=evidence_file("kalshi-btc-corridor-rotation-status.json")
+    )
+
     replay = commands.add_parser("replay", help="Recompute and audit recorded evidence.")
     replay.add_argument("path")
 
@@ -119,6 +151,53 @@ def main(argv: list[str] | None = None) -> int:
             }, indent=2, sort_keys=True))
             return 2
         print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+    if args.command == "corridor-policy-create":
+        output = Path(args.out)
+        if output.exists():
+            print(json.dumps({"status": "refused", "error": "policy already exists"}, indent=2))
+            return 3
+        client = ReadOnlyKalshiClient(KalshiRestClient(env=args.env))
+        reviewed_at = datetime.now(timezone.utc).isoformat()
+        try:
+            payload = reviewed_kxbtcd_series_policy_payload(
+                reviewed_at=reviewed_at, reviewed_reference_event=args.reference_event
+            )
+            policy = BtcCorridorSeriesPolicy.from_payload(payload)
+            validate_corridor_series_metadata(
+                policy, client.get_series(policy.series_ticker)
+            )
+            event = client.get_event(args.reference_event, with_nested_markets=True)
+            certificate = derive_corridor_certificate(policy, event)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            with output.open("x", encoding="utf-8") as handle:
+                handle.write(json.dumps(policy.payload(), indent=2, sort_keys=True) + "\n")
+        except Exception as exc:  # noqa: BLE001 - never write a partial authority.
+            print(json.dumps({"status": "refused", "error": f"{type(exc).__name__}: {exc}"}, indent=2))
+            return 2
+        print(json.dumps({
+            "status": "created", "path": str(output),
+            "series_policy_sha256": policy.digest,
+            "reference_certificate_sha256": certificate.digest,
+            "reference_markets": len(certificate.members),
+        }, indent=2, sort_keys=True))
+        return 0
+    if args.command == "corridor-rotate":
+        client = ReadOnlyKalshiClient(KalshiRestClient(env=args.env))
+        try:
+            policy = load_corridor_series_policy(Path(args.policy))
+            scans = rotate_corridor_snapshots(
+                client, policy, out=Path(args.out), status_out=Path(args.status_out),
+                seconds=args.seconds, poll_seconds=args.poll_seconds,
+                quantity=Decimal(args.quantity),
+                execution_buffer_per_contract=Decimal(args.execution_buffer),
+                min_net_edge_per_bundle=Decimal(args.min_net_edge),
+                max_evidence_bytes=args.max_evidence_bytes,
+            )
+        except Exception as exc:  # noqa: BLE001 - no false-success service exit.
+            print(json.dumps({"status": "unavailable", "error": f"{type(exc).__name__}: {exc}"}, indent=2))
+            return 2
+        print(f"recorded {scans} policy-derived BTC corridor scans to {args.out}")
         return 0
     # Only read methods are exposed to the scanner. There is no facade method
     # for create_order/cancel_order and no bot/execution module import.

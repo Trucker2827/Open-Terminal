@@ -11,13 +11,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_CEILING
 from itertools import combinations
 from pathlib import Path
 from typing import Any, Mapping
+from zoneinfo import ZoneInfo
 
 from .kalshi import KalshiRestClient
 from .models import BinaryBook, Level, Market
@@ -25,11 +27,30 @@ from .models import BinaryBook, Level, Market
 
 SCHEMA_VERSION = 1
 CORRIDOR_SCHEMA_VERSION = 2
+CORRIDOR_DERIVED_SCHEMA_VERSION = 3
+CORRIDOR_SERIES_POLICY_SCHEMA_VERSION = 1
 CENT = Decimal("0.01")
 ONE = Decimal("1")
 ZERO = Decimal("0")
 GENERAL_TAKER_RATE = Decimal("0.07")
 BTC_THRESHOLD_CORRIDOR_FAMILY = "btc_threshold_corridor"
+KXBTCD_SERIES = "KXBTCD"
+KXBTCD_HOURLY_RULES_TEMPLATE = "kxbtcd_cf_brti_60s_above_v1"
+KXBTCD_RULES_SECONDARY = (
+    "Not all cryptocurrency price data is the same. While checking a source like Google "
+    "or Coinbase may help guide your decision, the price used to determine this market is "
+    "based on CF Benchmarks' corresponding Real Time Index (RTI). At the last minute before "
+    "expiration, 60 RTI prices are collected. The official and final value is the average "
+    "of these prices."
+)
+KXBTCD_SETTLEMENT_SOURCES = [{
+    "name": "CF Benchmarks",
+    "url": "https://www.cfbenchmarks.com/data/indices/BRTI?ref=blog.cfbenchmarks.com",
+}]
+KXBTCD_CONTRACT_TERMS_URL = "https://assets.kalshi.com/contract_terms/BTC.pdf"
+KXBTCD_CONTRACT_URL = "https://assets.kalshi.com/regulatory/product-certifications/BTC.pdf"
+MAX_SYNCHRONIZED_CORRIDOR_MARKETS = 100
+ROTATING_EVIDENCE_MAX_BYTES = 64 * 1024 * 1024
 CORRIDOR_COMPARISONS = {"greater_than", "greater_than_or_equal"}
 API_STRIKE_COMPARISONS = {
     "greater": "greater_than",
@@ -82,13 +103,14 @@ class ReadOnlyKalshiClient:
     def get_events(
         self,
         *,
+        series_ticker: str | None = None,
         status: str = "open",
         limit: int = 200,
         cursor: str | None = None,
         with_nested_markets: bool = True,
     ) -> tuple[list[dict[str, Any]], str | None]:
         return self.client.get_events(
-            status=status,
+            series_ticker=series_ticker, status=status,
             limit=limit,
             cursor=cursor,
             with_nested_markets=with_nested_markets,
@@ -114,6 +136,24 @@ def _decimal(value: Any, field: str) -> Decimal:
     if not result.is_finite():
         raise ValueError(f"{field} must be finite")
     return result
+
+
+def _parse_utc(value: Any, field: str) -> datetime:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"{field} is required")
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field} must be ISO-8601") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must include a timezone")
+    return parsed.astimezone(timezone.utc)
+
+
+def _canonical_digest(value: Any) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -306,6 +346,192 @@ class CorridorMember:
 
 
 @dataclass(frozen=True)
+class BtcCorridorSeriesPolicy:
+    """Human-reviewed authority for deriving one KXBTCD hourly certificate.
+
+    The policy is intentionally narrower than a series ticker.  A future
+    event is accepted only when its source, cadence, binary payout fields,
+    price grid, strike operator, rule prose and settlement timing reproduce
+    this reviewed template exactly.
+    """
+
+    schema_version: int
+    series_ticker: str
+    reviewed_at: str
+    reviewed_reference_event: str
+    rules_template: str
+    rules_secondary: str
+    settlement_sources: tuple[tuple[str, str], ...]
+    comparison: str
+    api_strike_type: str
+    settlement_time_field: str
+    minimum_ask_price: Decimal
+    settlement_timer_seconds: int
+    maximum_synchronized_markets: int
+    selection: str
+    cadence: str
+    contract_terms_url: str
+    contract_url: str
+    series_frequency: str
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "BtcCorridorSeriesPolicy":
+        if payload.get("schema_version") != CORRIDOR_SERIES_POLICY_SCHEMA_VERSION:
+            raise ValueError("series policy schema_version must be 1")
+        if payload.get("family") != BTC_THRESHOLD_CORRIDOR_FAMILY:
+            raise ValueError(f"series policy family must be {BTC_THRESHOLD_CORRIDOR_FAMILY}")
+        if payload.get("authority") != "reviewed_series_policy":
+            raise ValueError("series policy authority must be reviewed_series_policy")
+        if payload.get("rules_reviewed") is not True:
+            raise ValueError("series policy rules_reviewed must be explicitly true")
+        series_ticker = str(payload.get("series_ticker") or "").strip()
+        reviewed_at = str(payload.get("reviewed_at") or "").strip()
+        reference = str(payload.get("reviewed_reference_event") or "").strip()
+        rules_template = str(payload.get("rules_template") or "").strip()
+        rules_secondary = str(payload.get("rules_secondary") or "")
+        comparison = str(payload.get("comparison") or "").strip().lower()
+        strike_type = str(payload.get("api_strike_type") or "").strip().lower()
+        time_field = str(payload.get("settlement_time_field") or "").strip()
+        cadence = str(payload.get("cadence") or "").strip().lower()
+        contract_terms_url = str(payload.get("contract_terms_url") or "").strip()
+        contract_url = str(payload.get("contract_url") or "").strip()
+        series_frequency = str(payload.get("series_frequency") or "").strip().lower()
+        selection = str(payload.get("selection") or "").strip()
+        minimum = _decimal(payload.get("minimum_ask_price"), "minimum_ask_price")
+        timer = payload.get("settlement_timer_seconds")
+        maximum = payload.get("maximum_synchronized_markets")
+        sources_raw = payload.get("settlement_sources")
+        if series_ticker != KXBTCD_SERIES:
+            raise ValueError(f"automatic corridor rotation supports only {KXBTCD_SERIES}")
+        _parse_utc(reviewed_at, "reviewed_at")
+        if not reference:
+            raise ValueError("reviewed_reference_event is required")
+        if rules_template != KXBTCD_HOURLY_RULES_TEMPLATE:
+            raise ValueError("unrecognized KXBTCD rules template")
+        if rules_secondary != KXBTCD_RULES_SECONDARY:
+            raise ValueError("rules_secondary differs from the reviewed KXBTCD template")
+        if comparison != "greater_than" or strike_type != "greater":
+            raise ValueError("series policy must preserve strict greater-than thresholds")
+        if time_field != "close_time" or cadence != "hourly":
+            raise ValueError("series policy must preserve hourly close_time settlement")
+        if (contract_terms_url != KXBTCD_CONTRACT_TERMS_URL or
+                contract_url != KXBTCD_CONTRACT_URL or series_frequency != "hourly"):
+            raise ValueError("series policy contract documents or frequency drifted")
+        if minimum != CENT or timer != 60:
+            raise ValueError("series policy must preserve cent grid and 60-second average")
+        if maximum != MAX_SYNCHRONIZED_CORRIDOR_MARKETS:
+            raise ValueError("series policy must use the synchronized 100-market API limit")
+        if selection != "middle_by_strike":
+            raise ValueError("series policy requires deterministic middle_by_strike selection")
+        if not isinstance(sources_raw, list):
+            raise ValueError("settlement_sources must be a list")
+        sources = tuple(
+            (str(source.get("name") or ""), str(source.get("url") or ""))
+            for source in sources_raw if isinstance(source, Mapping)
+        )
+        expected_sources = tuple((row["name"], row["url"]) for row in KXBTCD_SETTLEMENT_SOURCES)
+        if sources != expected_sources:
+            raise ValueError("settlement_sources differ from the reviewed CF Benchmarks source")
+        return cls(
+            schema_version=CORRIDOR_SERIES_POLICY_SCHEMA_VERSION,
+            series_ticker=series_ticker, reviewed_at=reviewed_at,
+            reviewed_reference_event=reference, rules_template=rules_template,
+            rules_secondary=rules_secondary, settlement_sources=sources,
+            comparison=comparison, api_strike_type=strike_type,
+            settlement_time_field=time_field, minimum_ask_price=minimum,
+            settlement_timer_seconds=timer, maximum_synchronized_markets=maximum,
+            selection=selection, cadence=cadence,
+            contract_terms_url=contract_terms_url, contract_url=contract_url,
+            series_frequency=series_frequency,
+        )
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+            "authority": "reviewed_series_policy",
+            "rules_reviewed": True,
+            "series_ticker": self.series_ticker,
+            "cadence": self.cadence,
+            "series_frequency": self.series_frequency,
+            "contract_terms_url": self.contract_terms_url,
+            "contract_url": self.contract_url,
+            "reviewed_at": self.reviewed_at,
+            "reviewed_reference_event": self.reviewed_reference_event,
+            "rules_template": self.rules_template,
+            "rules_secondary": self.rules_secondary,
+            "settlement_sources": [
+                {"name": name, "url": url} for name, url in self.settlement_sources
+            ],
+            "comparison": self.comparison,
+            "api_strike_type": self.api_strike_type,
+            "settlement_time_field": self.settlement_time_field,
+            "minimum_ask_price": str(self.minimum_ask_price),
+            "settlement_timer_seconds": self.settlement_timer_seconds,
+            "maximum_synchronized_markets": self.maximum_synchronized_markets,
+            "selection": self.selection,
+        }
+
+    @property
+    def digest(self) -> str:
+        return _canonical_digest(self.payload())
+
+
+def load_corridor_series_policy(path: Path) -> BtcCorridorSeriesPolicy:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("corridor series policy root must be an object")
+    return BtcCorridorSeriesPolicy.from_payload(payload)
+
+
+def reviewed_kxbtcd_series_policy_payload(
+    *, reviewed_at: str, reviewed_reference_event: str
+) -> dict[str, object]:
+    """Return the fixed policy shape a human may review and persist."""
+    payload = {
+        "schema_version": CORRIDOR_SERIES_POLICY_SCHEMA_VERSION,
+        "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+        "authority": "reviewed_series_policy",
+        "rules_reviewed": True,
+        "series_ticker": KXBTCD_SERIES,
+        "cadence": "hourly",
+        "series_frequency": "hourly",
+        "contract_terms_url": KXBTCD_CONTRACT_TERMS_URL,
+        "contract_url": KXBTCD_CONTRACT_URL,
+        "reviewed_at": reviewed_at,
+        "reviewed_reference_event": reviewed_reference_event,
+        "rules_template": KXBTCD_HOURLY_RULES_TEMPLATE,
+        "rules_secondary": KXBTCD_RULES_SECONDARY,
+        "settlement_sources": KXBTCD_SETTLEMENT_SOURCES,
+        "comparison": "greater_than",
+        "api_strike_type": "greater",
+        "settlement_time_field": "close_time",
+        "minimum_ask_price": "0.01",
+        "settlement_timer_seconds": 60,
+        "maximum_synchronized_markets": MAX_SYNCHRONIZED_CORRIDOR_MARKETS,
+        "selection": "middle_by_strike",
+    }
+    return BtcCorridorSeriesPolicy.from_payload(payload).payload()
+
+
+def validate_corridor_series_metadata(
+    policy: BtcCorridorSeriesPolicy, series: Mapping[str, Any]
+) -> None:
+    if str(series.get("ticker") or "") != policy.series_ticker:
+        raise ValueError("series ticker drifted")
+    if str(series.get("frequency") or "").lower() != policy.series_frequency:
+        raise ValueError("series frequency drifted")
+    if str(series.get("contract_terms_url") or "") != policy.contract_terms_url:
+        raise ValueError("series contract terms URL drifted")
+    if str(series.get("contract_url") or "") != policy.contract_url:
+        raise ValueError("series product certification URL drifted")
+    if series.get("settlement_sources") != [
+        {"name": name, "url": url} for name, url in policy.settlement_sources
+    ]:
+        raise ValueError("series settlement source drifted")
+
+
+@dataclass(frozen=True)
 class BtcThresholdCorridorCertificate:
     """Reviewed BTC threshold ladder; never inferred from market titles."""
 
@@ -320,6 +546,8 @@ class BtcThresholdCorridorCertificate:
     reviewed_at: str
     minimum_ask_price: Decimal
     members: tuple[CorridorMember, ...]
+    series_policy_sha256: str = ""
+    rules_template: str = ""
 
     @classmethod
     def from_payload(
@@ -327,9 +555,9 @@ class BtcThresholdCorridorCertificate:
     ) -> "BtcThresholdCorridorCertificate":
         schema_version = payload.get("schema_version")
         supported_versions = (
-            {SCHEMA_VERSION, CORRIDOR_SCHEMA_VERSION}
+            {SCHEMA_VERSION, CORRIDOR_SCHEMA_VERSION, CORRIDOR_DERIVED_SCHEMA_VERSION}
             if allow_legacy
-            else {CORRIDOR_SCHEMA_VERSION}
+            else {CORRIDOR_SCHEMA_VERSION, CORRIDOR_DERIVED_SCHEMA_VERSION}
         )
         if schema_version not in supported_versions:
             raise ValueError(f"schema_version must be {CORRIDOR_SCHEMA_VERSION}")
@@ -349,6 +577,19 @@ class BtcThresholdCorridorCertificate:
         settlement_time = str(payload.get("settlement_time") or "").strip()
         reviewed_at = str(payload.get("reviewed_at") or "").strip()
         minimum_ask_price = _decimal(payload.get("minimum_ask_price"), "minimum_ask_price")
+        derivation = payload.get("derivation")
+        series_policy_sha256 = ""
+        rules_template = ""
+        if schema_version == CORRIDOR_DERIVED_SCHEMA_VERSION:
+            if not isinstance(derivation, Mapping) or derivation.get("kind") != "reviewed_series_policy":
+                raise ValueError("derived certificates require reviewed_series_policy derivation")
+            series_policy_sha256 = str(derivation.get("series_policy_sha256") or "").strip()
+            rules_template = str(derivation.get("rules_template") or "").strip()
+            if (len(series_policy_sha256) != 64 or
+                    any(c not in "0123456789abcdef" for c in series_policy_sha256)):
+                raise ValueError("series_policy_sha256 must be lowercase SHA-256")
+            if not rules_template:
+                raise ValueError("derived certificate requires rules_template")
         if underlier != "BTC":
             raise ValueError("underlier must be BTC")
         if (
@@ -405,6 +646,8 @@ class BtcThresholdCorridorCertificate:
             reviewed_at=reviewed_at,
             minimum_ask_price=minimum_ask_price,
             members=tuple(sorted(members, key=lambda member: member.strike)),
+            series_policy_sha256=series_policy_sha256,
+            rules_template=rules_template,
         )
 
     @property
@@ -475,6 +718,12 @@ class BtcThresholdCorridorCertificate:
         }
         if self.schema_version >= CORRIDOR_SCHEMA_VERSION:
             payload["series_ticker"] = self.series_ticker
+        if self.schema_version >= CORRIDOR_DERIVED_SCHEMA_VERSION:
+            payload["derivation"] = {
+                "kind": "reviewed_series_policy",
+                "series_policy_sha256": self.series_policy_sha256,
+                "rules_template": self.rules_template,
+            }
         return payload
 
     @property
@@ -487,6 +736,124 @@ def load_corridor_certificate(path: Path) -> BtcThresholdCorridorCertificate:
     if not isinstance(payload, dict):
         raise ValueError("corridor certificate root must be an object")
     return BtcThresholdCorridorCertificate.from_payload(payload)
+
+
+def _kxbtcd_primary_rule(strike: Decimal, close: datetime) -> str:
+    local = close.astimezone(ZoneInfo("America/New_York"))
+    hour = local.strftime("%I").lstrip("0") or "12"
+    minute = local.strftime("%M")
+    clock = f"{hour} {local.strftime('%p %Z')}" if minute == "00" else (
+        f"{hour}:{minute} {local.strftime('%p %Z')}"
+    )
+    date = local.strftime("%b %d, %Y").replace(" 0", " ")
+    strike_text = format(strike, "f")
+    return (
+        "If the simple average of the sixty seconds of CF Benchmarks' Bitcoin "
+        f"Real-Time Index (BRTI) before {clock} is above {strike_text} at {clock} "
+        f"on {date}, then the market resolves to Yes."
+    )
+
+
+def _select_synchronized_members(markets: list[Market], maximum: int) -> list[Market]:
+    ordered = sorted(markets, key=lambda market: _market_floor_strike(market.raw) or ZERO)
+    if len(ordered) <= maximum:
+        return ordered
+    # A contiguous middle window is deterministic without consuming an
+    # unauthenticated spot feed. It contains the exchange ladder's finest,
+    # most tradeable center while keeping one synchronized batch request.
+    start = (len(ordered) - maximum) // 2
+    return ordered[start:start + maximum]
+
+
+def derive_corridor_certificate(
+    policy: BtcCorridorSeriesPolicy,
+    event: Mapping[str, Any],
+) -> BtcThresholdCorridorCertificate:
+    """Derive one event certificate, or reject on any semantic drift."""
+    event_ticker = str(event.get("event_ticker") or "").strip()
+    if not event_ticker or str(event.get("series_ticker") or "") != policy.series_ticker:
+        raise ValueError("event does not belong to the reviewed KXBTCD series")
+    if event.get("product_metadata") != {"cadence": policy.cadence}:
+        raise ValueError("event cadence or product metadata drifted")
+    if event.get("settlement_sources") != [
+        {"name": name, "url": url} for name, url in policy.settlement_sources
+    ]:
+        raise ValueError("event settlement source drifted")
+    if event.get("collateral_return_type") != "DIRECNET":
+        raise ValueError("event collateral return type drifted")
+    close = _parse_utc(event.get("strike_date"), "event strike_date")
+    raw_markets = event.get("markets")
+    if not isinstance(raw_markets, list):
+        raise ValueError("event has no nested markets")
+    markets = [
+        Market.from_api(raw) for raw in raw_markets
+        if isinstance(raw, dict) and str(raw.get("status") or "").lower() in {"active", "open"}
+    ]
+    if len(markets) < 2:
+        raise ValueError("hourly event has fewer than two open thresholds")
+    strikes: set[Decimal] = set()
+    tickers: set[str] = set()
+    for market in markets:
+        raw = market.raw
+        strike = _market_floor_strike(raw)
+        if strike is None or strike <= ZERO or strike in strikes:
+            raise ValueError("hourly event contains a missing or duplicate positive strike")
+        expected_ticker = f"{event_ticker}-T{format(strike, 'f')}"
+        if market.ticker != expected_ticker or market.ticker in tickers:
+            raise ValueError("market ticker is not the reviewed event/strike identity")
+        if str(raw.get("event_ticker") or "") != event_ticker:
+            raise ValueError("nested market event identity drifted")
+        if _market_api_strike_type(raw) != policy.api_strike_type:
+            raise ValueError("market strike operator drifted")
+        if str(raw.get(policy.settlement_time_field) or "") != event.get("strike_date"):
+            raise ValueError("market close_time differs from the event settlement time")
+        if raw.get("market_type") != "binary" or str(raw.get("notional_value_dollars")) != "1.0000":
+            raise ValueError("market is no longer an ordinary one-dollar binary")
+        if raw.get("settlement_timer_seconds") != policy.settlement_timer_seconds:
+            raise ValueError("market settlement averaging window drifted")
+        if raw.get("can_close_early") is not True:
+            raise ValueError("market early-close contract field drifted")
+        if market_minimum_ask_price(raw) != policy.minimum_ask_price:
+            raise ValueError("market price grid drifted")
+        if str(raw.get("rules_secondary") or "") != policy.rules_secondary:
+            raise ValueError("market secondary settlement rule drifted")
+        if str(raw.get("rules_primary") or "") != _kxbtcd_primary_rule(strike, close):
+            raise ValueError("market primary settlement rule differs from reviewed template")
+        if _parse_utc(raw.get("expected_expiration_time"), "expected_expiration_time") != close + timedelta(minutes=5):
+            raise ValueError("market expected expiration relation drifted")
+        if _parse_utc(raw.get("expiration_time"), "expiration_time") != close + timedelta(days=7):
+            raise ValueError("market expiration relation drifted")
+        if _parse_utc(raw.get("latest_expiration_time"), "latest_expiration_time") != close + timedelta(days=7):
+            raise ValueError("market latest expiration relation drifted")
+        strikes.add(strike)
+        tickers.add(market.ticker)
+
+    selected = _select_synchronized_members(markets, policy.maximum_synchronized_markets)
+    return BtcThresholdCorridorCertificate.from_payload({
+        "schema_version": CORRIDOR_DERIVED_SCHEMA_VERSION,
+        "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+        "underlier": "BTC",
+        "rules_reviewed": True,
+        "ordinary_binary_payouts_only": True,
+        "event_ticker": event_ticker,
+        "series_ticker": policy.series_ticker,
+        "comparison": policy.comparison,
+        "api_strike_type": policy.api_strike_type,
+        "settlement_time_field": policy.settlement_time_field,
+        "settlement_time": str(event.get("strike_date")),
+        "reviewed_at": policy.reviewed_at,
+        "minimum_ask_price": str(policy.minimum_ask_price),
+        "derivation": {
+            "kind": "reviewed_series_policy",
+            "series_policy_sha256": policy.digest,
+            "rules_template": policy.rules_template,
+        },
+        "markets": [{
+            "ticker": market.ticker,
+            "strike": str(_market_floor_strike(market.raw)),
+            "terms_sha256": settlement_terms_sha256(market.raw),
+        } for market in selected],
+    })
 
 
 @dataclass(frozen=True)
@@ -572,11 +939,6 @@ def load_certificate(path: Path) -> PayoffCertificate:
     if not isinstance(payload, dict):
         raise ValueError("certificate root must be an object")
     return PayoffCertificate.from_payload(payload)
-
-
-def _canonical_digest(payload: Mapping[str, Any]) -> str:
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def _market_api_strike_type(payload: Mapping[str, Any]) -> str:
@@ -733,6 +1095,31 @@ def evaluate_corridor_family(
         "opportunities": opportunities,
         "pairs": rows,
     }
+
+
+def compact_corridor_evaluation(evaluation: Mapping[str, Any]) -> dict[str, object]:
+    """Keep the proof summary and executable rows, not every rejected pair.
+
+    A 100-member certificate evaluates 4,950 pairs.  Persisting every rejected
+    row made one ordinary no-edge scan several megabytes.  The rotating service
+    still evaluates all pairs and records ``pairs_evaluated``; it retains every
+    opportunity because those are the only rows consumed by paper/micro-live
+    execution.  Replay recomputes the full matrix before applying this exact
+    projection, so compaction cannot turn a partial evaluation into a match.
+    """
+    result = dict(evaluation)
+    pairs = evaluation.get("pairs")
+    if not isinstance(pairs, list):
+        raise ValueError("corridor evaluation pairs must be a list")
+    opportunities = [
+        pair for pair in pairs
+        if isinstance(pair, Mapping)
+        and isinstance(pair.get("evaluation"), Mapping)
+        and pair["evaluation"].get("state") == "opportunity"
+    ]
+    result["pairs"] = opportunities
+    result["pairs_returned"] = len(opportunities)
+    return result
 
 
 def discovery_row(event: Mapping[str, Any], *, observed_at: str) -> dict[str, object]:
@@ -937,6 +1324,12 @@ def _book_payload(book: BinaryBook) -> dict[str, object]:
     return {"ticker": book.ticker, "yes_bids": levels(book.yes_bids), "no_bids": levels(book.no_bids)}
 
 
+def _corridor_market_evidence_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Persist only fields used to revalidate a certified corridor market."""
+    fields = set(SETTLEMENT_TERM_FIELDS) | {"status"}
+    return {field: payload.get(field) for field in sorted(fields)}
+
+
 def _book_from_payload(payload: Mapping[str, Any]) -> BinaryBook:
     def levels(key: str) -> tuple[Level, ...]:
         raw = payload.get(key)
@@ -1044,9 +1437,11 @@ def collect_corridor_snapshot(
     client: Any,
     certificate: BtcThresholdCorridorCertificate,
     *,
+    series_policy: BtcCorridorSeriesPolicy | None = None,
     quantity: Decimal = ONE,
     execution_buffer_per_contract: Decimal = ZERO,
     min_net_edge_per_bundle: Decimal = ZERO,
+    compact_evaluation: bool = False,
 ) -> dict[str, object]:
     """Collect one synchronized snapshot for the certified corridor family."""
     requested_at = datetime.now(timezone.utc)
@@ -1101,7 +1496,9 @@ def collect_corridor_snapshot(
             min_net_edge_per_bundle=min_net_edge_per_bundle,
         )
     )
-    return {
+    if compact_evaluation:
+        evaluation = compact_corridor_evaluation(evaluation)
+    row = {
         "schema_version": SCHEMA_VERSION,
         "event": "kalshi_btc_threshold_corridor_scan",
         "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
@@ -1115,12 +1512,167 @@ def collect_corridor_snapshot(
         "execution_buffer_per_contract": str(execution_buffer_per_contract),
         "min_net_edge_per_bundle": str(min_net_edge_per_bundle),
         "collection_error": unavailable_reason or None,
-        "markets": {ticker: market.raw for ticker, market in markets.items()},
+        "markets": {
+            ticker: (
+                _corridor_market_evidence_payload(market.raw)
+                if compact_evaluation else market.raw
+            )
+            for ticker, market in markets.items()
+            if not compact_evaluation or ticker in certificate.tickers
+        },
         "series": series_payloads,
         "fees": {ticker: schedule.payload() for ticker, schedule in schedules.items()},
         "books": {ticker: _book_payload(book) for ticker, book in books.items()},
         "evaluation": evaluation,
     }
+    if compact_evaluation:
+        row["evaluation_storage"] = "opportunities_only"
+    if series_policy is not None:
+        if certificate.series_policy_sha256 != series_policy.digest:
+            raise ValueError("derived certificate does not belong to supplied series policy")
+        row["series_policy"] = series_policy.payload()
+        row["series_policy_sha256"] = series_policy.digest
+    return row
+
+
+def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _append_rotating_jsonl_rows(
+    path: Path, rows: list[Mapping[str, Any]], max_bytes: int
+) -> None:
+    """Append one cycle while retaining a bounded current + previous window."""
+    if max_bytes <= 0:
+        raise ValueError("max evidence bytes must be positive")
+    if not rows:
+        return
+    encoded = "".join(
+        json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n"
+        for row in rows
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.stat().st_size + len(encoded.encode("utf-8")) > max_bytes:
+        previous = path.with_name(path.name + ".1")
+        previous.unlink(missing_ok=True)
+        os.replace(path, previous)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(encoded)
+        handle.flush()
+
+
+def _append_rotating_jsonl(path: Path, row: Mapping[str, Any], max_bytes: int) -> None:
+    _append_rotating_jsonl_rows(path, [row], max_bytes)
+
+
+def rotate_corridor_snapshots(
+    client: Any,
+    policy: BtcCorridorSeriesPolicy,
+    *,
+    out: Path,
+    status_out: Path,
+    seconds: float,
+    poll_seconds: float,
+    quantity: Decimal,
+    execution_buffer_per_contract: Decimal,
+    min_net_edge_per_bundle: Decimal,
+    now: Any = lambda: datetime.now(timezone.utc),
+    max_evidence_bytes: int = ROTATING_EVIDENCE_MAX_BYTES,
+) -> int:
+    """Continuously derive, overlap and record current/next hourly events."""
+    if seconds <= 0 or poll_seconds <= 0:
+        raise ValueError("seconds and poll_seconds must be positive")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + seconds
+    scans = 0
+    cycles = 0
+    while True:
+        cycle_at = now().astimezone(timezone.utc)
+        accepted: list[tuple[datetime, BtcThresholdCorridorCertificate]] = []
+        rejected: list[dict[str, str]] = []
+        collection_error = ""
+        try:
+            validate_corridor_series_metadata(
+                policy, client.get_series(policy.series_ticker)
+            )
+            events, cursor = client.get_events(
+                series_ticker=policy.series_ticker, status="open", limit=200,
+                with_nested_markets=True,
+            )
+            if cursor:
+                raise RuntimeError("KXBTCD event list unexpectedly requires pagination")
+            for event in events:
+                if str(event.get("series_ticker") or "") != policy.series_ticker:
+                    continue
+                try:
+                    strike_date = _parse_utc(event.get("strike_date"), "strike_date")
+                    if strike_date < cycle_at - timedelta(minutes=5):
+                        continue
+                    if strike_date > cycle_at + timedelta(hours=2):
+                        continue
+                    certificate = derive_corridor_certificate(policy, event)
+                    accepted.append((strike_date, certificate))
+                except Exception as exc:  # noqa: BLE001 - visible drift, no certificate.
+                    rejected.append({
+                        "event_ticker": str(event.get("event_ticker") or ""),
+                        "reason": f"{type(exc).__name__}: {exc}",
+                    })
+        except Exception as exc:  # noqa: BLE001 - status must expose discovery failure.
+            collection_error = f"{type(exc).__name__}: {exc}"
+
+        accepted.sort(key=lambda item: item[0])
+        # At most current+next. Each is recorded independently; no quote
+        # from one request is ever combined with another event's quote.
+        selected = accepted[:2]
+        event_rows: list[dict[str, object]] = []
+        scan_rows: list[dict[str, object]] = []
+        for strike_date, certificate in selected:
+            row = collect_corridor_snapshot(
+                client, certificate, series_policy=policy, quantity=quantity,
+                execution_buffer_per_contract=execution_buffer_per_contract,
+                min_net_edge_per_bundle=min_net_edge_per_bundle,
+                compact_evaluation=True,
+            )
+            scan_rows.append(row)
+            scans += 1
+            event_rows.append({
+                "event_ticker": certificate.event_ticker,
+                "settlement_time": strike_date.isoformat(),
+                "certificate_sha256": certificate.digest,
+                "markets": len(certificate.members),
+                "state": row["evaluation"]["state"],
+                "opportunities": row["evaluation"]["opportunities"],
+            })
+        _append_rotating_jsonl_rows(out, scan_rows, max_evidence_bytes)
+        cycles += 1
+        _atomic_json(status_out, {
+            "schema_version": 1,
+            "event": "kalshi_btc_threshold_corridor_rotation_status",
+            "family": BTC_THRESHOLD_CORRIDOR_FAMILY,
+            "observed_at": cycle_at.isoformat(),
+            "series_policy_sha256": policy.digest,
+            "series_ticker": policy.series_ticker,
+            "state": (
+                "recording_overlap" if len(event_rows) == 2 else
+                "recording" if len(event_rows) == 1 else
+                "input_unavailable"
+            ),
+            "events": event_rows,
+            "events_recorded": len(event_rows),
+            "overlap_active": len(event_rows) == 2,
+            "rejected_events": rejected,
+            "discovery_error": collection_error or None,
+            "cycles": cycles,
+            "scans": scans,
+        })
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(poll_seconds, remaining))
+    return scans
 
 
 def record_corridor_snapshots(
@@ -1208,6 +1760,15 @@ def replay_evidence(path: Path) -> dict[str, object]:
                 )
                 if certificate.digest != row["certificate_sha256"]:
                     raise ValueError("certificate digest mismatch")
+                if certificate.schema_version >= CORRIDOR_DERIVED_SCHEMA_VERSION:
+                    policy_raw = row.get("series_policy")
+                    if not isinstance(policy_raw, Mapping):
+                        raise ValueError("derived scan has no reviewed series policy")
+                    policy = BtcCorridorSeriesPolicy.from_payload(policy_raw)
+                    if policy.digest != row.get("series_policy_sha256"):
+                        raise ValueError("series policy digest mismatch")
+                    if certificate.series_policy_sha256 != policy.digest:
+                        raise ValueError("certificate is not bound to evidence series policy")
                 expected = row["evaluation"]
                 collection_error = row.get("collection_error")
                 if collection_error:
@@ -1247,6 +1808,10 @@ def replay_evidence(path: Path) -> dict[str, object]:
                             row["min_net_edge_per_bundle"], "min_net_edge_per_bundle"
                         ),
                     )
+                if row.get("evaluation_storage") == "opportunities_only":
+                    actual = compact_corridor_evaluation(actual)
+                elif row.get("evaluation_storage") not in {None, "full"}:
+                    raise ValueError("unknown corridor evaluation storage mode")
                 state = str(expected.get("state") or "unknown")
                 states[state] = states.get(state, 0) + 1
                 if actual == expected:

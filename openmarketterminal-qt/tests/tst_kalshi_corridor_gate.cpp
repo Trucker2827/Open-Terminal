@@ -21,18 +21,59 @@ QJsonObject params() {
                        {"max_scan_age_ms", 60'000}};
 }
 
+QJsonObject series_policy() {
+    return QJsonObject{{"schema_version", 1},
+                       {"family", KalshiCorridorGate::kFamily},
+                       {"authority", "reviewed_series_policy"},
+                       {"rules_reviewed", true},
+                       {"series_ticker", "KXBTCD"},
+                       {"cadence", "hourly"},
+                       {"rules_template", "kxbtcd_cf_brti_60s_above_v1"}};
+}
+
+QString canonical_sha(const QJsonObject& object) {
+    const auto canonicalize = [](const auto& self, const QJsonValue& value) -> QJsonValue {
+        if (value.isObject()) {
+            const QJsonObject source = value.toObject();
+            QStringList keys = source.keys();
+            keys.sort(Qt::CaseSensitive);
+            QJsonObject sorted;
+            for (const QString& key : keys) sorted.insert(key, self(self, source.value(key)));
+            return sorted;
+        }
+        if (value.isArray()) {
+            QJsonArray array;
+            for (const QJsonValue& item : value.toArray()) array.append(self(self, item));
+            return array;
+        }
+        return value;
+    };
+    return QString::fromLatin1(QCryptographicHash::hash(
+        QJsonDocument(canonicalize(canonicalize, object).toObject())
+            .toJson(QJsonDocument::Compact),
+        QCryptographicHash::Sha256).toHex());
+}
+
+QJsonObject micro_params() {
+    return QJsonObject{{"max_bundles_per_opportunity", 2},
+                       {"max_all_in_per_leg_usd", 2.0},
+                       {"max_scan_age_ms", 60'000},
+                       {"max_executions_per_hour", 3},
+                       {"series_policy_sha256", canonical_sha(series_policy())}};
+}
+
 QJsonObject scan(int index, bool opportunity = true, bool unavailable = false,
                  qint64 received_ms = kNow + 1) {
-    const QJsonObject certificate{{"event_ticker", QStringLiteral("KXBTCD-E%1").arg(index % 3)},
-                                  {"family", KalshiCorridorGate::kFamily}};
-    QJsonObject sorted_certificate;
-    QStringList certificate_keys = certificate.keys();
-    certificate_keys.sort();
-    for (const QString& key : certificate_keys)
-        sorted_certificate.insert(key, certificate.value(key));
-    const QString certificate_sha = QString::fromLatin1(QCryptographicHash::hash(
-        QJsonDocument(sorted_certificate).toJson(QJsonDocument::Compact),
-        QCryptographicHash::Sha256).toHex());
+    const QString policy_sha = canonical_sha(series_policy());
+    const QJsonObject certificate{
+        {"schema_version", 3},
+        {"event_ticker", QStringLiteral("KXBTCD-E%1").arg(index % 3)},
+        {"series_ticker", "KXBTCD"},
+        {"family", KalshiCorridorGate::kFamily},
+        {"derivation", QJsonObject{{"kind", "reviewed_series_policy"},
+                                    {"series_policy_sha256", policy_sha},
+                                    {"rules_template", "kxbtcd_cf_brti_60s_above_v1"}}}};
+    const QString certificate_sha = canonical_sha(certificate);
     QJsonObject result{{"state", opportunity ? "opportunity" : "not_profitable"},
                        {"certificate_sha256", "pair-digest-is-distinct"},
                        {"quantity", "1"},
@@ -67,6 +108,8 @@ QJsonObject scan(int index, bool opportunity = true, bool unavailable = false,
                        {"quantity", "1"},
                        {"certificate", certificate},
                        {"certificate_sha256", certificate_sha},
+                       {"series_policy", series_policy()},
+                       {"series_policy_sha256", policy_sha},
                        {"evaluation", evaluation}};
 }
 } // namespace
@@ -161,13 +204,15 @@ class TstKalshiCorridorGate : public QObject {
     void separate_micro_live_seal_enforces_two_dollars_on_each_leg() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
-        const QJsonObject micro_params{{"max_bundles_per_opportunity", 2},
-                                       {"max_all_in_per_leg_usd", 2.0},
-                                       {"max_scan_age_ms", 60'000},
-                                       {"max_executions_per_hour", 3}};
+        QJsonObject legacy = micro_params();
+        legacy.remove(QStringLiteral("series_policy_sha256"));
         QString error;
+        QVERIFY(KalshiCorridorGate::preregister_micro_live(
+                    dir.filePath(QStringLiteral("legacy-micro.json")), legacy,
+                    kNow, &error).isEmpty());
+        QVERIFY(error.contains(QStringLiteral("series_policy_sha256")));
         const QJsonObject sealed = KalshiCorridorGate::preregister_micro_live(
-            dir.filePath(KalshiCorridorGate::kMicroLiveParamsFile), micro_params,
+            dir.filePath(KalshiCorridorGate::kMicroLiveParamsFile), micro_params(),
             kNow, &error);
         QVERIFY2(!sealed.isEmpty(), qPrintable(error));
         QVERIFY(KalshiCorridorGate::seal_valid(sealed));
@@ -194,6 +239,30 @@ class TstKalshiCorridorGate : public QObject {
         QVERIFY(!KalshiCorridorGate::permits_micro_live(
             sealed, expensive, 0, 1, kNow + 2, &reason));
         QVERIFY(reason.contains(QStringLiteral("$2")));
+
+        QJsonObject unreviewed = scan(0);
+        QJsonObject changed_policy = unreviewed.value("series_policy").toObject();
+        changed_policy["cadence"] = QStringLiteral("daily");
+        unreviewed["series_policy"] = changed_policy;
+        QVERIFY(!KalshiCorridorGate::permits_micro_live(
+            sealed, unreviewed, 0, 1, kNow + 2, &reason));
+        QVERIFY(reason.contains(QStringLiteral("reviewed KXBTCD hourly policy")));
+
+        QJsonObject foreign_policy = scan(0);
+        QJsonObject other = foreign_policy.value("series_policy").toObject();
+        other["reviewed_at"] = QStringLiteral("a different reviewed policy");
+        const QString other_sha = canonical_sha(other);
+        QJsonObject foreign_certificate = foreign_policy.value("certificate").toObject();
+        QJsonObject foreign_derivation = foreign_certificate.value("derivation").toObject();
+        foreign_derivation["series_policy_sha256"] = other_sha;
+        foreign_certificate["derivation"] = foreign_derivation;
+        foreign_policy["series_policy"] = other;
+        foreign_policy["series_policy_sha256"] = other_sha;
+        foreign_policy["certificate"] = foreign_certificate;
+        foreign_policy["certificate_sha256"] = canonical_sha(foreign_certificate);
+        QVERIFY(!KalshiCorridorGate::permits_micro_live(
+            sealed, foreign_policy, 0, 1, kNow + 2, &reason));
+        QVERIFY(reason.contains(QStringLiteral("reviewed KXBTCD hourly policy")));
     }
 
     void paper_gate_never_substitutes_for_micro_live_authority() {

@@ -11,7 +11,7 @@ mkdir -p "$HOME"
 
 PARAMS='{"max_bundles_per_opportunity":2,"max_cost_per_opportunity_usd":2.0,"max_scan_age_ms":60000}'
 "$CLI" --json kalshi bot corridor-gate seal "$PARAMS" >"$TMP/sealed.json"
-MICRO_PARAMS='{"max_bundles_per_opportunity":2,"max_all_in_per_leg_usd":2.0,"max_scan_age_ms":60000,"max_executions_per_hour":3}'
+MICRO_PARAMS='{"max_bundles_per_opportunity":2,"max_all_in_per_leg_usd":2.0,"max_scan_age_ms":60000,"max_executions_per_hour":3,"series_policy_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}'
 "$CLI" --json kalshi bot corridor-micro-live seal "$MICRO_PARAMS" >"$TMP/micro-sealed.json"
 python3 - "$TMP/micro-sealed.json" <<'PY'
 import json, sys
