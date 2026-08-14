@@ -208,13 +208,16 @@ int collect_corridor_paper_bids(qint64 now_ms) {
             kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kVerdictFile)), verdict))
         return 0;
     if (evidence.isEmpty()) return 0;
-    const QJsonObject scan = evidence.last().toObject();
-    const QJsonArray pairs =
-        scan.value(QStringLiteral("evaluation")).toObject().value(QStringLiteral("pairs")).toArray();
-    bool quantity_ok = false;
-    const double quantity_value = scan.value(QStringLiteral("quantity")).toString().toDouble(&quantity_ok);
-    const int quantity = static_cast<int>(quantity_value);
-    if (!quantity_ok || quantity < 1 || quantity_value != static_cast<double>(quantity)) return 0;
+    QVector<QJsonObject> latest_scans;
+    QSet<QString> latest_events;
+    for (qsizetype row_index = evidence.size(); row_index-- > 0;) {
+        const QJsonObject scan = evidence.at(row_index).toObject();
+        const QString event = scan.value(QStringLiteral("certificate")).toObject()
+                                  .value(QStringLiteral("event_ticker")).toString();
+        if (event.isEmpty() || latest_events.contains(event)) continue;
+        latest_events.insert(event);
+        latest_scans.push_back(scan);
+    }
 
     QSet<QString> existing;
     for (const QJsonValue& value : read_jsonl(corridor_paper_ledger_path(), [](const QJsonObject&) {
@@ -224,23 +227,32 @@ int collect_corridor_paper_bids(qint64 now_ms) {
         if (!key.isEmpty()) existing.insert(key);
     }
     int written = 0;
-    for (int index = 0; index < pairs.size(); ++index) {
-        QString reason;
-        if (!KalshiCorridorGate::permits_paper_bid(
-                verdict, scan, index, quantity, now_ms, &reason))
+    for (const QJsonObject& scan : latest_scans) {
+        const QJsonArray pairs = scan.value(QStringLiteral("evaluation")).toObject()
+                                     .value(QStringLiteral("pairs")).toArray();
+        bool quantity_ok = false;
+        const double quantity_value = scan.value(QStringLiteral("quantity"))
+                                          .toString().toDouble(&quantity_ok);
+        const int quantity = static_cast<int>(quantity_value);
+        if (!quantity_ok || quantity < 1 || quantity_value != static_cast<double>(quantity))
             continue;
-        const QJsonObject pair = pairs.at(index).toObject();
-        const QJsonObject evaluation = pair.value(QStringLiteral("evaluation")).toObject();
-        const QString key_material = QStringLiteral("%1|%2|%3|%4|%5")
-            .arg(scan.value(QStringLiteral("certificate_sha256")).toString(),
-                 scan.value(QStringLiteral("received_at")).toString(),
-                 pair.value(QStringLiteral("lower_ticker")).toString(),
-                 pair.value(QStringLiteral("higher_ticker")).toString())
-            .arg(quantity);
-        const QString simulation_key = QString::fromLatin1(QCryptographicHash::hash(
-            key_material.toUtf8(), QCryptographicHash::Sha256).toHex());
-        if (existing.contains(simulation_key)) continue;
-        const QJsonObject row{
+        for (int index = 0; index < pairs.size(); ++index) {
+            QString reason;
+            if (!KalshiCorridorGate::permits_paper_bid(
+                    verdict, scan, index, quantity, now_ms, &reason))
+                continue;
+            const QJsonObject pair = pairs.at(index).toObject();
+            const QJsonObject evaluation = pair.value(QStringLiteral("evaluation")).toObject();
+            const QString key_material = QStringLiteral("%1|%2|%3|%4|%5")
+                .arg(scan.value(QStringLiteral("certificate_sha256")).toString(),
+                     scan.value(QStringLiteral("received_at")).toString(),
+                     pair.value(QStringLiteral("lower_ticker")).toString(),
+                     pair.value(QStringLiteral("higher_ticker")).toString())
+                .arg(quantity);
+            const QString simulation_key = QString::fromLatin1(QCryptographicHash::hash(
+                key_material.toUtf8(), QCryptographicHash::Sha256).toHex());
+            if (existing.contains(simulation_key)) continue;
+            const QJsonObject row{
             {QStringLiteral("schema"), 1},
             {QStringLiteral("event"), QString::fromLatin1(KalshiCorridorGate::kPaperBidEvent)},
             {QStringLiteral("strategy_family"), QString::fromLatin1(KalshiCorridorGate::kFamily)},
@@ -268,11 +280,12 @@ int collect_corridor_paper_bids(qint64 now_ms) {
             {QStringLiteral("net_edge_per_bundle_usd"),
              evaluation.value(QStringLiteral("net_edge_per_bundle"))},
             {QStringLiteral("result"), QStringLiteral("SIMULATED_AT_OBSERVED_BOOK")}};
-        if (KalshiEvidenceEngine::append_jsonl(
-                corridor_paper_ledger_path(), row,
-                KalshiEvidenceEngine::Rotation::KeepAllGenerations)) {
-            existing.insert(simulation_key);
-            ++written;
+            if (KalshiEvidenceEngine::append_jsonl(
+                    corridor_paper_ledger_path(), row,
+                    KalshiEvidenceEngine::Rotation::KeepAllGenerations)) {
+                existing.insert(simulation_key);
+                ++written;
+            }
         }
     }
     return written;
@@ -280,7 +293,6 @@ int collect_corridor_paper_bids(qint64 now_ms) {
 
 int execute_corridor_micro_live(const GlobalOpts& opts, qint64 now_ms,
                                 QJsonObject* last_result = nullptr) {
-    Q_UNUSED(now_ms);
     const QJsonArray evidence = read_jsonl(
         kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kEvidenceFile)),
         [](const QJsonObject& row) {
@@ -290,28 +302,62 @@ int execute_corridor_micro_live(const GlobalOpts& opts, qint64 now_ms,
                        QLatin1String(KalshiCorridorGate::kFamily);
         });
     if (evidence.isEmpty()) return 0;
-    const QJsonObject scan = evidence.last().toObject();
-    const QJsonArray pairs = scan.value(QStringLiteral("evaluation")).toObject()
-                                 .value(QStringLiteral("pairs")).toArray();
+    const QJsonValue seal = KalshiCorridorGate::load_params_file(
+        kalshi_evidence_path(QString::fromLatin1(KalshiCorridorGate::kMicroLiveParamsFile)));
+    const int max_age_ms = seal.toObject().value(QStringLiteral("params")).toObject()
+                               .value(QStringLiteral("max_scan_age_ms")).toInt();
     QSet<QString> attempted;
     for (const QJsonValue& value : read_jsonl(corridor_micro_live_ledger_path(),
                                                [](const QJsonObject&) { return true; }))
         attempted.insert(value.toObject().value(QStringLiteral("source_key")).toString());
-    for (int index = 0; index < pairs.size(); ++index) {
-        const QJsonObject evaluation = pairs.at(index).toObject()
-                                           .value(QStringLiteral("evaluation")).toObject();
-        if (evaluation.value(QStringLiteral("state")).toString() != QLatin1String("opportunity"))
+    struct Candidate {
+        QJsonObject scan;
+        int pair_index = -1;
+        double edge = 0.0;
+    };
+    QVector<Candidate> candidates;
+    QSet<QString> newest_event;
+    for (qsizetype row_index = evidence.size(); row_index-- > 0;) {
+        const QJsonObject scan = evidence.at(row_index).toObject();
+        const QString event = scan.value(QStringLiteral("certificate")).toObject()
+                                  .value(QStringLiteral("event_ticker")).toString();
+        if (event.isEmpty() || newest_event.contains(event)) continue;
+        newest_event.insert(event);
+        const qint64 received_ms = QDateTime::fromString(
+            scan.value(QStringLiteral("received_at")).toString(), Qt::ISODateWithMs)
+                                        .toMSecsSinceEpoch();
+        if (max_age_ms <= 0 || received_ms <= 0 || received_ms > now_ms + 5'000 ||
+            now_ms - received_ms > max_age_ms)
             continue;
-        const QString source_key = QString::fromLatin1(QCryptographicHash::hash(
-            (scan.value(QStringLiteral("certificate_sha256")).toString() + QStringLiteral("|") +
-             scan.value(QStringLiteral("received_at")).toString() + QStringLiteral("|") +
-             QString::number(index)).toUtf8(), QCryptographicHash::Sha256).toHex());
-        if (attempted.contains(source_key)) continue;
+        const QJsonArray pairs = scan.value(QStringLiteral("evaluation")).toObject()
+                                     .value(QStringLiteral("pairs")).toArray();
+        for (int index = 0; index < pairs.size(); ++index) {
+            const QJsonObject evaluation = pairs.at(index).toObject()
+                                               .value(QStringLiteral("evaluation")).toObject();
+            if (evaluation.value(QStringLiteral("state")).toString() !=
+                QLatin1String("opportunity"))
+                continue;
+            const QString source_key = QString::fromLatin1(QCryptographicHash::hash(
+                (scan.value(QStringLiteral("certificate_sha256")).toString() +
+                 QStringLiteral("|") + scan.value(QStringLiteral("received_at")).toString() +
+                 QStringLiteral("|") + QString::number(index)).toUtf8(),
+                QCryptographicHash::Sha256).toHex());
+            if (attempted.contains(source_key)) continue;
+            candidates.push_back(Candidate{
+                scan, index, evaluation.value(QStringLiteral("net_edge_per_bundle"))
+                                 .toString().toDouble()});
+        }
+    }
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& left,
+                                                        const Candidate& right) {
+        return left.edge > right.edge;
+    });
+    for (const Candidate& candidate : candidates) {
         QJsonObject response;
         const int rc = kalshi_bot_call_tool(
             opts, QStringLiteral("execute_kalshi_corridor_micro_live"),
-            QJsonObject{{QStringLiteral("scan"), scan},
-                        {QStringLiteral("pair_index"), index}}, response);
+            QJsonObject{{QStringLiteral("scan"), candidate.scan},
+                        {QStringLiteral("pair_index"), candidate.pair_index}}, response);
         const QJsonObject data = response;
         if (last_result) *last_result = data;
         if (rc != 0) return -1;
@@ -1333,7 +1379,7 @@ void bot_usage() {
                  "       kalshi bot gate seal '{\"min_settled_bids\":300,\"max_drawdown_usd\":5}'\n"
                  "       kalshi bot corridor-gate [--json]\n"
                  "       kalshi bot corridor-gate seal '{\"max_bundles_per_opportunity\":2,\"max_cost_per_opportunity_usd\":2.0,\"max_scan_age_ms\":60000}'\n"
-                 "       kalshi bot corridor-micro-live seal '{\"max_bundles_per_opportunity\":2,\"max_all_in_per_leg_usd\":2.0,\"max_scan_age_ms\":60000,\"max_executions_per_hour\":3}'\n"
+                 "       kalshi bot corridor-micro-live seal '{\"max_bundles_per_opportunity\":2,\"max_all_in_per_leg_usd\":2.0,\"max_scan_age_ms\":60000,\"max_executions_per_hour\":3,\"series_policy_sha256\":\"<reviewed-policy-sha256>\"}'\n"
                  "       kalshi bot corridor-micro-live once\n"
                  "       kalshi bot corridor-micro-live run [--interval 60] [--iterations N]\n"
                  "       kalshi bot stop [--reason \"why\"]   throw the kill switch\n"

@@ -127,6 +127,7 @@ class KalshiRestClient:
     def get_events(
         self,
         *,
+        series_ticker: str | None = None,
         status: str = "open",
         limit: int = 200,
         cursor: str | None = None,
@@ -146,6 +147,8 @@ class KalshiRestClient:
             "limit": limit,
             "with_nested_markets": str(with_nested_markets).lower(),
         }
+        if series_ticker:
+            params["series_ticker"] = series_ticker
         if cursor:
             params["cursor"] = cursor
         payload = self.get_json("/events", params)

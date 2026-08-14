@@ -5,6 +5,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlsplit
@@ -16,21 +17,80 @@ from scripts.kalshi_microstructure.models import BinaryBook, Level, Market
 from scripts.kalshi_microstructure.structural_arb import (
     BTC_THRESHOLD_CORRIDOR_FAMILY,
     BtcThresholdCorridorCertificate,
+    BtcCorridorSeriesPolicy,
     FeeSchedule,
     PayoffCertificate,
     ReadOnlyKalshiClient,
+    SETTLEMENT_TERM_FIELDS,
     collect_corridor_snapshot,
     collect_snapshot,
+    derive_corridor_certificate,
     discover_candidates,
     discovery_row,
     evaluate_corridor_family,
     evaluate_bundle,
     market_minimum_ask_price,
+    reviewed_kxbtcd_series_policy_payload,
     require_price_grid_feasible,
     replay_evidence,
     settlement_terms_sha256,
+    rotate_corridor_snapshots,
     validate_generic_markets,
+    _append_rotating_jsonl,
 )
+
+
+def hourly_policy() -> BtcCorridorSeriesPolicy:
+    return BtcCorridorSeriesPolicy.from_payload(reviewed_kxbtcd_series_policy_payload(
+        reviewed_at="2026-08-13T12:00:00+00:00",
+        reviewed_reference_event="KXBTCD-26AUG1317",
+    ))
+
+
+def hourly_event(event_ticker: str, close: datetime, count: int = 4) -> dict:
+    from scripts.kalshi_microstructure.structural_arb import (
+        KXBTCD_RULES_SECONDARY, KXBTCD_SETTLEMENT_SOURCES,
+    )
+    local = close.astimezone(__import__("zoneinfo").ZoneInfo("America/New_York"))
+    hour = local.strftime("%I").lstrip("0") or "12"
+    clock = f"{hour} {local.strftime('%p %Z')}"
+    date = local.strftime("%b %d, %Y").replace(" 0", " ")
+    markets = []
+    for index in range(count):
+        strike = Decimal("60099.99") + Decimal(100 * index)
+        strike_text = format(strike, "f")
+        markets.append({
+            "ticker": f"{event_ticker}-T{strike_text}",
+            "event_ticker": event_ticker,
+            "status": "active",
+            "market_type": "binary",
+            "notional_value_dollars": "1.0000",
+            "strike_type": "greater",
+            "floor_strike": float(strike),
+            "close_time": close.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "expected_expiration_time": (close + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "expiration_time": (close + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "latest_expiration_time": (close + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "rules_primary": (
+                "If the simple average of the sixty seconds of CF Benchmarks' Bitcoin "
+                f"Real-Time Index (BRTI) before {clock} is above {strike_text} at {clock} "
+                f"on {date}, then the market resolves to Yes."
+            ),
+            "rules_secondary": KXBTCD_RULES_SECONDARY,
+            "settlement_timer_seconds": 60,
+            "can_close_early": True,
+            "price_level_structure": "linear_cent",
+            "price_ranges": [{"start": "0.0000", "end": "1.0000", "step": "0.0100"}],
+        })
+    return {
+        "event_ticker": event_ticker,
+        "series_ticker": "KXBTCD",
+        "collateral_return_type": "DIRECNET",
+        "product_metadata": {"cadence": "hourly"},
+        "settlement_sources": KXBTCD_SETTLEMENT_SOURCES,
+        "strike_date": close.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "markets": markets,
+    }
 
 
 def certificate(payload: dict) -> PayoffCertificate:
@@ -120,6 +180,130 @@ def corridor_certificate(
 
 
 class StructuralArbitrageTest(unittest.TestCase):
+    def test_rotating_evidence_keeps_current_and_one_previous_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "corridor.jsonl"
+            _append_rotating_jsonl(path, {"cycle": 1}, 20)
+            _append_rotating_jsonl(path, {"cycle": 2}, 20)
+            _append_rotating_jsonl(path, {"cycle": 3}, 20)
+            self.assertEqual(json.loads(path.read_text()), {"cycle": 3})
+            self.assertEqual(
+                json.loads(path.with_name(path.name + ".1").read_text()),
+                {"cycle": 2},
+            )
+    def test_reviewed_series_policy_derives_event_certificate(self) -> None:
+        policy = hourly_policy()
+        close = datetime(2026, 8, 13, 21, tzinfo=timezone.utc)
+        cert = derive_corridor_certificate(
+            policy, hourly_event("KXBTCD-26AUG1317", close)
+        )
+        self.assertEqual(cert.schema_version, 3)
+        self.assertEqual(cert.series_policy_sha256, policy.digest)
+        self.assertEqual(cert.event_ticker, "KXBTCD-26AUG1317")
+        self.assertEqual(len(cert.members), 4)
+        self.assertEqual(cert.payload()["derivation"]["rules_template"],
+                         "kxbtcd_cf_brti_60s_above_v1")
+
+    def test_series_policy_rejects_rule_source_cadence_and_payout_drift(self) -> None:
+        policy = hourly_policy()
+        close = datetime(2026, 8, 13, 21, tzinfo=timezone.utc)
+        for mutate, message in (
+            (lambda event: event["markets"][0].__setitem__("rules_primary", "different"),
+             "primary settlement rule"),
+            (lambda event: event.__setitem__("settlement_sources", []),
+             "settlement source"),
+            (lambda event: event.__setitem__("product_metadata", {"cadence": "daily"}),
+             "cadence"),
+            (lambda event: event["markets"][0].__setitem__("notional_value_dollars", "2.0000"),
+             "ordinary one-dollar binary"),
+        ):
+            event = hourly_event("KXBTCD-26AUG1321", close)
+            mutate(event)
+            with self.assertRaisesRegex(ValueError, message):
+                derive_corridor_certificate(policy, event)
+
+    def test_188_leg_event_is_certified_as_one_synchronized_middle_window(self) -> None:
+        policy = hourly_policy()
+        close = datetime(2026, 8, 13, 21, tzinfo=timezone.utc)
+        cert = derive_corridor_certificate(
+            policy, hourly_event("KXBTCD-26AUG1321", close, 188)
+        )
+        self.assertEqual(len(cert.members), 100)
+        self.assertEqual(cert.members[0].strike, Decimal("64499.99"))
+        self.assertEqual(cert.members[-1].strike, Decimal("74399.99"))
+
+    def test_rotation_overlaps_current_and_next_and_exposes_drift(self) -> None:
+        policy = hourly_policy()
+        now = datetime(2026, 8, 13, 20, 30, tzinfo=timezone.utc)
+        current = hourly_event("KXBTCD-26AUG1317", now + timedelta(minutes=30), 2)
+        upcoming = hourly_event("KXBTCD-26AUG1318", now + timedelta(minutes=90), 2)
+        drift = hourly_event("KXBTCD-26AUG1319", now + timedelta(minutes=100), 2)
+        drift["markets"][0]["rules_primary"] = "drifted"
+
+        class Probe:
+            def get_events(self, **kwargs):
+                self.kwargs = kwargs
+                return [current, upcoming, drift], None
+            def get_event(self, ticker, **kwargs):
+                return {current["event_ticker"]: current, upcoming["event_ticker"]: upcoming}[ticker]
+            def get_series(self, ticker):
+                from scripts.kalshi_microstructure.structural_arb import (
+                    KXBTCD_CONTRACT_TERMS_URL, KXBTCD_CONTRACT_URL,
+                    KXBTCD_SETTLEMENT_SOURCES,
+                )
+                return {
+                    "ticker": "KXBTCD", "frequency": "hourly",
+                    "contract_terms_url": KXBTCD_CONTRACT_TERMS_URL,
+                    "contract_url": KXBTCD_CONTRACT_URL,
+                    "settlement_sources": KXBTCD_SETTLEMENT_SOURCES,
+                    "fee_type": "none", "fee_multiplier": 1,
+                }
+            def get_orderbooks(self, tickers):
+                return {ticker: book(ticker, yes_bids=((.50, 10),), no_bids=((.50, 10),))
+                        for ticker in tickers}
+        probe = Probe()
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = pathlib.Path(tmp) / "evidence.jsonl"
+            status = pathlib.Path(tmp) / "status.json"
+            with patch("scripts.kalshi_microstructure.structural_arb.time.monotonic",
+                       side_effect=[0.0, 1.0]):
+                scans = rotate_corridor_snapshots(
+                    probe, policy, out=evidence, status_out=status,
+                    seconds=.5, poll_seconds=1, quantity=Decimal("1"),
+                    execution_buffer_per_contract=Decimal("0"),
+                    min_net_edge_per_bundle=Decimal("0"), now=lambda: now,
+                )
+            rows = [json.loads(line) for line in evidence.read_text().splitlines()]
+            state = json.loads(status.read_text())
+            self.assertTrue(replay_evidence(evidence)["valid"])
+            self.assertTrue(all(
+                row["evaluation_storage"] == "opportunities_only" for row in rows
+            ))
+            self.assertTrue(all(row["evaluation"]["pairs_evaluated"] == 1 for row in rows))
+            self.assertTrue(all(row["evaluation"]["pairs_returned"] == 0 for row in rows))
+            self.assertTrue(all(row["evaluation"]["pairs"] == [] for row in rows))
+            self.assertTrue(all(
+                len(row["markets"]) == len(row["certificate"]["markets"])
+                for row in rows
+            ))
+            self.assertTrue(all(
+                set(market) == set(SETTLEMENT_TERM_FIELDS) | {"status"}
+                for row in rows for market in row["markets"].values()
+            ))
+            tampered = rows[0]
+            tampered["series_policy"]["cadence"] = "daily"
+            bad = pathlib.Path(tmp) / "tampered.jsonl"
+            bad.write_text(json.dumps(tampered) + "\n", encoding="utf-8")
+            self.assertFalse(replay_evidence(bad)["valid"])
+        self.assertEqual(scans, 2)
+        self.assertEqual({row["certificate"]["event_ticker"] for row in rows},
+                         {current["event_ticker"], upcoming["event_ticker"]})
+        self.assertTrue(all(row["series_policy_sha256"] == policy.digest for row in rows))
+        self.assertEqual(state["state"], "recording_overlap")
+        self.assertTrue(state["overlap_active"])
+        self.assertIn("primary settlement rule", state["rejected_events"][0]["reason"])
+        self.assertEqual(probe.kwargs["series_ticker"], "KXBTCD")
+
     def test_price_grid_rejects_188_leg_partition_before_quote_collection(self) -> None:
         leg_count = 188
         with self.assertRaisesRegex(
@@ -1030,11 +1214,12 @@ class BatchOrderbooksTest(unittest.TestCase):
                         "cursor": "next"}
 
         client = FakeClient()
-        events, cursor = client.get_events(cursor="before")
+        events, cursor = client.get_events(cursor="before", series_ticker="KXBTCD")
         self.assertEqual(cursor, "next")
         self.assertEqual(events[0]["rules_primary"], "keep me")
         self.assertEqual(client.calls[0][0], "/events")
         self.assertEqual(client.calls[0][1]["with_nested_markets"], "true")
+        self.assertEqual(client.calls[0][1]["series_ticker"], "KXBTCD")
 
     def test_discover_cli_does_not_load_account_credentials(self) -> None:
         from unittest.mock import patch
