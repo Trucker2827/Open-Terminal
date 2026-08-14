@@ -114,6 +114,9 @@ add_test(NAME test_eligible_loss_autopsy
 add_test(NAME test_strike_threshold_family
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_strike_threshold_family.py -v)
+add_test(NAME test_tail_calibration
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_tail_calibration.py -v)
 add_test(NAME test_btc_event_impact
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_btc_event_impact.py -v)

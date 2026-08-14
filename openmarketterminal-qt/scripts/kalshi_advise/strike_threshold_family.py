@@ -404,10 +404,20 @@ def observe_cycle(
             continue
         features = obs["features"]
         p_full = full.predict(features)
-        entry = state["pending"].setdefault(ticker, {"close_ms": close_ms, "obs": []})
+        entry = state["pending"].setdefault(ticker, {"close_ms": close_ms, "obs": [], "books": []})
         entry["close_ms"] = close_ms
         if len(entry["obs"]) < MAX_OBS_PER_TICKER:
+            # The quotes ride BESIDE the feature vector, never inside it. Asking
+            # "is the mispricing larger than the spread?" needs the bid and the
+            # ask; a model that trained on them would be reading the answer out
+            # of the question. `books[i]` describes `obs[i]`, so a pending entry
+            # written before quote capture existed is padded here rather than
+            # left to misalign every index after it.
+            books = entry.setdefault("books", [])
+            while len(books) < len(entry["obs"]):
+                books.append({})
             entry["obs"].append(dict(features))
+            books.append(dict(obs.get("book") or {}))
         pred = {
             "p_yes_full": p_full,
             "p_yes_market_baseline": obs["yes_mid"],
@@ -484,7 +494,18 @@ def settle_cycle(state: dict, now_ms: int, resolver=resolve_outcome_kalshi) -> N
         if eligible_model:
             state["contract_scores_eligible_full"].append(sc.brier(eligible_model))
             state["contract_scores_eligible_market_mid_raw"].append(sc.brier(eligible_mid))
-        state["resolved_record"].append({"observations": observations, "outcome": outcome})
+        # Provenance, not features: nothing trains on any of these. `books` is
+        # index-aligned with `observations` (shorter only for contracts that
+        # began before quote capture existed), and the identity fields let an
+        # analysis cluster by settlement EVENT instead of inferring one from
+        # (spot, time-left) — a proxy that oversplits one ladder into many.
+        state["resolved_record"].append({
+            "observations": observations,
+            "outcome": outcome,
+            "ticker": ticker,
+            "event_ticker": ticker.rsplit("-", 1)[0] if "-" in ticker else ticker,
+            "books": entry.get("books") or [],
+        })
         for features in observations:
             full.update(features, outcome, l2=sc.L2)
             market.update(features, outcome)
