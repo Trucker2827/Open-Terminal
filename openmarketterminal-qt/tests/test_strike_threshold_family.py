@@ -311,10 +311,6 @@ class PerFamilySplitTest(unittest.TestCase):
         self.assertNotIn("pooled_trust_withheld", report)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class QuoteCaptureTest(unittest.TestCase):
     """The spread must be recoverable from a settled contract.
 
@@ -406,3 +402,7 @@ class QuoteCaptureTest(unittest.TestCase):
             self.assertNotIn(key, features,
                              "a model that trained on the spread would be reading "
                              "the answer out of the question")
+
+
+if __name__ == "__main__":
+    unittest.main()
