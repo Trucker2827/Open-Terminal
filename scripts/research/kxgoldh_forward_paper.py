@@ -12,12 +12,12 @@ import datetime as dt
 import fcntl
 import hashlib
 import json
+import math
 import os
 import tempfile
 import time
 
 import kalshi_edge_common as common
-from kxbtc15m_underdog_cashout import batch_fee, size_for_cap
 
 FAMILY = "KXGOLDH"
 REPORT_STEM = "commodities-hourly-calibrator"
@@ -33,6 +33,24 @@ POLICY = {
     "exit": "hold to settlement",
     "authority": "paper_research_only_no_order_api",
 }
+
+
+def batch_fee(price, contracts):
+    """Quadratic Kalshi taker fee for one batch, rounded up to one cent."""
+    if contracts <= 0:
+        return 0.0
+    p = min(1.0, max(0.0, float(price)))
+    return math.ceil(0.07 * contracts * p * (1.0 - p) * 100.0 - 1e-12) / 100.0
+
+
+def size_for_cap(price, cap=POLICY["max_entry_all_in_usd"]):
+    """Largest integer quantity whose entry cost plus fee is within cap."""
+    if not (0.0 < price < 1.0) or cap <= 0.0:
+        return 0
+    quantity = int(cap // price)
+    while quantity > 0 and quantity * price + batch_fee(price, quantity) > cap + 1e-9:
+        quantity -= 1
+    return quantity
 
 
 def policy_hash():
