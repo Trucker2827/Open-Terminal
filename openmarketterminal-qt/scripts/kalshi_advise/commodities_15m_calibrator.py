@@ -1038,7 +1038,9 @@ def build_report(state, predictions, now_ms):
             family: {
                 "pyth_symbol": meta["pyth_symbol"],
                 "pyth_id": meta["pyth_id"],
-                "yahoo_fallback": meta["yahoo"],
+                "yahoo_fallback": (
+                    meta["yahoo"] if yahoo_may_proxy_settlement(family) else None
+                ),
             }
             for family, meta in FAMILIES.items()
         },
