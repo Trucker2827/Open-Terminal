@@ -49,6 +49,7 @@ class GoldHourlyForwardTest(unittest.TestCase):
             text = handle.read()
         self.assertNotIn("submit_order", text)
         self.assertNotIn("trade submit", text)
+        self.assertNotIn("kxbtc15m_underdog_cashout", text)
 
     def test_ignores_silver_wti_and_non_gold_tickers(self):
         with tempfile.TemporaryDirectory() as directory:
