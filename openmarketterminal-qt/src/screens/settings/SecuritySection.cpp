@@ -359,7 +359,7 @@ void SecuritySection::build_ui() {
             [this](bool) { cli_kill_switch_dirty_ = true; });
     auto* row_cli_kill = make_row(
         tr("Kill Switch"), cli_kill_switch_toggle_,
-        tr("PANIC button. When on, ALL AI trading is halted immediately — paper AND live, every venue. The CLI/agent can never clear it."));
+        tr("PANIC button (cli.kill_switch). When on, ALL AI trading is halted immediately — paper AND live, every venue. The CLI/agent can never clear it. Strategies → Risk is another entry point for this same latch. Predictions → BOT stop (kalshi-bot-stop.json) is different: it only refuses the Kalshi bot tick."));
     capture_row_labels(row_cli_kill, &row_cli_kill_lbl_, &row_cli_kill_desc_);
     vl->addWidget(row_cli_kill);
 
@@ -389,7 +389,7 @@ void SecuritySection::build_ui() {
     cli_max_order_value_edit_->setStyleSheet(input_ss());
     auto* row_cli_ordval = make_row(
         tr("Max order value ($)"), cli_max_order_value_edit_,
-        tr("Maximum notional value (USD) of any single order the AI agent may place. Unset = 25000."));
+        tr("Maximum notional value (USD) of any single generic AI order. Unset = 25000. Kalshi live also honors this floor: effective cap is the tighter of this setting and the $2/$3 charter."));
     capture_row_labels(row_cli_ordval, &row_cli_ordval_lbl_, &row_cli_ordval_desc_);
     vl->addWidget(row_cli_ordval);
 
@@ -585,13 +585,13 @@ void SecuritySection::retranslateUi() {
     if (row_cli_expo_lbl_)    row_cli_expo_lbl_->setText(tr("Max exposure per topic ($)"));
     if (row_cli_expo_desc_)   row_cli_expo_desc_->setText(tr("Maximum total stake (USD) the AI agent may hold open in a single topic/category."));
     if (row_cli_kill_lbl_)    row_cli_kill_lbl_->setText(tr("Kill Switch"));
-    if (row_cli_kill_desc_)   row_cli_kill_desc_->setText(tr("PANIC button. When on, ALL AI trading is halted immediately — paper AND live, every venue. The CLI/agent can never clear it."));
+    if (row_cli_kill_desc_)   row_cli_kill_desc_->setText(tr("PANIC button (cli.kill_switch). When on, ALL AI trading is halted immediately — paper AND live, every venue. The CLI/agent can never clear it. Strategies → Risk is another entry point for this same latch. Predictions → BOT stop (kalshi-bot-stop.json) is different: it only refuses the Kalshi bot tick."));
     if (row_cli_acct_lbl_)    row_cli_acct_lbl_->setText(tr("AI-allowed account id"));
     if (row_cli_acct_desc_)   row_cli_acct_desc_->setText(tr("The single account the AI agent may LIVE-trade. Empty means none is allowed."));
     if (row_cli_dloss_lbl_)   row_cli_dloss_lbl_->setText(tr("Max daily loss ($)"));
     if (row_cli_dloss_desc_)  row_cli_dloss_desc_->setText(tr("Maximum total loss (USD) the AI agent may incur in a single day before trading is halted."));
     if (row_cli_ordval_lbl_)  row_cli_ordval_lbl_->setText(tr("Max order value ($)"));
-    if (row_cli_ordval_desc_) row_cli_ordval_desc_->setText(tr("Maximum notional value (USD) of any single order the AI agent may place. Unset = 25000."));
+    if (row_cli_ordval_desc_) row_cli_ordval_desc_->setText(tr("Maximum notional value (USD) of any single generic AI order. Unset = 25000. Kalshi live also honors this floor: effective cap is the tighter of this setting and the $2/$3 charter."));
 
     // Checkbox texts.
     if (sec_pin_lock_toggle_)  sec_pin_lock_toggle_->setText(tr("Require PIN at app launch"));
