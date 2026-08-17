@@ -114,6 +114,42 @@ class RestObservationTest(unittest.TestCase):
         self.assertTrue(obs["features"]["spot_source"].startswith("yahoo:"))
         self.assertIn("sqrt_minutes_left", obs["features"])
 
+    def test_wti_refuses_yahoo_as_live_spot(self):
+        """CL=F is not Metal.XTI/USD. Weekend Yahoo fallback printed 0.999 vs 0.045."""
+        market, now_ms = gold_market(
+            open_price=70.0, ticker="KXWTI15M-26AUG072030-30")
+        t0 = now_ms - 60 * 60 * 1000
+        cl = [(t0 + i * 60_000, 78.0 + (0.2 if i % 2 == 0 else -0.1)) for i in range(40)]
+        obs = cal.observation_from_rest(
+            market, {"CL=F": cl}, now_ms, pyth_series={})
+        self.assertIsNone(obs)
+
+    def test_wti_refuses_yahoo_derived_outcome(self):
+        ticker = "KXWTI15M-26AUG072030-30"
+        close_ms = cal.parse_close_ms(ticker)
+        derived, source = cal.derive_outcome(
+            ticker, 70.0, {"CL=F": [(close_ms, 78.0)]},
+            close_ms=close_ms, pyth_series={})
+        self.assertIsNone(derived)
+        self.assertIsNone(source)
+
+    def test_wti_uses_pyth_not_yahoo(self):
+        market, now_ms = gold_market(
+            open_price=70.0, ticker="KXWTI15M-26AUG072030-30")
+        t0 = now_ms - 60 * 60 * 1000
+        pyth = {
+            "Metal.XTI/USD": [
+                [t0 + i * 60_000, 70.2 + (0.05 if i % 2 == 0 else -0.02)]
+                for i in range(40)
+            ]
+        }
+        cl = [(t0 + i * 60_000, 78.0) for i in range(40)]
+        obs = cal.observation_from_rest(
+            market, {"CL=F": cl}, now_ms, pyth_series=pyth)
+        self.assertIsNotNone(obs)
+        self.assertEqual(obs["features"]["spot_source"], "pyth:Metal.XTI/USD")
+        self.assertLess(obs["p_model"], 0.9)
+
     def test_refuses_without_vol(self):
         market, now_ms = gold_market()
         cache = {"GC=F": [(now_ms, 4358.0)]}  # too few points for vol
@@ -152,6 +188,11 @@ class TrustGateTest(unittest.TestCase):
         self.assertEqual(report["trusted_variant"], "physics")
         self.assertEqual(report["family"], "COMMODITIES15M")
         self.assertIn("KXGOLD15M", report["families"])
+
+    def test_wti_report_does_not_advertise_yahoo_fallback(self):
+        report = cal.build_report(self.scored_state(0.10, 0.11, 200), {}, 0)
+        self.assertIsNone(report["spot_feeds"]["KXWTI15M"]["yahoo_fallback"])
+        self.assertEqual(report["spot_feeds"]["KXGOLD15M"]["yahoo_fallback"], "GC=F")
 
     def test_below_floor_is_not_value(self):
         report = cal.build_report(self.scored_state(0.10, 0.11, 50), {}, 0)

@@ -24,10 +24,12 @@ Kalshi settles these on the 1-minute candlestick close of the underlier
     SILVER → Metal.XAG/USD
     WTI    → Metal.XTI/USD
 
-Yahoo futures (GC=F / SI=F / CL=F) are a cold fallback when Pyth is down —
-not a claim that Yahoo ≡ Pyth. Outcomes prefer Kalshi's recorded YES/NO;
-derived close uses Pyth series first, then Yahoo. Report
-`settlement_parity` measures Pyth-derived direction vs recorded results.
+Yahoo futures (GC=F / SI=F) are a cold fallback for gold/silver when Pyth
+is down — not a claim that Yahoo ≡ Pyth. WTI never uses Yahoo: CL=F is a
+different instrument from Metal.XTI/USD and has printed model 0.999 against
+a 0.045 book. Outcomes prefer Kalshi's recorded YES/NO; derived close uses
+Pyth first, then Yahoo only on gold/silver. Report `settlement_parity`
+measures Pyth-derived direction vs recorded results.
 
 The daemon's kalshi-ws-books.json is used when it already carries a commodity
 snapshot (horizon.spot / floor_strike); otherwise markets are pulled from the
@@ -246,11 +248,20 @@ def per_min_vol_bps_from_series(series):
     return math.sqrt(max(var, 0.0)) * 10000.0
 
 
+def yahoo_may_proxy_settlement(family):
+    """Yahoo futures may cold-fill GOLD/SILVER when Hermes is down.
+
+    WTI CL=F is not Metal.XTI/USD. Using it as live spot printed 0.999 vs a
+    0.045 book on a weekend. Refuse rather than invent a race probability.
+    """
+    return family in ("KXGOLD15M", "KXSILVER15M")
+
+
 def spot_and_vol_for_family(family, pyth_series, yahoo_cache):
-    """Prefer Pyth spot/vol; Yahoo cold fallback. Returns (spot, vol, source)."""
+    """Prefer Pyth spot/vol; Yahoo cold fallback on gold/silver only."""
     meta = FAMILIES.get(family) or {}
     pyth_symbol = meta.get("pyth_symbol")
-    yahoo_symbol = meta.get("yahoo")
+    yahoo_symbol = meta.get("yahoo") if yahoo_may_proxy_settlement(family) else None
     pyth_pts = list(pyth_series.get(pyth_symbol) or []) if pyth_symbol else []
     spot = None
     source = None
@@ -727,6 +738,8 @@ def derive_outcome(ticker, open_price, yahoo_cache, close_ms=None, pyth_series=N
     derived = derive_outcome_from_series(pyth, open_price, close_ms)
     if derived is not None:
         return derived, "derived_pyth"
+    if not yahoo_may_proxy_settlement(family):
+        return None, None
     symbol = FAMILIES[family]["yahoo"]
     if symbol not in yahoo_cache:
         yahoo_cache[symbol] = fetch_yahoo_series(symbol)
@@ -1014,7 +1027,8 @@ def build_report(state, predictions, now_ms):
         "scoring_rule": (
             "one score per commodity-15m contract: mean squared error over that "
             "contract's observations; physics is P(close>open) Gaussian "
-            "(Pyth Metal preferred, Yahoo cold fallback); "
+            "(Pyth Metal preferred; Yahoo cold fallback gold/silver only; "
+            "WTI Hermes-only); "
             "physics_tape_confirm_near_close uses Yahoo futures tape confirm "
             "in the final 3m; physics_vol_regime_confirm clamps quiet/weekend "
             "to mid; physics_mid_prior_tilt is mid prior × confirm-gated "
@@ -1024,7 +1038,9 @@ def build_report(state, predictions, now_ms):
             family: {
                 "pyth_symbol": meta["pyth_symbol"],
                 "pyth_id": meta["pyth_id"],
-                "yahoo_fallback": meta["yahoo"],
+                "yahoo_fallback": (
+                    meta["yahoo"] if yahoo_may_proxy_settlement(family) else None
+                ),
             }
             for family, meta in FAMILIES.items()
         },
