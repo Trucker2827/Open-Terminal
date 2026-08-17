@@ -1,13 +1,66 @@
 # Open-Terminal — Cursor scratchpad & lessons
 
-## Scratchpad — cockpit DECIDE/gate family mirror (2026-08-11)
+## Scratchpad — KXGOLDH paper trial (2026-08-16)
 
-PR A #243 merged. PR B `finn/cockpit-decide-gate-family-mirror`: display-only DECIDE chips + gate strip.
-[X] PR A ship (#243)
-[X] Scene: family_chips (6) + gate_family_line
-[X] Paint: DECIDE chips + click-inspect; gate value append
-[X] Pins: 83/83 (chip isolation, no-preregister, multi-family strip)
-[ ] PR B ship
+Hash-locked GOLDH-only paper trial is live. No 15m, no silver/oil.
+State: kxgoldh-forward-paper.json
+Hash: 3295b765f10c59f492a1fe2dfdfaa9af59d457233d7b376ca25de6c55ae66509
+Freeze 1786939154777. First post-freeze ingest: 1 open, 0 completed.
+[X] RED tests
+[X] GREEN kxgoldh_forward_paper.py
+[X] flock + freeze + 10¢ edge + hold-to-settle
+[X] Run tests; freeze ledger; ingest one open
+Do not retune. Do not arm. Existing commodity-forward-paper.json untouched.
+Run: python3 scripts/research/kxgoldh_forward_paper.py --json
+PM:  python3 scripts/research/kxgoldh_forward_paper.py --postmortem --json
+
+---
+
+## Scratchpad — commodities edge hunt (2026-08-16)
+
+Operator left BTC 15m for Kalshi commodities. 15m metals lose to mid;
+WTI Yahoo vs Pyth is a feed bug. Hourly GOLDH/SILVERH/WTIH beat mid
+per family at n=500 (pooled withheld). GOLDH-only paper trial shipped.
+[X] Operator picked gold hourly
+[X] Implement hash-locked KXGOLDH paper trial
+
+---
+
+## Scratchpad — momentum integrity + 12-trade PM (2026-08-15)
+
+40/25-15/−$0.32 checkpoints have NO persisted ledger. One file,
+same freeze 14:22:10Z, hash 40477df8. Now 12 completed, 7W/5L, −$1.74.
+[X] Independent audit — no backup, no 40-row file
+[X] Path-replay the 12 real fills
+[X] Canvas: integrity first, then win/loss modes
+Do not use chat checkpoints. Do not retune. Do not mix lab history.
+
+---
+
+## Scratchpad — paper-forward babysit (2026-08-14)
+
+Codex babysit: cashout 1/+0.02, momentum 3/+3.44, hashes ok.
+“6 awaiting quotes” is not a dead logger. Tickers.jsonl is live
+(KXBTC15M-26AUG141800-00 age <1s). Those 6 windows’ first book
+arrived 73s–13m after open, so T+45s 5s freshness never fires.
+1445-45 also went dark 6m before close. Same 15m rollover hole.
+Momentum has an OPEN paper YES on 1800-00 @59¢ waiting settle.
+Do not retune. Do not kick daemon unless operator asks.
+
+---
+
+## Scratchpad — own way vs Codex factory (2026-08-14)
+
+Codex: 98 signals × 2352 strategies, no underdog, 20% withheld from ranking.
+Mine: not a factory. Reconstruct CF BRTI 60s avg while book is open;
+direction from that vs window-open BRTI; cap qty by displayed size.
+Six frozen observer bets, holdout once. Throwaway /tmp only.
+
+[X] Observer path replay (incomplete avg vs open)
+[X] Size-capped PnL on same 80/20
+[X] Canvas — own way, not a 2352-row board
+Finding: 8bps lock mean ask 0.9997, 21/28 untradeable at $1; 3bps leftover n=11.
+Do not copy Codex lab. Do not pick underdog. No live wiring.
 
 ---
 
@@ -63,4 +116,5 @@ PR A #243 merged. PR B `finn/cockpit-decide-gate-family-mirror`: display-only DE
 - **Calibrator auto-refresh:** Bot ticks kickstart LaunchAgents (or `python once`) when any family report ages past 2/3 of `max_report_age` — threshold included. Default ON; `--no-auto-refresh-calibrators` opts out. Throttle 45s/script. Does not replace LaunchAgents; prevents overnight `REPORT_STALE` stuck loops.
 - **Cockpit settlements ≠ sealed gate:** SETTLEMENTS / SETTLED / NET prefer current-rules postmortem (`CUR`); SEALED GATE + HIST DD stay lifetime for live promotion. Do not paint pre-gate −$35 as the new-rules scorecard.
 - **Bet-eligible trust:** `adds_value_on_bet_eligible` needs ≥100 contracts with `|model−mid|≥0.10` and better eligible Brier than mid. Population `adds_value_over_market` alone is not enough to bid.
-- **Qt JSON ints:** Prefer type-exclude `is_number` over `isDouble()` alone — Qt 6.9 may classify whole numbers outside Double; `isInteger()` may be unavailable on some Homebrew builds.
+- **Settlement window ≠ prediction:** KXBTC15M pays CF BRTI 60s average at close, not last print; commodities 15m pays Pyth 1-minute candle close (Hermes XAU/XAG/XTI), not Yahoo. Last-minute edge is observing that official statistic while `now < close` and no `result`. After REST `result` or `now >= close_ms` (ticker clock, never frozen `seconds_left`) you are late. Do not retune the race Gaussian for this.
+- **GOLDH paper ≠ 15m metals:** Hourly gold strike books can beat mid on Brier while 15m GOLD/SILVER/WTI physics loses to mid. A GOLDH paper trial must stay unpooled (no silver/oil, no 15m) and hash-lock a single 10¢ executable-edge floor. Do not retune `commodities-hourly-calibrator`; do not import pre-freeze snapshots. WTI 15m Yahoo `CL=F` vs Pyth `Metal.XTI/USD` can print 0.999 vs 0.045 — that is a feed bug, not an edge.
