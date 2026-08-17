@@ -1,5 +1,47 @@
 # Open-Terminal — Cursor scratchpad & lessons
 
+## Scratchpad — KXWTIH paper trial (2026-08-17)
+
+Operator: start a separate oil or silver while gold measurements wait.
+Oil hourly only. Not silver (Brier barely over mid). Not 15m (WTI scores poisoned).
+Own file, own hash. Do not touch GOLDH freeze 3295b765.
+[X] RED tests
+[X] GREEN kxwtih_forward_paper.py
+[X] Freeze ledger; ingest once (0 open — no 10¢ edge this hour)
+Hash: a63f89bf99ef4734a59fe2ed841d23be4a0465d3b4e2065251ed3c65df4e97cc
+Freeze 1787004532878. State: kxwtih-forward-paper.json
+Do not arm. Do not retune GOLDH. Do not share POLICY.
+
+---
+
+Operator: not in a hurry to bid. Gold hourly is "done". Families stay unpooled.
+Hourly: GOLDH/SILVERH/WTIH each beat mid at n=500, pooled withheld.
+15m: GOLD population skill / no eligible; SILVER loses mid; WTI Brier 0.43 vs 0.15 (Yahoo-era poison in scores).
+Daily: n≈40 each, unmeasured.
+GOLDH paper still 1 open / ingest dark since 04:00Z. Hash frozen.
+Next fix: quarantine/reset KXWTI15M scored window only. Do not clone paper to silver/oil.
+Do not arm. Do not retune GOLDH.
+
+---
+
+Operator: land ticker identity (4d92c2cb) so a clean checkout can settle GOLDH paper.
+Do not retune GOLDH. Do not arm. Do not mix 15m.
+[X] Isolated branch from origin/main
+[X] Cherry-pick 4d92c2cb (ticker + books on resolved_record)
+[X] PR #263 merged; unittest.main moved so ticker pins actually run
+GOLDH hash stays frozen.
+
+---
+
+Operator: proceed. Landed on main. GOLDH hash stays frozen.
+[X] #261 WTI Hermes-only (a51d067c)
+[X] #260 GOLDH paper trial; settlements keep ticker (171c4534)
+[X] #262 name both kills; cap is tighter-of (df245741)
+GOLDH paper still 1 open (KXGOLDH-26AUG1701-T4389.99), 0 completed.
+Do not retune GOLDH. Do not arm.
+
+---
+
 ## Scratchpad — KXGOLDH paper trial (2026-08-16)
 
 Hash-locked GOLDH-only paper trial is live. No 15m, no silver/oil.
@@ -66,6 +108,10 @@ Do not copy Codex lab. Do not pick underdog. No live wiring.
 
 ## Lessons
 
+- **WTI 15m ≠ Yahoo CL=F:** Kalshi settles `KXWTI15M` on Pyth `Metal.XTI/USD`. Yahoo `CL=F` as live spot printed model 0.999 vs book 0.045 on a weekend. `yahoo_may_proxy_settlement` is gold/silver only; Hermes-down withholds WTI.
+- **GOLDH trial cannot import the 15m lab:** `kxgoldh_forward_paper.py` must own `batch_fee` / `size_for_cap`. The underdog/momentum scripts live on `wip/codex-research-lab` and disappear from product checkouts.
+- **Two evidence dirs are intentional:** `openterminal_paths.py` — Qt export vs app data. Do not "unify" them. Env overrides stay verbatim.
+- **Drop arena means unload it:** `org.openterminal.alpha-arena` stayed loaded after the product decision. `launchctl bootout` + plist `Disabled`.
 - **Cockpit FLOW lanes must not stretch:** `lane_height = flow_body / drawn` made 3–4 books look like fat cards and wasted space for COM-H/D. Paint at fixed `kLaneHeight` (24); `drawable` still uses that height for scroll capacity.
 - **Bot freeze == bot refuse:** Rain freeze must use `age >= max_report_age_ms` like `KalshiBotDecision`; Auto cockpit keeps `timestamp_stale` as `age > bound`. Tick `signal_trusted` must OR all six family reports. Health chips watch present reports (not only rain columns) so empty COM-H/BTC-D cannot hide as idle; folded KPI colour is worst-of cadences.
 - **Crypto scalp journal split:** Daemon `crypto-auto-scalp-v1` appends opportunity rows to `decisions.jsonl` / `scalp_state.decisions`. SPOT/SCALP cockpit proof must bind `scalp_qualification_v1.json`, not SQLite `edge crypto-recommend` (dual-source SQL still finds zero auto-scalp rows). Tape/DECIDE read state JSON.
