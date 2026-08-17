@@ -189,6 +189,11 @@ class TrustGateTest(unittest.TestCase):
         self.assertEqual(report["family"], "COMMODITIES15M")
         self.assertIn("KXGOLD15M", report["families"])
 
+    def test_wti_report_does_not_advertise_yahoo_fallback(self):
+        report = cal.build_report(self.scored_state(0.10, 0.11, 200), {}, 0)
+        self.assertIsNone(report["spot_feeds"]["KXWTI15M"]["yahoo_fallback"])
+        self.assertEqual(report["spot_feeds"]["KXGOLD15M"]["yahoo_fallback"], "GC=F")
+
     def test_below_floor_is_not_value(self):
         report = cal.build_report(self.scored_state(0.10, 0.11, 50), {}, 0)
         self.assertFalse(report["adds_value_over_market"])
