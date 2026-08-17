@@ -112,6 +112,17 @@ class GoldHourlyForwardTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 trial.load_state(path, 1400)
 
+    def test_outcomes_use_settlements_when_resolved_record_drops_ticker(self):
+        hourly = {"by_family": {"KXGOLDH": {"resolved_record": [
+            {"observations": [], "outcome": True},
+        ]}}}
+        settlements = [
+            {"kalshi_market_id": "KXGOLDH-26AUG1701-T4389.99", "result": "no"},
+            {"kalshi_market_id": "KXSILVERH-26AUG1701-T50", "result": "yes"},
+        ]
+        out = trial.outcomes_from_hourly_state(state=hourly, settlements=settlements)
+        self.assertEqual(out, {"KXGOLDH-26AUG1701-T4389.99": False})
+
     def test_postmortem_classifies_win_and_loss_paths(self):
         won = {
             "ticker": "KXGOLDH-26AUG1717-T2",

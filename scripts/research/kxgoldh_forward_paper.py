@@ -147,18 +147,42 @@ def gold_predictions(report):
     return family.get("predictions") or {}
 
 
-def outcomes_from_hourly_state():
-    path = common.evidence_path(REPORT_STEM + "-state.json")
-    if not os.path.exists(path):
-        return {}
-    with open(path, encoding="utf-8") as handle:
-        state = json.load(handle)
-    family = (state.get("by_family") or {}).get(FAMILY) or {}
+def _result_is_yes(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().upper() == "YES"
+    return None
+
+
+def outcomes_from_hourly_state(state=None, settlements=None):
+    """Map KXGOLDH ticker -> YES won.
+
+    Main's hourly `resolved_record` stores only `{observations, outcome}` and
+    deletes the pending ticker. Venue settlements keep `kalshi_market_id`.
+    """
     out = {}
+    if state is None:
+        path = common.evidence_path(REPORT_STEM + "-state.json")
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as handle:
+                state = json.load(handle)
+        else:
+            state = {}
+    family = (state.get("by_family") or {}).get(FAMILY) or {}
     for row in family.get("resolved_record") or []:
         ticker = row.get("ticker")
         if ticker and row.get("outcome") is not None:
-            out[ticker] = bool(row["outcome"])
+            out[str(ticker)] = bool(row["outcome"])
+    if settlements is None:
+        settlements, _ = common.read_jsonl("kalshi-settlements.jsonl")
+    for row in settlements:
+        ticker = str(row.get("kalshi_market_id") or row.get("ticker") or "")
+        if not ticker.startswith(FAMILY + "-"):
+            continue
+        yes = _result_is_yes(row.get("result") or row.get("market_result"))
+        if yes is not None:
+            out[ticker] = yes
     return out
 
 
