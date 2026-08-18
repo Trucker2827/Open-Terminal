@@ -406,3 +406,96 @@ class QuoteCaptureTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QuoteCaptureTest(unittest.TestCase):
+    """The spread must be recoverable from a settled contract.
+
+    A calibration gap measured against the mid is not an edge until you know
+    whether it survives the spread: you harvest an overpriced longshot by
+    SELLING it, and you sell at the bid, not the mid. The commodity books are
+    thin, so the spread can plausibly exceed the whole gap. These tests pin the
+    quotes into the settled record so that question is answerable.
+    """
+
+    def _profile(self):
+        return stf.Profile(
+            event="test_quote_capture",
+            family="TEST",
+            series={"KXGOLDD": stf.SeriesSpec(yahoo="GC=F", label="gold", spot_mode="yahoo")},
+            state_path=os.path.join(tempfile.mkdtemp(), "state.json"),
+            output_path=os.path.join(tempfile.mkdtemp(), "out.json"),
+            probability_source="test",
+        )
+
+    def _observe(self, state, now_ms, bid, ask):
+        stf.observe_cycle(
+            state,
+            self._profile(),
+            now_ms,
+            rest_markets=[gold_daily_market(now_ms, yes_bid=bid, yes_ask=ask)],
+            yahoo_cache={"GC=F": [(now_ms - 60_000, 4490.0), (now_ms, 4510.0)]},
+        )
+
+    TICKER = "KXGOLDD-26AUG1017-T4500"
+
+    def test_each_observation_carries_the_quotes_beside_it(self):
+        now_ms = 1_784_900_000_000
+        state = stf.default_state()
+        self._observe(state, now_ms, 0.40, 0.50)
+        self._observe(state, now_ms + 1000, 0.11, 0.19)
+        entry = state["pending"][self.TICKER]
+        self.assertEqual(len(entry["books"]), len(entry["obs"]),
+                         "books must stay index-aligned with observations")
+        self.assertEqual(entry["books"][0]["market_yes_bid"], 0.40)
+        self.assertEqual(entry["books"][0]["market_yes_ask"], 0.50)
+        self.assertEqual(entry["books"][1]["market_yes_bid"], 0.11)
+        self.assertEqual(entry["books"][1]["market_yes_ask"], 0.19)
+
+    def test_the_spread_is_recoverable_from_a_settled_contract(self):
+        now_ms = 1_784_900_000_000
+        state = stf.default_state()
+        self._observe(state, now_ms, 0.11, 0.19)
+        close_ms = state["pending"][self.TICKER]["close_ms"]
+        stf.settle_cycle(state, close_ms + 200_000, resolver=lambda t: 0.0)
+        self.assertEqual(len(state["resolved_record"]), 1)
+        record = state["resolved_record"][0]
+        self.assertIn("books", record)
+        book = record["books"][0]
+        # mid 0.15, but you would have SOLD at 0.11 -- an 8-point round trip
+        # that a mid-only record makes invisible.
+        self.assertAlmostEqual(record["observations"][0]["yes_mid"], 0.15)
+        self.assertAlmostEqual(book["market_yes_ask"] - book["market_yes_bid"], 0.08)
+
+    def test_a_settled_contract_keeps_its_identity(self):
+        now_ms = 1_784_900_000_000
+        state = stf.default_state()
+        self._observe(state, now_ms, 0.40, 0.50)
+        close_ms = state["pending"][self.TICKER]["close_ms"]
+        stf.settle_cycle(state, close_ms + 200_000, resolver=lambda t: 1.0)
+        record = state["resolved_record"][0]
+        self.assertEqual(record["ticker"], self.TICKER)
+        self.assertEqual(record["event_ticker"], "KXGOLDD-26AUG1017")
+
+    def test_a_pending_entry_written_before_capture_is_padded_not_misaligned(self):
+        now_ms = 1_784_900_000_000
+        state = stf.default_state()
+        self._observe(state, now_ms, 0.40, 0.50)
+        # Simulate state on disk from before quote capture existed.
+        del state["pending"][self.TICKER]["books"]
+        self._observe(state, now_ms + 1000, 0.11, 0.19)
+        entry = state["pending"][self.TICKER]
+        self.assertEqual(len(entry["books"]), len(entry["obs"]))
+        self.assertEqual(entry["books"][0], {}, "the un-captured observation stays empty")
+        self.assertEqual(entry["books"][1]["market_yes_bid"], 0.11,
+                         "the new quotes must land on the observation they describe")
+
+    def test_quotes_never_enter_the_feature_vector(self):
+        now_ms = 1_784_900_000_000
+        state = stf.default_state()
+        self._observe(state, now_ms, 0.40, 0.50)
+        features = state["pending"][self.TICKER]["obs"][0]
+        for key in ("market_yes_bid", "market_yes_ask"):
+            self.assertNotIn(key, features,
+                             "a model that trained on the spread would be reading "
+                             "the answer out of the question")

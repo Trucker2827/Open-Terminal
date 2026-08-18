@@ -80,6 +80,7 @@
 #include "trading/PaperMarkService.h"
 #include "trading/ExchangeSessionManager.h"
 #include "storage/HistoricalDataStore.h"
+#include "storage/PublicSeedBootstrap.h"
 #include "storage/repositories/NewsArticleRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/BackupService.h"
@@ -608,6 +609,18 @@ int main(int argc, char* argv[]) {
     }
 
     openmarketterminal::Logger::instance().set_file(openmarketterminal::AppPaths::logs() + "/openmarketterminal.log");
+
+    // Install only a separately packaged, checksum-verified public market-data
+    // seed. It is never merged into openmarketterminal.db, which can contain
+    // credentials, accounts, orders, and fills. Missing seed data is normal.
+    {
+        const auto seed = openmarketterminal::storage::PublicSeedBootstrap::install_bundled_seed(
+            openmarketterminal::AppPaths::data());
+        if (!seed.ok)
+            LOG_ERROR("PublicSeed", seed.message);
+        else if (seed.installed)
+            LOG_INFO("PublicSeed", seed.message + QStringLiteral(": ") + seed.database_path);
+    }
 
     // Seed the prebuilt OpenMarketTerminal Notebook library into the File Manager on first
     // run (idempotent — guarded by a marker file). Makes the curated notebooks

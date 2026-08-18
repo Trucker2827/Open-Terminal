@@ -502,6 +502,42 @@ class TstSandboxRegistry : public QObject {
         }
         QCOMPARE(maker_count, 2);
     }
+
+    void global_snapshot_keeps_all_books_and_ai_factories_visible() {
+        auto snapshot = strategy_registry_snapshot(QStringLiteral("default"), 1'800'000'000'000LL);
+        QVERIFY2(snapshot.is_ok(), snapshot.is_err() ? snapshot.error().c_str() : "");
+        QCOMPARE(snapshot.value().value(QStringLiteral("schema")).toString(),
+                 QStringLiteral("strategy-registry/v1"));
+        const QJsonArray rows = snapshot.value().value(QStringLiteral("strategies")).toArray();
+        QVERIFY(!rows.isEmpty());
+        QSet<QString> kinds;
+        QSet<QString> strategy_ids;
+        bool saw_retired = false;
+        for (const QJsonValue& value : rows) {
+            const QJsonObject row = value.toObject();
+            kinds.insert(row.value(QStringLiteral("kind")).toString());
+            strategy_ids.insert(row.value(QStringLiteral("strategy_id")).toString());
+            saw_retired |= row.value(QStringLiteral("book_status")).toString() == QLatin1String("retired");
+            QVERIFY(row.contains(QStringLiteral("market")));
+            QVERIFY(row.contains(QStringLiteral("horizon")));
+            QVERIFY(row.contains(QStringLiteral("authority")));
+            QVERIFY(row.contains(QStringLiteral("producer_status")));
+            QVERIFY(row.contains(QStringLiteral("data_age_ms")));
+            QVERIFY(row.contains(QStringLiteral("ledger")));
+            QVERIFY(row.contains(QStringLiteral("last_error")));
+        }
+        QVERIFY(saw_retired); // invisible/retired is still inventory, not erased.
+        QVERIFY(kinds.contains(QStringLiteral("meanrev")));
+        QVERIFY(kinds.contains(QStringLiteral("claude")));
+        for (const QString& family : {QStringLiteral("btc1h"), QStringLiteral("kxgoldh"),
+                                      QStringLiteral("kxsilverh"), QStringLiteral("kxwtih")}) {
+            for (const QString& cohort : {QStringLiteral("chronos_alone"), QStringLiteral("control_alone"),
+                                          QStringLiteral("agreement"), QStringLiteral("conflict")}) {
+                QVERIFY2(strategy_ids.contains(QStringLiteral("shadow:chronos:%1:%2").arg(family, cohort)),
+                         qPrintable(QStringLiteral("missing JSON-ledger strategy %1/%2").arg(family, cohort)));
+            }
+        }
+    }
 };
 QTEST_GUILESS_MAIN(TstSandboxRegistry)
 #include "tst_sandbox_registry.moc"

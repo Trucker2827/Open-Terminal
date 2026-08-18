@@ -264,6 +264,7 @@ class KalshiScreen final : public QWidget {
     QLabel* arena_context_status_ = nullptr;
     QPushButton* arena_open_button_ = nullptr;
     QLabel* bot_status_ = nullptr;
+    QLabel* bot_research_trials_ = nullptr;
     QLabel* bot_armed_ = nullptr;
     QLabel* bot_signal_ = nullptr;
     QLabel* bot_scoreboard_ = nullptr;
@@ -396,6 +397,9 @@ class KalshiScreen final : public QWidget {
     QJsonObject calibrator_report_;
     QJsonObject kxbtc15m_calibrator_report_;
     QJsonObject commodities_15m_calibrator_report_;
+    QJsonObject commodities_hourly_calibrator_report_;
+    QJsonObject commodities_daily_calibrator_report_;
+    QJsonObject kxbtc_daily_calibrator_report_;
     qint64 calibrator_report_read_ms_ = 0;
     // advisor_competition_report.json is ~750KB and frozen once the duel ends,
     // so it is read at most once per session. Not gated on the verdict: the

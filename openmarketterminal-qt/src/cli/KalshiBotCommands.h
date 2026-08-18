@@ -12,5 +12,7 @@ namespace openmarketterminal::cli {
 // Compiled as its own TU and excluded from unity builds like the other cli
 // command families (MSVC front-end capacity; see CommandDispatch.cpp).
 int kalshi_bot_command(const GlobalOpts& opts, QStringList args);
+int kalshi_research_status_command(const GlobalOpts& opts, QStringList args);
+int kalshi_research_command(const GlobalOpts& opts, QStringList args);
 
 } // namespace openmarketterminal::cli

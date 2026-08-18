@@ -75,6 +75,7 @@
 // (MSVC front-end capacity; see CommandDispatch.cpp).
 
 #include "cli/KalshiBotCommands.h"
+#include "services/prediction/kalshi/KalshiResearchStatus.h"
 
 #include "cli/ServeCommand.h"
 #include "services/prediction/kalshi/KalshiBotDecision.h"
@@ -88,6 +89,7 @@
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -2546,6 +2548,205 @@ int bot_calibrate_command(const GlobalOpts& /*opts*/, QStringList& args) {
 }
 
 } // namespace
+
+int kalshi_research_status_command(const GlobalOpts& opts, QStringList args) {
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: kalshi status\n");
+        return 2;
+    }
+    using services::prediction::kalshi_ns::kalshi_research_status_snapshot;
+    const QString evidence_dir = QFileInfo(kalshi_evidence_path(QStringLiteral("calibrator.json"))).absolutePath();
+    const QJsonObject snapshot = kalshi_research_status_snapshot(
+        evidence_dir, QDateTime::currentMSecsSinceEpoch());
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(snapshot).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("KALSHI RESEARCH STATUS · READ ONLY / PAPER AUTHORITY\n");
+    std::printf("%-13s %-5s %-11s %-20s %-23s %s\n",
+                "FAMILY", "HZN", "ROLE", "FORECAST", "PAPER", "N/OPEN  P&L  DD  NEXT  HASH");
+    for (const QJsonValue& value : snapshot.value(QStringLiteral("capabilities")).toArray()) {
+        const QJsonObject row = value.toObject();
+        const QJsonObject ledger = row.value(QStringLiteral("paper_ledger")).toObject();
+        QString metrics = QStringLiteral("—");
+        QString paper = QStringLiteral("—");
+        if (!ledger.isEmpty()) {
+            paper = ledger.value(QStringLiteral("status")).toString();
+            metrics = QStringLiteral("%1/%2  $%3  $%4  %5  %6")
+                          .arg(ledger.value(QStringLiteral("completed")).toInt())
+                          .arg(ledger.value(QStringLiteral("open")).toInt())
+                          .arg(ledger.value(QStringLiteral("net_pnl")).toDouble(), 0, 'f', 2)
+                          .arg(ledger.value(QStringLiteral("max_drawdown")).toDouble(), 0, 'f', 2)
+                          .arg(ledger.value(QStringLiteral("next_milestone")).toInt())
+                          .arg(ledger.value(QStringLiteral("policy_sha256")).toString().left(8));
+        }
+        std::printf("%-13s %-5s %-11s %-20s %-23s %s\n",
+                    qUtf8Printable(row.value(QStringLiteral("family")).toString()),
+                    qUtf8Printable(row.value(QStringLiteral("horizon")).toString()),
+                    qUtf8Printable(row.value(QStringLiteral("role")).toString()),
+                    qUtf8Printable(row.value(QStringLiteral("forecast_status")).toString()),
+                    qUtf8Printable(paper), qUtf8Printable(metrics));
+    }
+    return 0;
+}
+
+namespace {
+
+struct ResearchLauncher {
+    QString script;
+    QString script_sha256;
+    QString policy_sha256;
+    bool paper_trial = false;
+    QStringList arguments;
+};
+
+QString research_script_path(const QString& name) {
+    const QDir app(QCoreApplication::applicationDirPath());
+    const QStringList candidates{app.filePath(QStringLiteral("scripts/research/") + name),
+                                 app.filePath(QStringLiteral("../../scripts/research/") + name)};
+    for (const QString& candidate : candidates)
+        if (QFileInfo::exists(candidate)) return QFileInfo(candidate).canonicalFilePath();
+    return {};
+}
+
+int run_locked_research(const GlobalOpts& opts, const ResearchLauncher& launcher) {
+    const QString path = research_script_path(launcher.script);
+    if (path.isEmpty()) {
+        std::fprintf(stderr, "kalshi research: allowlisted script %s not found\n",
+                     qUtf8Printable(launcher.script));
+        return 5;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return 5;
+    const QString actual = QString::fromLatin1(
+        QCryptographicHash::hash(file.readAll(), QCryptographicHash::Sha256).toHex());
+    if (actual != launcher.script_sha256) {
+        std::fprintf(stderr,
+                     "kalshi research: SCRIPT HASH MISMATCH for %s\nexpected %s\nactual   %s\n",
+                     qUtf8Printable(launcher.script), qUtf8Printable(launcher.script_sha256),
+                     qUtf8Printable(actual));
+        return 6;
+    }
+    const QString python = QStandardPaths::findExecutable(QStringLiteral("python3"));
+    if (python.isEmpty()) return 5;
+    QProcess process;
+    process.setWorkingDirectory(QFileInfo(path).absolutePath());
+    QStringList process_args{path, QStringLiteral("--json")};
+    process_args.append(launcher.arguments);
+    process.start(python, process_args);
+    if (!process.waitForStarted(30'000) || !process.waitForFinished(120'000)) {
+        std::fprintf(stderr, "kalshi research: launcher failed or timed out\n");
+        return 1;
+    }
+    const QByteArray output = process.readAllStandardOutput().trimmed();
+    const QByteArray errors = process.readAllStandardError();
+    if (process.exitCode() != 0) {
+        std::fwrite(errors.constData(), 1, static_cast<size_t>(errors.size()), stderr);
+        return process.exitCode();
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(output);
+    if (!document.isObject()) {
+        std::fprintf(stderr, "kalshi research: script returned invalid JSON\n");
+        return 1;
+    }
+    const QJsonObject result = document.object();
+    if (launcher.paper_trial) {
+        const QString policy = result.value(QStringLiteral("summary")).toObject()
+                                   .value(QStringLiteral("policy_sha256")).toString();
+        if (policy != launcher.policy_sha256) {
+            std::fprintf(stderr,
+                         "kalshi research: POLICY HASH MISMATCH after paper cycle; refusing result\n"
+                         "expected %s\nactual   %s\n",
+                         qUtf8Printable(launcher.policy_sha256), qUtf8Printable(policy));
+            return 6;
+        }
+    }
+    if (opts.json) {
+        std::printf("%s\n", output.constData());
+    } else {
+        std::printf("%s\n", QJsonDocument(result).toJson(QJsonDocument::Indented).constData());
+    }
+    return 0;
+}
+
+} // namespace
+
+int kalshi_research_command(const GlobalOpts& opts, QStringList args) {
+    const QString action = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
+    const QString family = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
+    if (!args.isEmpty() || (action != QLatin1String("trial") && action != QLatin1String("audit") &&
+                            action != QLatin1String("shadow") && action != QLatin1String("collect") &&
+                            action != QLatin1String("cycle"))) {
+        std::fprintf(stderr,
+                     "usage: kalshi research trial gold-hourly|silver-hourly|wti-hourly\n"
+                     "       kalshi research shadow btc-hourly|gold-hourly|silver-hourly|wti-hourly\n"
+                     "       kalshi research collect commodity-pyth\n"
+                     "       kalshi research cycle hourly-trials\n"
+                     "       kalshi research audit btc-hourly|gold-hourly|wti-hourly|hourly-trials\n");
+        return 2;
+    }
+    ResearchLauncher launcher;
+    if (action == QLatin1String("trial") && family == QLatin1String("gold-hourly"))
+        launcher = {QStringLiteral("kxgoldh_forward_paper.py"),
+                    QStringLiteral("88104b1d282b85c7da6812e75167b489ca6020308f7211819a0a2478ae32c140"),
+                    QStringLiteral("3295b765f10c59f492a1fe2dfdfaa9af59d457233d7b376ca25de6c55ae66509"), true, {}};
+    else if (action == QLatin1String("trial") && family == QLatin1String("silver-hourly"))
+        launcher = {QStringLiteral("kxsilverh_forward_paper.py"),
+                    QStringLiteral("d2cf72049d97be6f7e20160e58a07cfbe820a3d0f4af628f1eaf18417d294d14"),
+                    QStringLiteral("aac11a085224740f2a64f41ad43d4656734ef817cbf4cc35a1170dc86330a18b"), true, {}};
+    else if (action == QLatin1String("trial") && family == QLatin1String("wti-hourly"))
+        launcher = {QStringLiteral("kxwtih_forward_paper.py"),
+                    QStringLiteral("9ef6d5498f974b9ab2752b3c5cb82a8c5e5443efe6fd1f7733971d4f3946eb6f"),
+                    QStringLiteral("a63f89bf99ef4734a59fe2ed841d23be4a0465d3b4e2065251ed3c65df4e97cc"), true, {}};
+    else if (action == QLatin1String("audit") && family == QLatin1String("btc-hourly"))
+        launcher = {QStringLiteral("kxbtcd_hourly_regime_audit.py"),
+                    QStringLiteral("d299c8ce2e4cf611278fe9db456f1786e880637cacf652d1f456d4a583be5d27"),
+                    QString(), false, {}};
+    else if (action == QLatin1String("audit") && family == QLatin1String("gold-hourly"))
+        launcher = {QStringLiteral("kxgoldh_forward_paper.py"),
+                    QStringLiteral("88104b1d282b85c7da6812e75167b489ca6020308f7211819a0a2478ae32c140"),
+                    QString(), false, {QStringLiteral("--postmortem")}};
+    else if (action == QLatin1String("audit") && family == QLatin1String("wti-hourly"))
+        launcher = {QStringLiteral("kxwtih_forward_paper.py"),
+                    QStringLiteral("9ef6d5498f974b9ab2752b3c5cb82a8c5e5443efe6fd1f7733971d4f3946eb6f"),
+                    QString(), false, {QStringLiteral("--postmortem")}};
+    else if (action == QLatin1String("audit") && family == QLatin1String("hourly-trials"))
+        launcher = {QStringLiteral("hourly_trial_diagnostics.py"),
+                    QStringLiteral("ba004ced9117ab99a5f323cda4efae1c1122dcd4478a62e776b1e40e1e2e382c"),
+                    QString(), false, {}};
+    else if (action == QLatin1String("collect") && family == QLatin1String("commodity-pyth"))
+        launcher = {QStringLiteral("commodity_pyth_history.py"),
+                    QStringLiteral("7bf9436ba9dc632cc6fc8b2f0d4667e395df2eba33b4f299504d9c0bc627e0a6"),
+                    QString(), false, {}};
+    else if (action == QLatin1String("shadow") && family == QLatin1String("btc-hourly"))
+        launcher = {QStringLiteral("btc1h_chronos_shadow.py"),
+                    QStringLiteral("b3ca46c0c632a1d4015eb0b281edf56e126c52a7afdd8fb853096f2838874587"),
+                    QStringLiteral("5ff50a56678ab47de95e974fde9a3ec5da6dbe9776d27a201c29a9603f78679a"), true, {}};
+    else if (action == QLatin1String("shadow") && family == QLatin1String("gold-hourly"))
+        launcher = {QStringLiteral("commodity_chronos_shadow.py"),
+                    QStringLiteral("c1ff3ae8b7bc854a21e6d160196a075387f47299ca32d09460caaa254bd44b49"),
+                    QStringLiteral("c7291dde2454b42e587ae6450546daf7de96bab342c7a7e6038f494161059efb"), true,
+                    {QStringLiteral("KXGOLDH")}};
+    else if (action == QLatin1String("shadow") && family == QLatin1String("silver-hourly"))
+        launcher = {QStringLiteral("commodity_chronos_shadow.py"),
+                    QStringLiteral("c1ff3ae8b7bc854a21e6d160196a075387f47299ca32d09460caaa254bd44b49"),
+                    QStringLiteral("c7390e3e6c2e8aabc7220c407927294ead013f80f56db5b845a6c90c83d13d64"), true,
+                    {QStringLiteral("KXSILVERH")}};
+    else if (action == QLatin1String("shadow") && family == QLatin1String("wti-hourly"))
+        launcher = {QStringLiteral("commodity_chronos_shadow.py"),
+                    QStringLiteral("c1ff3ae8b7bc854a21e6d160196a075387f47299ca32d09460caaa254bd44b49"),
+                    QStringLiteral("191978d0f7db557da2f26c003276c63714075b10cbdad5728f93faab8473c11e"), true,
+                    {QStringLiteral("KXWTIH")}};
+    else if (action == QLatin1String("cycle") && family == QLatin1String("hourly-trials"))
+        launcher = {QStringLiteral("hourly_trial_cycle.py"),
+                    QStringLiteral("1fb946a219a38376be53625cf69bcc0f8cf7807f7323776c5cd9c03bfb506550"),
+                    QString(), false, {}};
+    else {
+        std::fprintf(stderr, "kalshi research: family/action is not allowlisted\n");
+        return 2;
+    }
+    return run_locked_research(opts, launcher);
+}
 
 int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();

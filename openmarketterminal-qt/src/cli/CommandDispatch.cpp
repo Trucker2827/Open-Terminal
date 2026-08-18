@@ -488,6 +488,7 @@ static int command_help(const QString& topic) {
     if (topic == "sandbox") {
         std::printf(
             "Strategy Sandbox commands:\n"
+            "  sandbox registry [global --json]  all books + on-demand strategies\n"
             "  sandbox seed\n"
             "  sandbox list [--status active|paused|retired]\n"
             "  sandbox pause <id>\n"
@@ -521,6 +522,12 @@ static int command_help(const QString& topic) {
     if (topic == "kalshi") {
         std::printf(
             "Kalshi paper automation commands:\n"
+            "  kalshi status [global --json]  shared GUI/CLI research inventory\n"
+            "  kalshi research trial gold-hourly|silver-hourly|wti-hourly\n"
+            "  kalshi research shadow btc-hourly|gold-hourly|silver-hourly|wti-hourly\n"
+            "  kalshi research collect commodity-pyth\n"
+            "  kalshi research cycle hourly-trials\n"
+            "  kalshi research audit btc-hourly|gold-hourly|wti-hourly|hourly-trials\n"
             "  kalshi auto status\n"
             "  kalshi auto flow [--ticker TICKER]\n"
             "  kalshi auto snapshot --ticker TICKER [--model-probability P]\n"
@@ -8448,6 +8455,46 @@ static int sandbox_set_status_command(const GlobalOpts& opts, QStringList args, 
     return 5;
 }
 
+static int sandbox_registry_command(const GlobalOpts& opts, QStringList args) {
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: sandbox registry\n");
+        return 2;
+    }
+    int code = 0;
+    if (!init_headless_for_cli(opts, code)) return code;
+    auto snapshot = sandboxsvc::strategy_registry_snapshot(
+        opts.profile, QDateTime::currentMSecsSinceEpoch());
+    if (snapshot.is_err()) {
+        std::fprintf(stderr, "sandbox registry failed: %s\n", snapshot.error().c_str());
+        return 5;
+    }
+    if (opts.json) return automation_emit_object(opts, snapshot.value());
+    const QJsonObject summary = snapshot.value().value(QStringLiteral("summary")).toObject();
+    std::printf("GLOBAL STRATEGY REGISTRY · total=%d active=%d stale=%d error=%d waiting=%d\n",
+                summary.value("total").toInt(), summary.value("active").toInt(),
+                summary.value("stale").toInt(), summary.value("errors").toInt(),
+                summary.value("waiting").toInt());
+    std::printf("%-18s %-11s %-10s %-10s %-13s %-12s %-8s %s\n",
+                "STRATEGY", "MARKET", "HORIZON", "AUTHORITY", "PRODUCER", "BOOK", "AGE", "LEDGER / ERROR");
+    for (const QJsonValue& value : snapshot.value().value(QStringLiteral("strategies")).toArray()) {
+        const QJsonObject row = value.toObject();
+        const qint64 age = row.value(QStringLiteral("data_age_ms")).toVariant().toLongLong();
+        const QString age_text = age < 0 ? QStringLiteral("—") : QStringLiteral("%1s").arg(age / 1000);
+        QString tail = row.value(QStringLiteral("ledger")).toString();
+        if (!row.value(QStringLiteral("last_error")).toString().isEmpty())
+            tail += QStringLiteral(" / ") + row.value(QStringLiteral("last_error")).toString();
+        std::printf("%-18s %-11s %-10s %-10s %-13s %-12s %-8s %s\n",
+                    qUtf8Printable(elide_text(row.value("kind").toString(), 18)),
+                    qUtf8Printable(row.value("market").toString()),
+                    qUtf8Printable(elide_text(row.value("horizon").toString(), 10)),
+                    qUtf8Printable(row.value("authority").toString()),
+                    qUtf8Printable(row.value("producer_status").toString()),
+                    qUtf8Printable(row.value("book_status").toString()),
+                    qUtf8Printable(age_text), qUtf8Printable(tail));
+    }
+    return 0;
+}
+
 static int sandbox_tick_command(const GlobalOpts& opts) {
     int code = 0;
     if (!init_headless_for_cli(opts, code))
@@ -8960,6 +9007,8 @@ static int sandbox_command(const GlobalOpts& opts, QStringList args) {
         return sandbox_seed_command(opts);
     if (sub == "list")
         return sandbox_list_command(opts, args);
+    if (sub == "registry" || sub == "status")
+        return sandbox_registry_command(opts, args);
     if (sub == "pause")
         return sandbox_set_status_command(opts, args, sub, QStringLiteral("paused"));
     if (sub == "resume")
@@ -8989,7 +9038,7 @@ static int sandbox_command(const GlobalOpts& opts, QStringList args) {
         return daemon_command(opts.profile, opts.json, daemon_args);
     }
     std::fprintf(stderr,
-                 "usage: sandbox seed|list [--status S]|pause <id>|resume <id>|retire <id>|tick|"
+                 "usage: sandbox registry|seed|list [--status S]|pause <id>|resume <id>|retire <id>|tick|"
                  "positions [--open|--closed] [--limit N]|score-now (alias: score)|"
                  "leaderboard [--json] (alias: board)|book <strategy_id> [--json]|"
                  "eligibility [--json]|install-jobs|remove-jobs\n");
@@ -24239,10 +24288,18 @@ static int kalshi_command(const GlobalOpts& opts, QStringList args) {
     const QString group = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
     // `bot` is the paper calibrator bot (rung 1) and lives in its own TU.
     if (group == QStringLiteral("bot")) return kalshi_bot_command(opts, args);
+    if (group == QStringLiteral("status")) return kalshi_research_status_command(opts, args);
+    if (group == QStringLiteral("research")) return kalshi_research_command(opts, args);
     if (group == QStringLiteral("grid") || group == QStringLiteral("strategy-grid"))
         return kalshi_grid_command(opts, args);
     if (group != QStringLiteral("auto")) {
-        std::fprintf(stderr, "usage: kalshi auto status|flow|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper|advise\n"
+        std::fprintf(stderr, "usage: kalshi status\n"
+                             "       kalshi research trial gold-hourly|silver-hourly|wti-hourly\n"
+                             "       kalshi research shadow btc-hourly|gold-hourly|silver-hourly|wti-hourly\n"
+                             "       kalshi research collect commodity-pyth\n"
+                             "       kalshi research cycle hourly-trials\n"
+                             "       kalshi research audit btc-hourly|gold-hourly|wti-hourly|hourly-trials\n"
+                             "       kalshi auto status|flow|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper|advise\n"
                              "       kalshi bot once|run   (paper calibrator bot)\n"); return 2;
     }
     const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();

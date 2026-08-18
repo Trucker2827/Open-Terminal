@@ -30,10 +30,19 @@ class StrategyOpsMapPanel : public QWidget {
 
   private:
     struct BookNode {
+        QString strategy_id;
         QString kind;
         QString source;
+        QString market;
         QString horizon;
+        QString authority;
+        QString ledger;
         QString status;
+        QString producer_status;
+        qint64 data_age_ms = -1;
+        QString last_error;
+        QString skip_reasons;
+        QString last_decision;
         int resolved = 0;
         int open = 0;
         double net_pnl = 0.0;
@@ -55,6 +64,8 @@ class StrategyOpsMapPanel : public QWidget {
     void draw_particle_line(QPainter& p, const QPointF& a, const QPointF& b, const QColor& color,
                             qreal phase_offset);
     QColor color_for_book(const BookNode& b) const;
+    int visible_book_start() const;
+    int visible_book_count() const;
 
     QTimer frame_timer_;
     QTimer refresh_timer_;

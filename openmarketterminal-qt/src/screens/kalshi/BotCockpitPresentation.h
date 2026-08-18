@@ -49,9 +49,11 @@
 #include "services/prediction/kalshi/KalshiBotDecision.h"
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
 #include "services/prediction/kalshi/KalshiCorridorGate.h"
+#include "services/prediction/kalshi/KalshiResearchStatus.h"
 #include "services/prediction/kalshi/KalshiStrategyGridView.h"
 
 #include <QHash>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -342,6 +344,30 @@ inline QString prefer_open_kxbtc15m_ticker(const QJsonObject& kxbtc15m_report,
     return best;
 }
 
+/// Primary crypto follow target: one open hourly KXBTCD threshold contract.
+/// Keeps the current hourly contract when possible, otherwise chooses the
+/// largest absolute model-vs-mid gap. KXBTC15M remains diagnostic only.
+inline QString prefer_open_kxbtcd_ticker(const QJsonObject& report,
+                                         const QString& current_ticker = {}) {
+    const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
+    if (current_ticker.startsWith(QLatin1String("KXBTCD-")) && predictions.contains(current_ticker))
+        return current_ticker;
+    QString best;
+    double best_edge = -1.0;
+    for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it) {
+        if (!it.key().startsWith(QLatin1String("KXBTCD-"))) continue;
+        const QJsonObject pred = it.value().toObject();
+        const QJsonValue p = pred.value(QStringLiteral("p_yes_full"));
+        const QJsonValue mid = pred.value(QStringLiteral("market_yes_mid"));
+        const double edge = p.isDouble() && mid.isDouble()
+                                ? std::fabs(p.toDouble() - mid.toDouble()) : -1.0;
+        if (best.isEmpty() || edge > best_edge || (edge == best_edge && it.key() < best)) {
+            best = it.key(); best_edge = edge;
+        }
+    }
+    return best;
+}
+
 /// Compact outside-info ablation readout for cockpit/CLI-shaped report JSON.
 /// Lists each variant's n + whether it currently beats mid; names the trusted
 /// winner when present. Pure — no I/O.
@@ -457,6 +483,47 @@ inline QString commodities_hourly_scoreboard_line(const QJsonObject& report) {
     return line;
 }
 
+inline QString forward_trial_status(const QJsonObject& state, qint64 now_ms) {
+    return services::prediction::kalshi_ns::research_paper_ledger(state, now_ms)
+        .value(QStringLiteral("status")).toString();
+}
+
+inline QString forward_trial_kpi(const QJsonObject& state, const QString& label, qint64 now_ms) {
+    const QJsonObject ledger =
+        services::prediction::kalshi_ns::research_paper_ledger(state, now_ms);
+    const int completed = ledger.value(QStringLiteral("completed")).toInt();
+    const int open = ledger.value(QStringLiteral("open")).toInt();
+    const double pnl = ledger.value(QStringLiteral("net_pnl")).toDouble();
+    const double drawdown = ledger.value(QStringLiteral("max_drawdown")).toDouble();
+    const QString hash = ledger.value(QStringLiteral("policy_sha256")).toString();
+    const qint64 normalized_age = ledger.value(QStringLiteral("age_ms")).toVariant().toLongLong();
+    QString age = QStringLiteral("—");
+    if (normalized_age >= 0) {
+        const qint64 age_ms = normalized_age;
+        age = age_ms < 120'000
+            ? QStringLiteral("%1s").arg(age_ms / 1'000)
+            : (age_ms < 7'200'000
+                   ? QStringLiteral("%1m").arg(age_ms / 60'000)
+                   : QStringLiteral("%1h").arg(age_ms / 3'600'000));
+    }
+    const int next_milestone = ledger.value(QStringLiteral("next_milestone")).toInt();
+    return QStringLiteral("%1 · %2 · age %3 · n=%4 open=%5 next=%6 · P&L $%7 · DD $%8 · %9")
+        .arg(label, ledger.value(QStringLiteral("status")).toString())
+        .arg(age).arg(completed).arg(open).arg(next_milestone)
+        .arg(pnl, 0, 'f', 2).arg(drawdown, 0, 'f', 2)
+        .arg(hash.isEmpty() ? QStringLiteral("NO HASH") : hash.left(8));
+}
+
+inline QString forward_trial_card(const QJsonObject& state, qint64 now_ms) {
+    const QString full = forward_trial_kpi(state, QStringLiteral("H"), now_ms);
+    const QStringList fields = full.split(QStringLiteral(" · "));
+    if (fields.size() < 7) return full;
+    // Two deliberate lines keep all ledger facts readable inside one metal tile.
+    return QStringLiteral("%1 · %2 · %3 · %7\n%4 · %5 · %6")
+        .arg(fields.at(0), fields.at(1), fields.at(2), fields.at(3), fields.at(4), fields.at(5),
+             fields.at(6));
+}
+
 inline QString family_trust_mark(KalshiBotDecision::FamilyTrust trust) {
     using Trust = KalshiBotDecision::FamilyTrust;
     if (trust == Trust::Pass) return QStringLiteral("T");
@@ -477,11 +544,16 @@ inline QString metal_cadence_chip(const QJsonObject& report, const QString& seri
     const int scored = block.value(QStringLiteral("scored_contracts")).toInt();
     const int floor = block.value(QStringLiteral("min_scored_contracts")).toInt(
         report.value(QStringLiteral("min_scored_contracts")).toInt(100));
-    return QStringLiteral("%1 %2/%3 %4")
+    const bool enough = scored >= floor;
+    const bool adds = block.value(QStringLiteral("adds_value_on_bet_eligible")).toBool();
+    const QString status = adds ? QStringLiteral("FORECAST CANDIDATE")
+                                : enough ? QStringLiteral("NO EDGE")
+                                         : QStringLiteral("CALIBRATING");
+    return QStringLiteral("%1 %2/%3 %4 %5")
         .arg(tag)
         .arg(scored)
         .arg(floor)
-        .arg(family_trust_mark(trust));
+        .arg(family_trust_mark(trust), status);
 }
 
 /// Gold / Silver / WTI orbit line — cadences folded, metals never mixed.
@@ -568,7 +640,13 @@ inline QString threshold_scoreboard_line(const QJsonObject& report) {
         return QStringLiteral("NO %1 — the strike/threshold calibrator has not published here yet")
             .arg(QString::fromLatin1(kKalshiCalibratorFile));
     }
-    return kxbtc15m_scoreboard_line(report);
+    const int scored = report.value(QStringLiteral("eligible_scored_contracts")).toInt();
+    const int floor = report.value(QStringLiteral("min_eligible_contracts")).toInt(100);
+    const bool adds = report.value(QStringLiteral("adds_value_on_bet_eligible")).toBool();
+    const QString status = adds ? QStringLiteral("FORECAST CANDIDATE")
+                                : scored >= floor ? QStringLiteral("NO EDGE")
+                                                  : QStringLiteral("CALIBRATING");
+    return QStringLiteral("%1 · %2").arg(status, kxbtc15m_scoreboard_line(report));
 }
 
 /// The age at which a column freezes: the bot's own report-refusal age, not a
@@ -2705,6 +2783,16 @@ inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qi
     const QJsonObject commodities_daily_report =
         read_report(kalshi_commodities_daily_calibrator_path());
     const QJsonObject kxbtc_daily_report = read_report(kalshi_kxbtc_daily_calibrator_path());
+    const QString evidence_dir = QFileInfo(kalshi_calibrator_path()).absolutePath();
+    const QJsonObject research_status =
+        services::prediction::kalshi_ns::kalshi_research_status_snapshot(evidence_dir, now_ms);
+    const QJsonObject hourly_ledgers = research_status.value(QStringLiteral("hourly_ledgers")).toObject();
+    const QJsonObject gold_hourly_trial = hourly_ledgers.value(QStringLiteral("KXGOLDH"))
+                                               .toObject().value(QStringLiteral("raw")).toObject();
+    const QJsonObject silver_hourly_trial = hourly_ledgers.value(QStringLiteral("KXSILVERH"))
+                                                 .toObject().value(QStringLiteral("raw")).toObject();
+    const QJsonObject wti_hourly_trial = hourly_ledgers.value(QStringLiteral("KXWTIH"))
+                                              .toObject().value(QStringLiteral("raw")).toObject();
     const QJsonObject corridor_gate = read_report(kalshi_corridor_gate_path());
     QJsonObject corridor_scan;
     QFile corridor_file(kalshi_corridor_evidence_path());
@@ -2753,13 +2841,30 @@ inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qi
         QStringLiteral("kalshi-bot-postmortem-summary-current.json")));
     const QJsonObject postmortem_historic = read_report(
         cli::kalshi_evidence_path(QStringLiteral("kalshi-bot-postmortem-summary.json")));
-    return present_bot_cockpit(panel, report, gate, ledger, live_status, now_ms, grid_json,
+    BotCockpitScene scene = present_bot_cockpit(panel, report, gate, ledger, live_status, now_ms, grid_json,
                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed,
                                kxbtc15m_report, commodities_15m_report, postmortem_current,
                                postmortem_historic, commodities_hourly_report,
                                commodities_daily_report, kxbtc_daily_report, corridor_scan,
                                corridor_gate, corridor_paper_bids, corridor_micro_live_seal,
                                corridor_micro_live_executions, corridor_micro_live_status);
+    const QList<QPair<QString, QJsonObject>> trials{
+        {QStringLiteral("gold"), gold_hourly_trial},
+        {QStringLiteral("silver"), silver_hourly_trial},
+        {QStringLiteral("wti"), wti_hourly_trial}};
+    for (const auto& trial : trials) {
+        const QString status = forward_trial_status(trial.second, now_ms);
+        const QString ledger = forward_trial_kpi(
+            trial.second, trial.first.toUpper() + QStringLiteral("-H"), now_ms);
+        for (BotCockpitNode& node : scene.nodes) {
+            if (node.id != trial.first) continue;
+            node.value += QStringLiteral("\n%1").arg(forward_trial_card(trial.second, now_ms));
+            node.detail += QStringLiteral("\n\n── HOURLY FORWARD LEDGER ──\n%1").arg(ledger);
+            if (status != QLatin1String("PAPER TESTING")) node.role = QStringLiteral("red");
+            break;
+        }
+    }
+    return scene;
 }
 
 } // namespace openmarketterminal::screens::kalshi
