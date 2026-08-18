@@ -63,6 +63,7 @@ class CryptoBottomPanel : public QWidget {
 
     void set_account_id(const QString& account_id);
     void set_exchange_context(const QString& exchange_id, bool is_paper);
+    void set_active_symbol(const QString& symbol);
 
   signals:
     void cancel_order_requested(const QString& order_id);

@@ -3,7 +3,7 @@
 // Pure presentation for the Crypto SPOT / SCALP automation cockpit.
 // Pattern mirrors Kalshi's present_bot_cockpit: scene in, paint/bind out.
 // Inspect-only — never arms canary, never places orders. Vocabulary is
-// PAPER SCALP / CANARY ON (not LIVE ARMED).
+// PAPER AUTOMATION / CANARY ON (not LIVE ARMED).
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -32,14 +32,31 @@ struct CryptoCockpitSecurityInputs {
 
 struct CryptoCockpitInputs {
     QString exchange_id = QStringLiteral("coinbase");
+    QString active_symbol = QStringLiteral("BTC-USD");
     bool is_paper = true;
     QJsonObject scalp_state;
     QJsonObject scalp_engine;
+    QJsonObject spot_state;          ///< btc1h_spot_state.json; independent lane
+    QJsonObject spot_qualification;  ///< btc1h_spot_qualification_v1.json
+    qint64 spot_qualification_age_ms = -1;
     QJsonObject live_guard;
     QJsonObject qualification;       ///< scalp_qualification_v1.json body
     qint64 qualification_age_ms = -1; ///< file age; <0 means missing/unknown
     CryptoCockpitSecurityInputs security;
     qint64 now_ms = 0;
+};
+
+struct CryptoCockpitLaneScene {
+    QString eyebrow;
+    QString title;
+    QString state;
+    QString state_role;
+    QString authority;
+    QString decision;
+    QString edge;
+    QString sample;
+    QString ledger;
+    QString detail;
 };
 
 struct CryptoCockpitTapeRow {
@@ -68,8 +85,10 @@ struct CryptoCockpitProofRow {
 };
 
 struct CryptoCockpitScene {
+    CryptoCockpitLaneScene spot_lane;
+    CryptoCockpitLaneScene scalp_lane;
     // Mood / authority (read-only)
-    QString mood;              ///< "PAPER SCALP" | "CANARY ON"
+    QString mood;              ///< "PAPER AUTOMATION" | "CANARY ON"
     QString mood_role;         ///< "cyan" | "amber" | "green" | "red" | "grey"
     QString mood_detail;       ///< expiry and/or blocker summary
     QStringList blockers;      ///< security / canary blockers (empty ⇒ clear)
@@ -116,6 +135,78 @@ struct CryptoCockpitScene {
     CryptoCockpitProofRow proof_symbol;
     QString proof_status;
 };
+
+inline CryptoCockpitLaneScene crypto_cockpit_lane_of(const QString& lane,
+                                                      const QJsonObject& state,
+                                                      const QJsonObject& qualification,
+                                                      qint64 qualification_age_ms,
+                                                      const QString& active_symbol) {
+    CryptoCockpitLaneScene out;
+    const bool spot = lane == QLatin1String("spot");
+    out.eyebrow = spot ? QStringLiteral("COINBASE · 1 HOUR · LONG-ONLY")
+                       : QStringLiteral("COINBASE + KRAKEN · MICROSTRUCTURE");
+    QString wanted = active_symbol.trimmed().toUpper();
+    wanted.replace(QLatin1Char('/'), QLatin1Char('-'));
+    const QString base = wanted.section(QLatin1Char('-'), 0, 0);
+    out.title = spot ? QStringLiteral("%1 1H SPOT").arg(base.isEmpty() ? QStringLiteral("--") : base)
+                     : QStringLiteral("%1 SCALP SHADOW").arg(base.isEmpty() ? QStringLiteral("--") : base);
+    const QJsonObject config = state.value(QStringLiteral("config")).toObject();
+    const bool running = state.value(QStringLiteral("status")).toString() == QLatin1String("running") &&
+                         config.value(QStringLiteral("enabled")).toBool();
+    out.state = running ? QStringLiteral("RUNNING")
+                        : (state.isEmpty() ? (spot ? QStringLiteral("ADAPTER PENDING")
+                                                   : QStringLiteral("AWAITING PRODUCER"))
+                                           : QStringLiteral("OFFLINE"));
+    out.state_role = running ? QStringLiteral("green")
+                             : (state.isEmpty() ? QStringLiteral("amber") : QStringLiteral("red"));
+    out.authority = state.value(QStringLiteral("execution_authority"))
+                        .toString(QStringLiteral("PAPER / SHADOW"))
+                        .toUpper();
+    const QJsonArray decisions = state.value(QStringLiteral("decisions")).toArray();
+    QJsonObject latest;
+    for (const auto& value : decisions) {
+        const QJsonObject candidate = value.toObject();
+        QString symbol = candidate.value(QStringLiteral("symbol")).toString().trimmed().toUpper();
+        symbol.replace(QLatin1Char('/'), QLatin1Char('-'));
+        if (symbol == wanted) {
+            latest = candidate;
+            break;
+        }
+    }
+    if (running && latest.isEmpty()) {
+        out.state = QStringLiteral("NOT TRACKED");
+        out.state_role = QStringLiteral("amber");
+    }
+    out.decision = latest.value(QStringLiteral("verdict"))
+                       .toString(QStringLiteral("NO DECISION YET"));
+    out.edge = latest.contains(QStringLiteral("net_after_cost_bps"))
+                   ? QString::number(latest.value(QStringLiteral("net_after_cost_bps")).toDouble(),
+                                     'f', 1) + QStringLiteral(" bps")
+                   : QStringLiteral("--");
+    const int resolved = qualification.value(QStringLiteral("resolved_count")).toInt();
+    const int required = qualification.value(QStringLiteral("required_resolved"))
+                             .toInt(spot ? 100 : 200);
+    out.sample = qualification.isEmpty()
+                     ? QStringLiteral("0 / %1 FORWARD").arg(required)
+                     : QStringLiteral("%1 / %2 FORWARD").arg(resolved).arg(required);
+    out.ledger = state.value(QStringLiteral("decisions_path"))
+                     .toString(spot ? QStringLiteral("btc1h_spot_decisions.jsonl")
+                                    : QStringLiteral("scalp_decisions.jsonl"));
+    const bool qual_fresh = qualification_age_ms >= 0 &&
+                            qualification_age_ms <= kCryptoQualificationFreshMs;
+    const QString qual_state = qualification.value(QStringLiteral("state"))
+                                   .toString(QStringLiteral("UNQUALIFIED"));
+    out.detail = QStringLiteral("%1 · %2 · %3%4")
+                     .arg(out.authority,
+                          qualification.isEmpty() ? QStringLiteral("NO QUALIFICATION REPORT")
+                                                  : qual_state + (qual_fresh ? QString() : QStringLiteral(" / STALE")),
+                          spot ? QStringLiteral("inventory-backed sells only")
+                               : QStringLiteral("existing 200-sample gate preserved"),
+                          running && latest.isEmpty()
+                              ? QStringLiteral(" · %1 is not in this producer's symbol set").arg(wanted)
+                              : QString());
+    return out;
+}
 
 inline QString crypto_cockpit_venue_title(const QString& id) {
     if (id.compare(QLatin1String("coinbase"), Qt::CaseInsensitive) == 0)
@@ -364,6 +455,15 @@ inline CryptoCockpitScene present_crypto_cockpit(const CryptoCockpitInputs& inpu
     const qint64 now_ms =
         inputs.now_ms > 0 ? inputs.now_ms : QDateTime::currentMSecsSinceEpoch();
 
+    scene.spot_lane = crypto_cockpit_lane_of(QStringLiteral("spot"), inputs.spot_state,
+                                              inputs.spot_qualification,
+                                              inputs.spot_qualification_age_ms,
+                                              inputs.active_symbol);
+    scene.scalp_lane = crypto_cockpit_lane_of(QStringLiteral("scalp"), inputs.scalp_state,
+                                               inputs.qualification,
+                                               inputs.qualification_age_ms,
+                                               inputs.active_symbol);
+
     const QJsonObject config =
         inputs.scalp_state.value(QStringLiteral("config"))
             .toObject(inputs.scalp_engine);
@@ -411,7 +511,7 @@ inline CryptoCockpitScene present_crypto_cockpit(const CryptoCockpitInputs& inpu
                           .arg(scene.canary_expires_at);
         }
     } else {
-        scene.mood = QStringLiteral("PAPER SCALP");
+        scene.mood = QStringLiteral("PAPER AUTOMATION");
         scene.mood_role = QStringLiteral("cyan");
         scene.mood_detail = scene.blockers.isEmpty()
                                 ? QStringLiteral("canary off · paper/shadow path · arm from Profile")
@@ -419,7 +519,18 @@ inline CryptoCockpitScene present_crypto_cockpit(const CryptoCockpitInputs& inpu
     }
 
     const QJsonArray decisions = inputs.scalp_state.value(QStringLiteral("decisions")).toArray();
-    const QJsonObject latest = decisions.isEmpty() ? QJsonObject{} : decisions.first().toObject();
+    QString wanted = inputs.active_symbol.trimmed().toUpper();
+    wanted.replace(QLatin1Char('/'), QLatin1Char('-'));
+    QJsonObject latest;
+    for (const auto& value : decisions) {
+        const QJsonObject candidate = value.toObject();
+        QString symbol = candidate.value(QStringLiteral("symbol")).toString().trimmed().toUpper();
+        symbol.replace(QLatin1Char('/'), QLatin1Char('-'));
+        if (symbol == wanted) {
+            latest = candidate;
+            break;
+        }
+    }
     const CryptoCockpitTapeRow head = crypto_cockpit_tape_row_of(latest);
     scene.decide_symbol = head.symbol;
     scene.decide_verdict = head.verdict;
@@ -443,8 +554,10 @@ inline CryptoCockpitScene present_crypto_cockpit(const CryptoCockpitInputs& inpu
 
     const int tape_n =
         std::min(kCryptoCockpitMaxTapeRows, static_cast<int>(decisions.size()));
-    for (int i = 0; i < tape_n; ++i)
-        scene.tape << crypto_cockpit_tape_row_of(decisions.at(i).toObject());
+    for (int i = 0; i < decisions.size() && scene.tape.size() < tape_n; ++i) {
+        const auto row = crypto_cockpit_tape_row_of(decisions.at(i).toObject());
+        if (row.symbol == wanted) scene.tape << row;
+    }
     if (scene.tape.isEmpty()) {
         scene.tape_census = QStringLiteral("NO TAPE · waiting for daemon decisions");
     } else if (decisions.size() > scene.tape.size()) {

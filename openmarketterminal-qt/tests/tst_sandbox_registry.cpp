@@ -512,6 +512,12 @@ class TstSandboxRegistry : public QObject {
         QVERIFY(!rows.isEmpty());
         QSet<QString> kinds;
         QSet<QString> strategy_ids;
+        const QSet<QString> producer_states{
+            QStringLiteral("RUNNING"), QStringLiteral("STALE"),
+            QStringLiteral("ERROR"), QStringLiteral("WARMING"),
+            QStringLiteral("PAUSED"), QStringLiteral("RETIRED"),
+            QStringLiteral("UNAVAILABLE"), QStringLiteral("RESEARCH ONLY"),
+            QStringLiteral("ON DEMAND")};
         bool saw_retired = false;
         for (const QJsonValue& value : rows) {
             const QJsonObject row = value.toObject();
@@ -522,6 +528,9 @@ class TstSandboxRegistry : public QObject {
             QVERIFY(row.contains(QStringLiteral("horizon")));
             QVERIFY(row.contains(QStringLiteral("authority")));
             QVERIFY(row.contains(QStringLiteral("producer_status")));
+            QVERIFY2(producer_states.contains(row.value(QStringLiteral("producer_status")).toString()),
+                     qPrintable(QStringLiteral("unexpected producer state: %1")
+                                    .arg(row.value(QStringLiteral("producer_status")).toString())));
             QVERIFY(row.contains(QStringLiteral("data_age_ms")));
             QVERIFY(row.contains(QStringLiteral("ledger")));
             QVERIFY(row.contains(QStringLiteral("last_error")));

@@ -31,8 +31,11 @@
 #include <QJsonObject>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QStackedWidget>
 #include <QVBoxLayout>
+#include <QTimer>
 
 #include <algorithm>
 #include <cmath>
@@ -181,7 +184,7 @@ void CryptoBottomPanel::update_empty_state(QTableWidget* /*table*/, QStackedWidg
 
 CryptoBottomPanel::CryptoBottomPanel(QWidget* parent) : QWidget(parent) {
     setObjectName("cryptoBottomPanel");
-    setMinimumHeight(180); // keep at least a couple of rows visible on resize
+    setMinimumHeight(260); // keep both automation lane cards visible on resize
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -197,7 +200,24 @@ CryptoBottomPanel::CryptoBottomPanel(QWidget* parent) : QWidget(parent) {
     // This is the default lower-panel view: the selected venue, current
     // spot/scalp decision and the cost gate belong ahead of the blotter tabs.
     cockpit_ = new CryptoAutomationCockpit;
-    cockpit_tab_idx_ = tabs_->addTab(cockpit_, tr("SPOT / SCALP"));
+    auto* cockpit_scroll = new QScrollArea;
+    cockpit_scroll->setObjectName("cryptoCockpitScroll");
+    cockpit_scroll->setWidgetResizable(true);
+    cockpit_scroll->setFrameShape(QFrame::NoFrame);
+    cockpit_scroll->setFocusPolicy(Qt::NoFocus);
+    cockpit_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    cockpit_scroll->setWidget(cockpit_);
+    // A descendant can receive focus while the tab is being restored, which
+    // makes QAbstractScrollArea auto-scroll down to the old scalp detail.  The
+    // dual-lane summary is the cockpit's primary view and must be the first
+    // thing users see on every tab entry.
+    const auto reveal_lane_summary = [cockpit_scroll]() {
+        cockpit_scroll->verticalScrollBar()->setValue(0);
+        cockpit_scroll->horizontalScrollBar()->setValue(0);
+    };
+    QTimer::singleShot(0, cockpit_scroll, reveal_lane_summary);
+    QTimer::singleShot(150, cockpit_scroll, reveal_lane_summary);
+    cockpit_tab_idx_ = tabs_->addTab(cockpit_scroll, tr("SPOT / SCALP"));
     tabs_->setTabToolTip(cockpit_tab_idx_, tr("Selected crypto account and spot/scalp automation"));
     connect(cockpit_, &CryptoAutomationCockpit::positions_requested, this, [this]() {
         if (positions_tab_idx_ >= 0) tabs_->setCurrentIndex(positions_tab_idx_);
@@ -226,6 +246,14 @@ CryptoBottomPanel::CryptoBottomPanel(QWidget* parent) : QWidget(parent) {
     setup_stats_tab();
 
     tabs_->setCurrentIndex(cockpit_tab_idx_);
+    connect(tabs_, &QTabWidget::currentChanged, cockpit_scroll,
+            [cockpit_scroll, cockpit_tab_idx = cockpit_tab_idx_](int index) {
+                if (index == cockpit_tab_idx)
+                    QTimer::singleShot(0, cockpit_scroll, [cockpit_scroll]() {
+                        cockpit_scroll->verticalScrollBar()->setValue(0);
+                        cockpit_scroll->horizontalScrollBar()->setValue(0);
+                    });
+            });
 
     layout->addWidget(tabs_);
 }
@@ -1010,6 +1038,10 @@ void CryptoBottomPanel::set_exchange_context(const QString& exchange_id, bool is
     is_paper_ = is_paper;
     if (cockpit_)
         cockpit_->set_exchange_context(exchange_id_, is_paper_);
+}
+
+void CryptoBottomPanel::set_active_symbol(const QString& symbol) {
+    if (cockpit_) cockpit_->set_active_symbol(symbol);
 }
 
 void CryptoBottomPanel::set_live_positions(const QJsonArray& positions) {

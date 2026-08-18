@@ -112,19 +112,23 @@ void append_shadow_ledgers(QJsonArray& entries, qint64 now_ms,
                 pnl += record.value(pnl_key).toDouble(); peak = qMax(peak, pnl); drawdown = qMax(drawdown, peak - pnl);
                 wins += record.value(win_key).toBool() ? 1 : 0;
             }
-            QString producer_status = QStringLiteral("RUNNING");
+            // These ledgers are deliberately incapable of reaching an order
+            // API. Their healthy state is RESEARCH ONLY, not RUNNING: RUNNING
+            // reads like execution authority in the shared GUI/CLI registry.
+            QString producer_status = QStringLiteral("RESEARCH ONLY");
             QString last_error = parse_error;
             if (!parse_error.isEmpty()) producer_status = QStringLiteral("ERROR");
-            else if (state.isEmpty()) producer_status = QStringLiteral("WAITING");
+            else if (state.isEmpty()) producer_status = QStringLiteral("WARMING");
             else if (source_ticks <= 0) {
-                producer_status = QStringLiteral("WAITING");
+                producer_status = QStringLiteral("UNAVAILABLE");
                 last_error = QStringLiteral("settlement-aligned Pyth feed unavailable");
-            } else if (records.isEmpty()) producer_status = QStringLiteral("WAITING");
+            } else if (records.isEmpty()) producer_status = QStringLiteral("WARMING");
             else if (age_ms > 2 * 60 * 60 * 1000LL) producer_status = QStringLiteral("STALE");
             ++active;
             if (producer_status == QLatin1String("STALE")) ++stale;
             if (producer_status == QLatin1String("ERROR")) ++errors;
-            if (producer_status == QLatin1String("WAITING")) ++waiting;
+            if (producer_status == QLatin1String("WARMING") ||
+                producer_status == QLatin1String("UNAVAILABLE")) ++waiting;
             entries.append(QJsonObject{
                 {"strategy_id", QStringLiteral("shadow:chronos:%1:%2").arg(definition.family.toLower(), cohort)},
                 {"kind", QStringLiteral("chronos_%1_%2").arg(definition.family.toLower(), cohort)},
@@ -285,14 +289,14 @@ Result<QJsonObject> strategy_registry_snapshot(const QString& profile, qint64 no
         QString producer = QStringLiteral("RUNNING");
         if (row.status == QLatin1String("paused")) producer = QStringLiteral("PAUSED");
         else if (row.status == QLatin1String("retired")) producer = QStringLiteral("RETIRED");
-        else if (source.isEmpty()) producer = QStringLiteral("NO PRODUCER");
+        else if (source.isEmpty()) producer = QStringLiteral("UNAVAILABLE");
         else if (!last_error.isEmpty()) producer = QStringLiteral("ERROR");
-        else if (newest_ms <= 0) producer = QStringLiteral("WAITING");
+        else if (newest_ms <= 0) producer = QStringLiteral("WARMING");
         else if (age_ms > configured_age) producer = QStringLiteral("STALE");
         if (row.status == QLatin1String("active")) ++active;
         if (producer == QLatin1String("STALE")) ++stale;
         if (producer == QLatin1String("ERROR")) ++errors;
-        if (producer == QLatin1String("WAITING") || producer == QLatin1String("NO PRODUCER")) ++waiting;
+        if (producer == QLatin1String("WARMING") || producer == QLatin1String("UNAVAILABLE")) ++waiting;
 
         int resolved = 0; double pnl = 0.0, drawdown = 0.0, hit_rate = 0.0;
         bool degraded = false, hypothetical = params.value(QStringLiteral("hypothetical")).toBool();

@@ -65,6 +65,11 @@ add_test(NAME test_crypto_scalp_report
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_crypto_scalp_report.py -v)
 
+add_executable(tst_crypto_execution_proposal tst_crypto_execution_proposal.cpp)
+target_include_directories(tst_crypto_execution_proposal PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_execution_proposal PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_execution_proposal COMMAND tst_crypto_execution_proposal)
+
 # Read-only authenticated Kalshi queue-position bridge. Uses unittest so the
 # packaged developer test path does not require pytest or other test extras.
 add_test(NAME test_prediction_kalshi_queue

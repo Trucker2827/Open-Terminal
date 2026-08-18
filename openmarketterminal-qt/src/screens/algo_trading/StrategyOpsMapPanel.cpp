@@ -455,9 +455,14 @@ QColor StrategyOpsMapPanel::color_for_book(const BookNode& b) const {
     if (b.producer_status == QLatin1String("ERROR"))
         return QColor(ui::colors::NEGATIVE());
     if (b.producer_status == QLatin1String("STALE") ||
-        b.producer_status == QLatin1String("WAITING") ||
-        b.producer_status == QLatin1String("NO PRODUCER"))
+        b.producer_status == QLatin1String("WARMING"))
         return QColor(ui::colors::AMBER());
+    if (b.producer_status == QLatin1String("PAUSED") ||
+        b.producer_status == QLatin1String("RETIRED") ||
+        b.producer_status == QLatin1String("UNAVAILABLE") ||
+        b.producer_status == QLatin1String("RESEARCH ONLY") ||
+        b.producer_status == QLatin1String("ON DEMAND"))
+        return QColor(ui::colors::TEXT_TERTIARY());
     if (b.eligible)
         return QColor(ui::colors::POSITIVE());
     if (b.no_edge)

@@ -278,6 +278,8 @@ void CryptoTradingScreen::switch_symbol(const QString& symbol) {
     order_entry_->set_symbol(normalized);
     order_entry_->set_orderbook_quote(0, 0);
     watchlist_->set_active_symbol(normalized);
+    if (bottom_panel_)
+        bottom_panel_->set_active_symbol(normalized);
 
     // Drop per-symbol buffers tied to the old symbol to prevent cross-symbol leakage.
     has_pending_primary_ = false;

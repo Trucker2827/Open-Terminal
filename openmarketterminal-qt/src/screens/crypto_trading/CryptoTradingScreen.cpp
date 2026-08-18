@@ -318,10 +318,11 @@ void CryptoTradingScreen::setup_ui() {
 
     bottom_panel_ = new CryptoBottomPanel;
     bottom_panel_->set_exchange_context(exchange_id_, trading_mode_ != TradingMode::Live);
+    bottom_panel_->set_active_symbol(selected_symbol_);
     center_splitter->addWidget(bottom_panel_);
 
-    center_splitter->setStretchFactor(0, 5); // chart 75%
-    center_splitter->setStretchFactor(1, 2); // bottom 25%
+    center_splitter->setStretchFactor(0, 5); // chart remains primary
+    center_splitter->setStretchFactor(1, 3); // dual-lane cockpit needs a readable default
 
     main_splitter->addWidget(center_splitter);
 

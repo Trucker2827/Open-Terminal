@@ -60,11 +60,54 @@ class CryptoCockpitTest final : public QObject {
         inputs.security.cli_fast_live_armed = true;
         inputs.security.venue_allowed = true;
         const auto scene = present_crypto_cockpit(inputs);
-        QCOMPARE(scene.mood, QStringLiteral("PAPER SCALP"));
+        QCOMPARE(scene.mood, QStringLiteral("PAPER AUTOMATION"));
         QVERIFY(!scene.canary_on);
         QVERIFY(!scene.mood.contains(QStringLiteral("LIVE ARMED")));
         QCOMPARE(scene.style, QStringLiteral("SPOT"));
         QCOMPARE(scene.engine_line, QStringLiteral("SPOT · RUNNING"));
+        QCOMPARE(scene.spot_lane.state, QStringLiteral("ADAPTER PENDING"));
+        QCOMPARE(scene.spot_lane.sample, QStringLiteral("0 / 100 FORWARD"));
+        QCOMPARE(scene.scalp_lane.state, QStringLiteral("RUNNING"));
+    }
+
+    void independent_spot_lane_has_own_state_proof_and_ledger() {
+        CryptoCockpitInputs inputs;
+        inputs.now_ms = 1'000'000;
+        inputs.spot_state = running_state(
+            {decision(QStringLiteral("BTC-USD"), QStringLiteral("PAPER BUY CANDIDATE"),
+                      QStringLiteral("up"), 18.5)});
+        inputs.spot_state.insert(QStringLiteral("execution_authority"),
+                                 QStringLiteral("paper_only"));
+        inputs.spot_state.insert(QStringLiteral("decisions_path"),
+                                 QStringLiteral("/daemon/btc1h_spot_decisions.jsonl"));
+        inputs.spot_qualification = QJsonObject{
+            {QStringLiteral("report_version"), QStringLiteral("crypto-spot-qualification-v1")},
+            {QStringLiteral("state"), QStringLiteral("SHADOW")},
+            {QStringLiteral("resolved_count"), 23},
+            {QStringLiteral("required_resolved"), 100}};
+        inputs.spot_qualification_age_ms = 1'000;
+        const auto scene = present_crypto_cockpit(inputs);
+        QCOMPARE(scene.spot_lane.state, QStringLiteral("RUNNING"));
+        QCOMPARE(scene.spot_lane.authority, QStringLiteral("PAPER_ONLY"));
+        QCOMPARE(scene.spot_lane.edge, QStringLiteral("18.5 bps"));
+        QCOMPARE(scene.spot_lane.sample, QStringLiteral("23 / 100 FORWARD"));
+        QVERIFY(scene.spot_lane.ledger.endsWith(QStringLiteral("btc1h_spot_decisions.jsonl")));
+        QVERIFY(scene.spot_lane.detail.contains(QStringLiteral("inventory-backed")));
+    }
+
+    void active_symbol_never_leaks_btc_decision_into_eth_view() {
+        CryptoCockpitInputs inputs;
+        inputs.now_ms = 1'000'000;
+        inputs.active_symbol = QStringLiteral("ETH/USD");
+        inputs.scalp_state = running_state(
+            {decision(QStringLiteral("BTC-USD"), QStringLiteral("PAPER TRADE CANDIDATE"),
+                      QStringLiteral("up"), 12.0)});
+        const auto scene = present_crypto_cockpit(inputs);
+        QCOMPARE(scene.scalp_lane.title, QStringLiteral("ETH SCALP SHADOW"));
+        QCOMPARE(scene.scalp_lane.state, QStringLiteral("NOT TRACKED"));
+        QCOMPARE(scene.scalp_lane.decision, QStringLiteral("NO DECISION YET"));
+        QVERIFY(scene.decide_symbol.isEmpty());
+        QVERIFY(scene.tape.isEmpty());
     }
 
     void mood_is_canary_on_when_guard_armed_and_unexpired() {
@@ -96,7 +139,7 @@ class CryptoCockpitTest final : public QObject {
                          QDateTime::fromMSecsSinceEpoch(1'000'000, QTimeZone::UTC)
                              .toString(Qt::ISODateWithMs)}};
         const auto scene = present_crypto_cockpit(inputs);
-        QCOMPARE(scene.mood, QStringLiteral("PAPER SCALP"));
+        QCOMPARE(scene.mood, QStringLiteral("PAPER AUTOMATION"));
         QVERIFY(!scene.canary_on);
     }
 
@@ -168,11 +211,10 @@ class CryptoCockpitTest final : public QObject {
         QVERIFY(scene.decide_is_candidate);
         QCOMPARE(scene.decide_liquidity, QStringLiteral("TAKER"));
         QCOMPARE(scene.decide_required, QStringLiteral("25.0 bps"));
-        QCOMPARE(scene.tape.size(), 2);
+        QCOMPARE(scene.tape.size(), 1);
         QCOMPARE(scene.tape.at(0).symbol, QStringLiteral("BTC-USD"));
         QCOMPARE(scene.tape.at(0).selected_venue, QStringLiteral("kraken"));
-        QCOMPARE(scene.tape.at(1).symbol, QStringLiteral("ETH-USD"));
-        QVERIFY(scene.tape_census.contains(QStringLiteral("2 decisions")));
+        QVERIFY(scene.tape_census.contains(QStringLiteral("1 of 2 decisions")));
         QCOMPARE(scene.decide_net, QStringLiteral("12.5 bps"));
         QVERIFY(!scene.mood.contains(QStringLiteral("LIVE ARMED")));
     }

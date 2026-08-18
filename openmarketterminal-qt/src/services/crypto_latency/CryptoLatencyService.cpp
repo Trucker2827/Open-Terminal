@@ -191,14 +191,23 @@ QJsonObject CryptoLatencyService::tick_to_json(const CryptoLatencyTick& t) {
 }
 
 QJsonObject CryptoLatencyService::source_to_json(const CryptoLatencySourceState& s) {
+    const qint64 now = now_ms();
+    const qint64 age_ms = s.last_tick_ms > 0 ? qMax<qint64>(0, now - s.last_tick_ms) : -1;
+    // A connected socket is transport state, not proof of current market data.
+    // Keep both facts: consumers should never render an hours-old venue as
+    // LIVE merely because its TCP/WebSocket close callback has not fired.
+    QString observed_status = s.status;
+    if (observed_status == QLatin1String("live") && !source_is_fresh(s, now))
+        observed_status = QStringLiteral("stale");
     return QJsonObject{{QStringLiteral("source"), s.source},
-                       {QStringLiteral("status"), s.status},
+                       {QStringLiteral("status"), observed_status},
+                       {QStringLiteral("transport_status"), s.status},
                        {QStringLiteral("error"), s.error},
                        {QStringLiteral("last_message_type"), s.last_message_type},
                        {QStringLiteral("connected_at_ms"), QString::number(s.connected_at_ms)},
                        {QStringLiteral("last_message_ms"), QString::number(s.last_message_ms)},
                        {QStringLiteral("last_tick_ms"), QString::number(s.last_tick_ms)},
-                       {QStringLiteral("age_ms"), s.last_tick_ms > 0 ? now_ms() - s.last_tick_ms : -1},
+                       {QStringLiteral("age_ms"), age_ms},
                        {QStringLiteral("raw_messages"), s.raw_messages},
                        {QStringLiteral("ticks"), s.ticks},
                        {QStringLiteral("reconnect_attempts"), s.reconnect_attempts},

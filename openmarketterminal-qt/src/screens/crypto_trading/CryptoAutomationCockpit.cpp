@@ -58,6 +58,48 @@ QWidget* metric_card(QLabel*& value, QLabel*& caption) {
     return card;
 }
 
+QWidget* lane_card(const QString& accent, const QString& eyebrow, const QString& title,
+                   CryptoAutomationCockpit::LaneCard& out) {
+    auto* card = new QFrame;
+    card->setObjectName("cryptoCockpitLane");
+    card->setProperty("accent", accent);
+    auto* root = new QVBoxLayout(card);
+    root->setContentsMargins(13, 10, 13, 10);
+    root->setSpacing(5);
+    auto* top = new QHBoxLayout;
+    auto* titles = new QVBoxLayout;
+    titles->setSpacing(0);
+    out.eyebrow = text_label("cryptoCockpitLaneEyebrow", eyebrow);
+    out.title = text_label("cryptoCockpitLaneTitle", title);
+    titles->addWidget(out.eyebrow);
+    titles->addWidget(out.title);
+    top->addLayout(titles);
+    top->addStretch();
+    out.state = text_label("cryptoCockpitLaneState", "AWAITING PRODUCER");
+    top->addWidget(out.state);
+    root->addLayout(top);
+    auto* stats = new QGridLayout;
+    stats->setHorizontalSpacing(12);
+    const auto stat = [&stats](int col, const QString& label, QLabel*& value) {
+        stats->addWidget(text_label("cryptoCockpitLaneLabel", label), 0, col);
+        value = text_label("cryptoCockpitLaneValue", "--");
+        stats->addWidget(value, 1, col);
+        stats->setColumnStretch(col, 1);
+    };
+    stat(0, QObject::tr("AUTHORITY"), out.authority);
+    stat(1, QObject::tr("LATEST"), out.decision);
+    stat(2, QObject::tr("NET EDGE"), out.edge);
+    stat(3, QObject::tr("PROOF"), out.sample);
+    root->addLayout(stats);
+    out.detail = text_label("cryptoCockpitLaneDetail", "--");
+    out.detail->setWordWrap(true);
+    root->addWidget(out.detail);
+    out.ledger = text_label("cryptoCockpitLaneLedger", "--");
+    out.ledger->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    root->addWidget(out.ledger);
+    return card;
+}
+
 QString tape_line(const CryptoCockpitTapeRow& row) {
     const QString net =
         row.net_known ? crypto_cockpit_bps_text(row.net_bps) : QStringLiteral("--");
@@ -88,16 +130,37 @@ CryptoAutomationCockpit::CryptoAutomationCockpit(QWidget* parent) : QWidget(pare
     auto* orders = new QPushButton(tr("ORDERS"));
     positions->setObjectName("cryptoCockpitAction");
     orders->setObjectName("cryptoCockpitAction");
+    positions->setFocusPolicy(Qt::NoFocus);
+    orders->setFocusPolicy(Qt::NoFocus);
     header->addWidget(positions);
     header->addWidget(orders);
     layout->addLayout(header);
+
+    auto* lanes = new QGridLayout;
+    lanes->setContentsMargins(0, 0, 0, 0);
+    lanes->setSpacing(8);
+    lanes->addWidget(lane_card(QStringLiteral("cyan"), tr("COINBASE · 1 HOUR · LONG-ONLY"),
+                               tr("BTC 1H SPOT"), spot_lane_), 0, 0);
+    lanes->addWidget(lane_card(QStringLiteral("orange"), tr("COINBASE + KRAKEN · MICROSTRUCTURE"),
+                               tr("SCALP SHADOW"), scalp_lane_), 0, 1);
+    lanes->setColumnStretch(0, 1);
+    lanes->setColumnStretch(1, 1);
+    layout->addLayout(lanes);
+
+    auto* detail_boundary = new QHBoxLayout;
+    auto* detail_title = text_label("cryptoCockpitDetailBoundary", tr("SCALP ENGINE DETAIL"));
+    detail_boundary->addWidget(detail_title);
+    detail_boundary->addStretch();
+    detail_boundary->addWidget(
+        text_label("cryptoCockpitDetailHint", tr("BTC 1H detail stays in its blue lane until its adapter publishes state")));
+    layout->addLayout(detail_boundary);
 
     auto* mood = new QFrame;
     mood->setObjectName("cryptoCockpitPanel");
     auto* mood_layout = new QVBoxLayout(mood);
     mood_layout->setContentsMargins(10, 6, 10, 6);
     mood_layout->setSpacing(2);
-    mood_value_ = text_label("cryptoCockpitMetricValue", tr("PAPER SCALP"));
+    mood_value_ = text_label("cryptoCockpitMetricValue", tr("PAPER AUTOMATION"));
     mood_detail_ = text_label("cryptoCockpitDetail", "--");
     mood_detail_->setWordWrap(true);
     mood_layout->addWidget(mood_value_);
@@ -215,6 +278,16 @@ CryptoAutomationCockpit::CryptoAutomationCockpit(QWidget* parent) : QWidget(pare
       #cryptoCockpitAction { min-height:23px; padding:2px 9px; color:%5; background:%1; border:1px solid %2; font-family:%3; font-weight:700; }
       #cryptoCockpitAction:hover { background:%6; }
       #cryptoCockpitMetric, #cryptoCockpitPanel { background:%7; border:1px solid %8; }
+      #cryptoCockpitLane { background:%7; border:1px solid %8; border-top:3px solid %2; }
+      #cryptoCockpitLane[accent="cyan"] { border-top:3px solid %10; }
+      #cryptoCockpitLaneEyebrow, #cryptoCockpitLaneLabel { color:%9; font-family:%3; font-size:9px; font-weight:700; }
+      #cryptoCockpitLaneTitle { color:%5; font-family:%3; font-size:16px; font-weight:800; }
+      #cryptoCockpitLaneState { color:%4; background:%1; border:1px solid %8; padding:3px 7px; font-family:%3; font-size:10px; font-weight:800; }
+      #cryptoCockpitLaneValue { color:%5; font-family:%3; font-size:12px; font-weight:700; }
+      #cryptoCockpitLaneDetail { color:%4; font-family:%3; font-size:10px; }
+      #cryptoCockpitLaneLedger { color:%9; font-family:%3; font-size:9px; }
+      #cryptoCockpitDetailBoundary { color:%2; font-family:%3; font-size:10px; font-weight:800; padding-top:3px; }
+      #cryptoCockpitDetailHint { color:%9; font-family:%3; font-size:9px; padding-top:3px; }
       #cryptoCockpitMetricValue { font-family:%3; font-size:17px; font-weight:700; }
       #cryptoCockpitMetricCaption, #cryptoCockpitField, #cryptoCockpitSection { color:%9; font-family:%3; font-size:10px; font-weight:700; }
       #cryptoCockpitFieldValue { color:%5; font-family:%3; font-size:13px; font-weight:700; }
@@ -224,7 +297,8 @@ CryptoAutomationCockpit::CryptoAutomationCockpit(QWidget* parent) : QWidget(pare
     )")
                       .arg(colors::BG_BASE(), colors::ORANGE(), fonts::DATA_FAMILY(),
                            colors::TEXT_SECONDARY(), colors::TEXT_PRIMARY(), colors::BG_HOVER(),
-                           colors::BG_SURFACE(), colors::BORDER_DIM(), colors::TEXT_TERTIARY()));
+                           colors::BG_SURFACE(), colors::BORDER_DIM(), colors::TEXT_TERTIARY(),
+                           colors::CYAN()));
 
     connect(positions, &QPushButton::clicked, this, &CryptoAutomationCockpit::positions_requested);
     connect(orders, &QPushButton::clicked, this, &CryptoAutomationCockpit::orders_requested);
@@ -238,6 +312,12 @@ CryptoAutomationCockpit::CryptoAutomationCockpit(QWidget* parent) : QWidget(pare
 void CryptoAutomationCockpit::set_exchange_context(const QString& exchange_id, bool is_paper) {
     exchange_id_ = exchange_id;
     is_paper_ = is_paper;
+    refresh();
+}
+
+void CryptoAutomationCockpit::set_active_symbol(const QString& symbol) {
+    active_symbol_ = symbol.trimmed().toUpper();
+    active_symbol_.replace(QLatin1Char('/'), QLatin1Char('-'));
     refresh();
 }
 
@@ -259,10 +339,16 @@ qint64 CryptoAutomationCockpit::file_age_ms(const QString& path, qint64 now_ms) 
 CryptoCockpitInputs CryptoAutomationCockpit::build_inputs(qint64 now_ms) const {
     CryptoCockpitInputs inputs;
     inputs.exchange_id = exchange_id_;
+    inputs.active_symbol = active_symbol_;
     inputs.is_paper = is_paper_;
     inputs.now_ms = now_ms;
     inputs.scalp_state = read_json(daemon_file(QStringLiteral("scalp_state.json")));
     inputs.scalp_engine = read_json(daemon_file(QStringLiteral("scalp_engine.json")));
+    inputs.spot_state = read_json(daemon_file(QStringLiteral("btc1h_spot_state.json")));
+    const QString spot_qualify_path =
+        daemon_file(QStringLiteral("btc1h_spot_qualification_v1.json"));
+    inputs.spot_qualification = read_json(spot_qualify_path);
+    inputs.spot_qualification_age_ms = file_age_ms(spot_qualify_path, now_ms);
     inputs.live_guard = read_json(daemon_file(QStringLiteral("automation_live_guard.json")));
     const QString qualify_path = daemon_file(QStringLiteral("scalp_qualification_v1.json"));
     inputs.qualification = read_json(qualify_path);
@@ -284,6 +370,8 @@ void CryptoAutomationCockpit::set_metric(QLabel* value, QLabel* caption, const Q
 }
 
 void CryptoAutomationCockpit::bind_scene(const CryptoCockpitScene& scene) {
+    render_lane(spot_lane_, scene.spot_lane);
+    render_lane(scalp_lane_, scene.scalp_lane);
     mood_value_->setText(scene.mood);
     mood_value_->setStyleSheet(QStringLiteral("color:%1;").arg(role_color(scene.mood_role)));
     mood_detail_->setText(scene.mood_detail);
@@ -343,6 +431,22 @@ void CryptoAutomationCockpit::bind_scene(const CryptoCockpitScene& scene) {
     render_proof_row(proof_symbol_row_, scene.proof_symbol);
     render_proof_row(proof_all_row_, scene.proof_all);
     proof_status_->setText(scene.proof_status);
+}
+
+void CryptoAutomationCockpit::render_lane(LaneCard& card, const CryptoCockpitLaneScene& lane) {
+    card.eyebrow->setText(lane.eyebrow);
+    card.title->setText(lane.title);
+    card.state->setText(lane.state);
+    card.state->setStyleSheet(QStringLiteral("color:%1;").arg(role_color(lane.state_role)));
+    card.authority->setText(lane.authority);
+    card.decision->setText(lane.decision);
+    card.edge->setText(lane.edge);
+    card.edge->setStyleSheet(QStringLiteral("color:%1;")
+                                 .arg(lane.edge.startsWith(QLatin1Char('-'))
+                                          ? colors::NEGATIVE() : colors::POSITIVE()));
+    card.sample->setText(lane.sample);
+    card.detail->setText(lane.detail);
+    card.ledger->setText(tr("LEDGER  %1").arg(lane.ledger));
 }
 
 void CryptoAutomationCockpit::refresh() {

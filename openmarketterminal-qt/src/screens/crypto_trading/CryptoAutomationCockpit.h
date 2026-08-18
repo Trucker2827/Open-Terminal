@@ -20,6 +20,7 @@ class CryptoAutomationCockpit : public QWidget {
     explicit CryptoAutomationCockpit(QWidget* parent = nullptr);
 
     void set_exchange_context(const QString& exchange_id, bool is_paper);
+    void set_active_symbol(const QString& symbol);
 
   signals:
     void positions_requested();
@@ -28,6 +29,18 @@ class CryptoAutomationCockpit : public QWidget {
   private slots:
     void refresh();
 
+  public: // UI construction helper; contains widget pointers, no trading authority.
+    struct LaneCard {
+        QLabel* eyebrow = nullptr;
+        QLabel* title = nullptr;
+        QLabel* state = nullptr;
+        QLabel* authority = nullptr;
+        QLabel* decision = nullptr;
+        QLabel* edge = nullptr;
+        QLabel* sample = nullptr;
+        QLabel* ledger = nullptr;
+        QLabel* detail = nullptr;
+    };
   private:
     struct ProofRow {
         QLabel* scope = nullptr;
@@ -45,9 +58,12 @@ class CryptoAutomationCockpit : public QWidget {
     void set_metric(QLabel* value, QLabel* caption, const QString& text, const QString& color);
     ProofRow make_proof_row(class QGridLayout* grid, int grid_row);
     void render_proof_row(ProofRow& row, const CryptoCockpitProofRow& proof);
+    void render_lane(LaneCard& card, const CryptoCockpitLaneScene& lane);
 
     QLabel* mood_value_ = nullptr;
     QLabel* mood_detail_ = nullptr;
+    LaneCard spot_lane_;
+    LaneCard scalp_lane_;
     QLabel* venue_value_ = nullptr;
     QLabel* venue_caption_ = nullptr;
     QLabel* engine_value_ = nullptr;
@@ -76,6 +92,7 @@ class CryptoAutomationCockpit : public QWidget {
     QLabel* proof_status_ = nullptr;
     QTimer* refresh_timer_ = nullptr;
     QString exchange_id_ = QStringLiteral("coinbase");
+    QString active_symbol_ = QStringLiteral("BTC-USD");
     bool is_paper_ = true;
 };
 

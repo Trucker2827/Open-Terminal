@@ -68,6 +68,17 @@ class TstFeedReconnect : public QObject {
         QCOMPARE(o.value("last_close_code").toInt(), 1000);
         QCOMPARE(o.value("reconnect_delay_ms").toInt(), 15000);
         QCOMPARE(o.value("rate_limited").toBool(), true);
+        QCOMPARE(o.value("transport_status").toString(), QStringLiteral("disconnected"));
+    }
+
+    void connected_transport_with_expired_tick_is_not_reported_live() {
+        CryptoLatencySourceState s;
+        s.source = QStringLiteral("coinbase");
+        s.status = QStringLiteral("live");
+        s.last_tick_ms = QDateTime::currentMSecsSinceEpoch() - 60'000;
+        const QJsonObject o = CryptoLatencyService::source_to_json(s);
+        QCOMPARE(o.value("status").toString(), QStringLiteral("stale"));
+        QCOMPARE(o.value("transport_status").toString(), QStringLiteral("live"));
     }
 
     void filtered_snapshot_isolates_consumer_sources() {
