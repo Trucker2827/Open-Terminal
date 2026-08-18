@@ -159,6 +159,12 @@ openmarketterminal-qt/scripts/exchange/.cache/
 *.sqlite
 *.sqlite3
 
+# Sanitized public seed artifacts are release inputs, never source files.
+# Publish them as checksum-pinned release assets after running the exporter.
+openmarketterminal-qt/resources/public_seed/manifest.json
+openmarketterminal-qt/resources/public_seed/public-seed.sqlite
+public-seed*.zip
+
 # ── Internal planning docs ────────────────────────────────────
 openmarketterminal-qt/docs/superpowers/
 docs/superpowers/

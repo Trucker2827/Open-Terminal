@@ -2,6 +2,16 @@
 find_package(Qt6 REQUIRED COMPONENTS Test Network Concurrent)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+add_test(NAME test_public_seed_data
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_public_seed_data.py -v)
+
+add_executable(tst_public_seed_bootstrap tst_public_seed_bootstrap.cpp)
+target_include_directories(tst_public_seed_bootstrap PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_public_seed_bootstrap PRIVATE openterminal_core Qt6::Core Qt6::Test)
+set_target_properties(tst_public_seed_bootstrap PROPERTIES UNITY_BUILD OFF)
+add_test(NAME tst_public_seed_bootstrap COMMAND tst_public_seed_bootstrap)
+
 # Trade provenance context index foundation: a separate disposable SQLite
 # projection, deterministic digest, and atomic current-batch publication.
 add_executable(tst_trade_provenance_index

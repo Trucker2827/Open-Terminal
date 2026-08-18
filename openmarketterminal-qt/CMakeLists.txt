@@ -833,6 +833,7 @@ set(AUTH_SOURCES
 set(STORAGE_SOURCES
     # Core databases
     src/storage/sqlite/Database.cpp
+    src/storage/PublicSeedBootstrap.cpp
     src/storage/sqlite/CacheDatabase.cpp
 
     # Workspace persistence (Phase 2 — multi-window refactor)
@@ -3638,6 +3639,23 @@ add_custom_command(TARGET OpenMarketTerminal POST_BUILD
     COMMENT "Syncing Python scripts to build output (skips when unchanged)..."
     VERBATIM
 )
+
+# Optional sanitized public-data seed. Release engineering may place only the
+# exporter-produced loose database + manifest here before configuring a build.
+# The user's live DB is never copied or inspected by this packaging step.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/public_seed/public-seed.sqlite" AND
+   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/public_seed/manifest.json")
+    add_custom_command(TARGET OpenMarketTerminal POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:OpenMarketTerminal>/resources/public_seed"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/resources/public_seed/public-seed.sqlite"
+                "$<TARGET_FILE_DIR:OpenMarketTerminal>/resources/public_seed/public-seed.sqlite"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/resources/public_seed/manifest.json"
+                "$<TARGET_FILE_DIR:OpenMarketTerminal>/resources/public_seed/manifest.json"
+        COMMENT "Bundling checksum-verified sanitized public market-data seed")
+endif()
 
 # ── Copy requirements files to build output ──────────────────────────────────
 # PythonSetupManager::find_requirements_file() searches exe_dir/resources/ first.
