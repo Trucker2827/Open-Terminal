@@ -1,13 +1,21 @@
 #include "services/sandbox/SandboxRegistry.h"
 
 #include "services/crypto/CryptoFees.h"
+#include "services/ai_strategy/StrategyRegistry.h"
 #include "services/sandbox/PaperFillModel.h"
+#include "services/sandbox/SandboxEligibility.h"
+#include "services/sandbox/SandboxScorer.h"
 #include "storage/sqlite/Database.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QSet>
+#include <QStandardPaths>
 #include <QVariantList>
 
 namespace openmarketterminal::services::sandbox {
@@ -16,6 +24,123 @@ namespace {
 
 QString params_json_compact(const QJsonObject& params) {
     return QString::fromUtf8(QJsonDocument(params).toJson(QJsonDocument::Compact));
+}
+
+QString research_evidence_path(const QString& filename) {
+    const QString override_dir = qEnvironmentVariable("OPENTERMINAL_KALSHI_EVIDENCE_DIR").trimmed();
+    const QString dir = override_dir.isEmpty()
+        ? QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
+              QStringLiteral("/Open Terminal/Open Terminal")
+        : override_dir;
+    return QDir(dir).filePath(filename);
+}
+
+struct ShadowLedgerDefinition {
+    QString family;
+    QString symbols;
+    QString filename;
+    QString producer;
+    QString raw_symbol;
+};
+
+void append_shadow_ledgers(QJsonArray& entries, qint64 now_ms,
+                           int& stale, int& errors, int& waiting, int& active) {
+    const QVector<ShadowLedgerDefinition> definitions{
+        {QStringLiteral("BTC1H"), QStringLiteral("BTC-USD"),
+         QStringLiteral("btc1h-chronos-shadow.json"), QStringLiteral("btc1h_chronos_shadow.py"),
+         QStringLiteral("BTC")},
+        {QStringLiteral("KXGOLDH"), QStringLiteral("XAU-USD"),
+         QStringLiteral("chronos-kxgoldh-shadow.json"), QStringLiteral("commodity_chronos_shadow.py"),
+         QStringLiteral("XAU")},
+        {QStringLiteral("KXSILVERH"), QStringLiteral("XAG-USD"),
+         QStringLiteral("chronos-kxsilverh-shadow.json"), QStringLiteral("commodity_chronos_shadow.py"),
+         QStringLiteral("XAG")},
+        {QStringLiteral("KXWTIH"), QStringLiteral("XTI-USD"),
+         QStringLiteral("chronos-kxwtih-shadow.json"), QStringLiteral("commodity_chronos_shadow.py"),
+         QStringLiteral("XTI")},
+    };
+    const QStringList cohorts{QStringLiteral("chronos_alone"), QStringLiteral("control_alone"),
+                              QStringLiteral("agreement"), QStringLiteral("conflict")};
+    auto& db = Database::instance();
+    for (const auto& definition : definitions) {
+        const QString path = research_evidence_path(definition.filename);
+        QFile file(path);
+        QJsonObject state;
+        QString parse_error;
+        if (file.exists()) {
+            if (!file.open(QIODevice::ReadOnly)) {
+                parse_error = QStringLiteral("ledger unreadable");
+            } else {
+                QJsonParseError error;
+                const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
+                if (!document.isObject()) parse_error = QStringLiteral("invalid ledger JSON: %1").arg(error.errorString());
+                else state = document.object();
+            }
+        }
+        const QJsonObject records = state.value(QStringLiteral("records")).toObject();
+        const QJsonObject diagnostics = state.value(QStringLiteral("diagnostics")).toObject();
+        const QJsonObject skip_reasons = diagnostics.value(QStringLiteral("skip_reasons")).toObject();
+        const QJsonObject last_run = diagnostics.value(QStringLiteral("last_run")).toObject();
+        int source_ticks = 1;
+        if (definition.family != QLatin1String("BTC1H")) {
+            auto ticks = db.execute("SELECT COUNT(*) FROM edge_prediction_raw_ticks WHERE symbol=? AND source LIKE 'pyth:%'",
+                                    {definition.raw_symbol});
+            source_ticks = ticks.is_ok() && ticks.value().next() ? ticks.value().value(0).toInt() : 0;
+        }
+        const qint64 modified_ms = QFileInfo(path).exists() ? QFileInfo(path).lastModified().toMSecsSinceEpoch() : 0;
+        const qint64 age_ms = modified_ms > 0 ? qMax<qint64>(0, now_ms - modified_ms) : -1;
+        for (const QString& cohort : cohorts) {
+            QVector<QJsonObject> completed;
+            int open = 0;
+            for (const QJsonValue& value : records) {
+                const QJsonObject record = value.toObject();
+                const bool selected = (cohort != QLatin1String("agreement") && cohort != QLatin1String("conflict")) ||
+                                      record.value(QStringLiteral("relationship")).toString() == cohort;
+                if (!selected) continue;
+                if (record.value(QStringLiteral("status")).toString() == QLatin1String("open")) ++open;
+                else if (record.value(QStringLiteral("status")).toString() == QLatin1String("completed")) completed.append(record);
+            }
+            std::sort(completed.begin(), completed.end(), [](const QJsonObject& a, const QJsonObject& b) {
+                return a.value(QStringLiteral("settled_at_ms")).toVariant().toLongLong() <
+                       b.value(QStringLiteral("settled_at_ms")).toVariant().toLongLong();
+            });
+            const bool chronos = cohort == QLatin1String("chronos_alone");
+            const QString pnl_key = chronos ? QStringLiteral("chronos_pnl") : QStringLiteral("control_pnl");
+            const QString win_key = chronos ? QStringLiteral("chronos_won") : QStringLiteral("control_won");
+            double pnl = 0.0, peak = 0.0, drawdown = 0.0; int wins = 0;
+            for (const QJsonObject& record : completed) {
+                pnl += record.value(pnl_key).toDouble(); peak = qMax(peak, pnl); drawdown = qMax(drawdown, peak - pnl);
+                wins += record.value(win_key).toBool() ? 1 : 0;
+            }
+            QString producer_status = QStringLiteral("RUNNING");
+            QString last_error = parse_error;
+            if (!parse_error.isEmpty()) producer_status = QStringLiteral("ERROR");
+            else if (state.isEmpty()) producer_status = QStringLiteral("WAITING");
+            else if (source_ticks <= 0) {
+                producer_status = QStringLiteral("WAITING");
+                last_error = QStringLiteral("settlement-aligned Pyth feed unavailable");
+            } else if (records.isEmpty()) producer_status = QStringLiteral("WAITING");
+            else if (age_ms > 2 * 60 * 60 * 1000LL) producer_status = QStringLiteral("STALE");
+            ++active;
+            if (producer_status == QLatin1String("STALE")) ++stale;
+            if (producer_status == QLatin1String("ERROR")) ++errors;
+            if (producer_status == QLatin1String("WAITING")) ++waiting;
+            entries.append(QJsonObject{
+                {"strategy_id", QStringLiteral("shadow:chronos:%1:%2").arg(definition.family.toLower(), cohort)},
+                {"kind", QStringLiteral("chronos_%1_%2").arg(definition.family.toLower(), cohort)},
+                {"symbols", definition.symbols}, {"market", QStringLiteral("prediction")},
+                {"horizon", QStringLiteral("1h")}, {"authority", QStringLiteral("paper_research_only_no_order_api")},
+                {"book_status", QStringLiteral("active")}, {"producer", definition.producer},
+                {"producer_status", producer_status}, {"data_age_ms", age_ms},
+                {"freshness_source", QStringLiteral("ledger file mtime")}, {"ledger", path},
+                {"last_error", last_error}, {"open", open}, {"resolved", completed.size()},
+                {"skip_reasons", skip_reasons}, {"last_decision", last_run},
+                {"diagnostic_runs", diagnostics.value(QStringLiteral("runs")).toInt()},
+                {"net_pnl", pnl}, {"max_drawdown", drawdown},
+                {"hit_rate", completed.isEmpty() ? 0.0 : static_cast<double>(wins) / completed.size()},
+                {"eligible", false}, {"hypothetical", true}});
+        }
+    }
 }
 
 // Retires removed legacy books. Venue-specific scalp books remain active so
@@ -106,6 +231,117 @@ Result<QList<StrategyRow>> list_strategies(const QString& status_filter) {
         rows.append(row);
     }
     return Result<QList<StrategyRow>>::ok(rows);
+}
+
+Result<QJsonObject> strategy_registry_snapshot(const QString& profile, qint64 now_ms) {
+    auto strategies = list_strategies();
+    if (strategies.is_err()) return Result<QJsonObject>::err(strategies.error());
+    auto scored = leaderboard(profile);
+    if (scored.is_err()) return Result<QJsonObject>::err(scored.error());
+
+    QHash<QString, LeaderboardRow> board;
+    for (const auto& row : scored.value()) board.insert(row.strategy_id, row);
+    QJsonArray entries;
+    int stale = 0, errors = 0, waiting = 0, active = 0;
+    auto& db = Database::instance();
+    for (const StrategyRow& row : strategies.value()) {
+        const QJsonDocument params_doc = QJsonDocument::fromJson(row.params_json.toUtf8());
+        const QJsonObject params = params_doc.isObject() ? params_doc.object() : QJsonObject{};
+        const QString source = params.value(QStringLiteral("journal_source")).toString(
+            params.value(QStringLiteral("source")).toString());
+        QString horizon = params.value(QStringLiteral("horizon")).toString();
+        if (horizon.isEmpty() && params.contains(QStringLiteral("horizon_sec")))
+            horizon = QStringLiteral("%1s").arg(params.value(QStringLiteral("horizon_sec")).toInt());
+        QString market = QStringLiteral("crypto");
+        if (row.kind == QLatin1String("kalshi") || row.kind.contains(QStringLiteral("weather")))
+            market = QStringLiteral("prediction");
+        else if (row.kind.contains(QStringLiteral("equity")) ||
+                 row.symbols.contains(QStringLiteral("AAPL")) || row.symbols.contains(QStringLiteral("SPY")))
+            market = QStringLiteral("equity");
+
+        qint64 newest_ms = 0;
+        QString last_error;
+        int open = 0;
+        int total_positions = 0;
+        auto positions = db.execute(
+            "SELECT MAX(created_at),"
+            " SUM(CASE WHEN state IN ('open','pending_fill') THEN 1 ELSE 0 END), COUNT(*)"
+            " FROM sandbox_position WHERE strategy_id=?", {row.strategy_id});
+        if (positions.is_ok() && positions.value().next()) {
+            newest_ms = positions.value().value(0).toLongLong();
+            open = positions.value().value(1).toInt();
+            total_positions = positions.value().value(2).toInt();
+        }
+        auto latest_quality = db.execute(
+            "SELECT data_quality FROM sandbox_position WHERE strategy_id=? "
+            "ORDER BY created_at DESC LIMIT 1", {row.strategy_id});
+        if (latest_quality.is_ok() && latest_quality.value().next()) {
+            const QString quality = latest_quality.value().value(0).toString();
+            if (quality != QLatin1String("ok") && !quality.isEmpty()) last_error = quality;
+        }
+        const qint64 age_ms = newest_ms > 0 ? qMax<qint64>(0, now_ms - newest_ms) : -1;
+        const qint64 configured_age = qMax<qint64>(params.value(QStringLiteral("max_age_sec")).toInt() * 1000LL,
+                                                   15 * 60 * 1000LL);
+        QString producer = QStringLiteral("RUNNING");
+        if (row.status == QLatin1String("paused")) producer = QStringLiteral("PAUSED");
+        else if (row.status == QLatin1String("retired")) producer = QStringLiteral("RETIRED");
+        else if (source.isEmpty()) producer = QStringLiteral("NO PRODUCER");
+        else if (!last_error.isEmpty()) producer = QStringLiteral("ERROR");
+        else if (newest_ms <= 0) producer = QStringLiteral("WAITING");
+        else if (age_ms > configured_age) producer = QStringLiteral("STALE");
+        if (row.status == QLatin1String("active")) ++active;
+        if (producer == QLatin1String("STALE")) ++stale;
+        if (producer == QLatin1String("ERROR")) ++errors;
+        if (producer == QLatin1String("WAITING") || producer == QLatin1String("NO PRODUCER")) ++waiting;
+
+        int resolved = 0; double pnl = 0.0, drawdown = 0.0, hit_rate = 0.0;
+        bool degraded = false, hypothetical = params.value(QStringLiteral("hypothetical")).toBool();
+        const auto score = board.constFind(row.strategy_id);
+        if (score != board.constEnd()) {
+            resolved = score->resolved; pnl = score->net_pnl; drawdown = score->max_drawdown;
+            hit_rate = score->hit_rate; degraded = score->degraded > 0; hypothetical = score->hypothetical;
+        }
+        EligibilityInput eligibility;
+        eligibility.resolved = resolved;
+        eligibility.total_positions = total_positions;
+        eligibility.net_pnl = pnl;
+        eligibility.max_drawdown = drawdown;
+        eligibility.hypothetical = hypothetical;
+        eligibility.degraded = degraded;
+        const bool eligible = evaluate_eligibility(eligibility).eligible;
+        entries.append(QJsonObject{{"strategy_id", row.strategy_id}, {"kind", row.kind},
+            {"symbols", row.symbols}, {"market", market}, {"horizon", horizon},
+            {"authority", params.value(QStringLiteral("paper_only")).toBool(true)
+                              ? QStringLiteral("paper_only") : QStringLiteral("sandbox_only")},
+            {"book_status", row.status}, {"producer", source}, {"producer_status", producer},
+            {"data_age_ms", age_ms}, {"freshness_source", QStringLiteral("sandbox_position.created_at")},
+            {"ledger", QStringLiteral("sandbox_position+sandbox_score")}, {"last_error", last_error},
+            {"open", open}, {"resolved", resolved}, {"net_pnl", pnl}, {"max_drawdown", drawdown},
+            {"hit_rate", hit_rate}, {"eligible", eligible}, {"hypothetical", hypothetical}});
+    }
+    // On-demand AI strategy factories are real implemented strategies even
+    // before a sandbox book is registered. Keep them visible in the same
+    // inventory instead of silently limiting "Strategies" to proof books.
+    ai_strategy::StrategyRegistry ai_registry;
+    ai_strategy::register_builtin_strategies(ai_registry);
+    for (const auto& info : ai_registry.list()) {
+        entries.append(QJsonObject{{"strategy_id", QStringLiteral("ai:") + info.name},
+            {"kind", info.name}, {"symbols", QString()}, {"market", QStringLiteral("multi_asset")},
+            {"horizon", QStringLiteral("on_demand")}, {"authority", QStringLiteral("advisory_only")},
+            {"book_status", QStringLiteral("available")}, {"producer", QStringLiteral("ai_strategy_factory")},
+            {"producer_status", QStringLiteral("ON DEMAND")}, {"data_age_ms", -1},
+            {"freshness_source", QStringLiteral("request_context")}, {"ledger", QStringLiteral("ai run artifacts")},
+            {"last_error", QString()}, {"open", 0}, {"resolved", 0}, {"net_pnl", 0.0},
+            {"max_drawdown", 0.0}, {"hit_rate", 0.0}, {"eligible", false}, {"hypothetical", true}});
+    }
+    // JSON-backed forward trials are intentionally outside sandbox_position,
+    // but they are still real strategies. Adapt their immutable ledgers into
+    // the same read-only registry so GUI and CLI cannot silently omit them.
+    append_shadow_ledgers(entries, now_ms, stale, errors, waiting, active);
+    return Result<QJsonObject>::ok(QJsonObject{{"schema", "strategy-registry/v1"},
+        {"generated_at_ms", now_ms}, {"profile", profile}, {"strategies", entries},
+        {"summary", QJsonObject{{"total", entries.size()}, {"active", active}, {"stale", stale},
+                                 {"errors", errors}, {"waiting", waiting}}}});
 }
 
 Result<void> set_status(const QString& strategy_id, const QString& status) {

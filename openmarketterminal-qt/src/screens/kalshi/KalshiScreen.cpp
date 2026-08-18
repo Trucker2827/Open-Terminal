@@ -1297,6 +1297,16 @@ void KalshiScreen::build_ui() {
     bot_role->setWordWrap(true);
     bot_role->setStyleSheet(QStringLiteral("color:%1;font-weight:800;").arg(colors::CYAN()));
     bot_layout->addWidget(bot_role);
+    bot_research_trials_ = new QLabel(
+        QStringLiteral("RESEARCH · loading seven paper-only hourly lanes…"), bot_page);
+    bot_research_trials_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    bot_research_trials_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:5px 8px;font-size:10px;font-weight:800;")
+        .arg(colors::TEXT_SECONDARY(), colors::BG_BASE(), colors::BORDER_DIM()));
+    bot_research_trials_->setToolTip(QStringLiteral(
+        "Read-only hourly research summary. Hover after refresh for per-lane outcomes and skip reasons. "
+        "It cannot arm, size, price, promote, or place an order."));
+    bot_layout->addWidget(bot_research_trials_);
     auto* bot_note = new QLabel(
         QStringLiteral("Every number below is read from the same files `kalshi bot` writes — %1 "
                        "and %2 — so this panel and the CLI cannot disagree. The badge on the "
@@ -4405,6 +4415,71 @@ void KalshiScreen::refresh_bot_panel() {
                    "color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
             .arg(color, colors::BG_RAISED(), colors::BORDER_DIM());
     };
+    if (bot_research_trials_) {
+        struct TrialLine { QString label; QString file; bool chronos; };
+        const QList<TrialLine> trials{
+            {QStringLiteral("GOLD-H"), QStringLiteral("kxgoldh-forward-paper.json"), false},
+            {QStringLiteral("SILVER-H"), QStringLiteral("kxsilverh-forward-paper.json"), false},
+            {QStringLiteral("WTI-H"), QStringLiteral("kxwtih-forward-paper.json"), false},
+            {QStringLiteral("BTC-C2"), QStringLiteral("btc1h-chronos-shadow.json"), true},
+            {QStringLiteral("GOLD-C2"), QStringLiteral("chronos-kxgoldh-shadow.json"), true},
+            {QStringLiteral("SILVER-C2"), QStringLiteral("chronos-kxsilverh-shadow.json"), true},
+            {QStringLiteral("WTI-C2"), QStringLiteral("chronos-kxwtih-shadow.json"), true},
+        };
+        int completed_total = 0, open_total = 0, available = 0;
+        QStringList detail;
+        for (const TrialLine& trial : trials) {
+            QFile file(evidence_path(trial.file));
+            QJsonObject state;
+            if (file.open(QIODevice::ReadOnly)) {
+                const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+                if (document.isObject()) state = document.object();
+            }
+            const QJsonObject records = state.value(QStringLiteral("records")).toObject();
+            int completed = 0, open = 0;
+            double pnl = 0.0;
+            for (const QJsonValue& value : records) {
+                const QJsonObject record = value.toObject();
+                const QString status = record.value(QStringLiteral("status")).toString();
+                if (status == QLatin1String("open")) ++open;
+                if (status != QLatin1String("completed")) continue;
+                ++completed;
+                pnl += record.value(trial.chronos ? QStringLiteral("chronos_pnl")
+                                                  : QStringLiteral("net_pnl")).toDouble();
+            }
+            if (!state.isEmpty()) ++available;
+            completed_total += completed;
+            open_total += open;
+            const QString gate = completed < 30 ? QStringLiteral("DIAGNOSTIC")
+                               : completed < 50 ? QStringLiteral("MINIMUM")
+                               : completed < 100 ? QStringLiteral("VALIDATION")
+                                                 : QStringLiteral("COMPLETE");
+            const QJsonObject diagnostics = state.value(QStringLiteral("diagnostics")).toObject();
+            const QByteArray last = QJsonDocument(
+                diagnostics.value(QStringLiteral("last_run")).toObject()).toJson(QJsonDocument::Compact);
+            detail << QStringLiteral("%1 · %2 settled / %3 open · net $%4 · %5%6")
+                          .arg(trial.label).arg(completed).arg(open)
+                          .arg(pnl, 0, 'f', 2).arg(gate)
+                          .arg(last == "{}" ? QString() : QStringLiteral(" · last %1").arg(QString::fromUtf8(last)));
+        }
+        auto wti_ticks = Database::instance().execute(
+            QStringLiteral("SELECT COUNT(*) FROM edge_prediction_raw_ticks WHERE symbol='XTI' AND source LIKE 'pyth:%'"));
+        const bool wti_blocked = !wti_ticks.is_ok() || !wti_ticks.value().next() ||
+                                 wti_ticks.value().value(0).toInt() == 0;
+        bot_research_trials_->setText(
+            QStringLiteral("RESEARCH · %1/7 lanes · %2 settled · %3 open · evidence DIAGNOSTIC%4")
+                .arg(available).arg(completed_total).arg(open_total)
+                .arg(wti_blocked ? QStringLiteral(" · WTI-C2 BLOCKED") : QString()));
+        if (wti_blocked)
+            detail << QStringLiteral("WTI-C2 · authoritative settlement-aligned feed unavailable; no substitute used");
+        bot_research_trials_->setToolTip(
+            QStringLiteral("PAPER / RESEARCH ONLY — no controls and no order path.\n\n%1")
+                .arg(detail.join(QLatin1Char('\n'))));
+        bot_research_trials_->setStyleSheet(QStringLiteral(
+            "color:%1;background:%2;border:1px solid %3;padding:5px 8px;font-size:10px;font-weight:800;")
+            .arg(wti_blocked ? colors::WARNING() : colors::TEXT_SECONDARY(),
+                 colors::BG_BASE(), colors::BORDER_DIM()));
+    }
     bot_armed_->setText(view.armed);
     bot_armed_->setStyleSheet(card_style(view.armed_live ? colors::RED() : colors::TEXT_SECONDARY()));
     bot_signal_->setText(view.signal);
@@ -4741,9 +4816,8 @@ void KalshiScreen::refresh_daemon_status() {
             "(source: in-process evidence freshness). It owns Kalshi WebSocket "
             "monitoring, paper evidence, and armed automation.").arg(age_text));
         daemon_restart_button_->setEnabled(true);
-        return;
     }
-    if (evidence.state == QStringLiteral("stale"))
+    else if (evidence.state == QStringLiteral("stale"))
         set_badge(QStringLiteral("DAEMON: STALE"), colors::WARNING(), QStringLiteral(
             "Daemon evidence is stale: last kalshi-ws-books.json heartbeat %1 ago "
             "(source: in-process evidence freshness). The daemon may be down or its "
@@ -4760,20 +4834,60 @@ void KalshiScreen::refresh_daemon_status() {
     daemon_status_fetching_ = true;
     run_live_cli({QStringLiteral("daemon"), QStringLiteral("status")},
                  [this, set_badge](const QJsonObject& status, const QString& error) {
-        daemon_status_fetching_ = false;
         daemon_restart_button_->setEnabled(true);
-        if (!error.isEmpty()) return;
+        if (!error.isEmpty()) {
+            daemon_status_fetching_ = false;
+            return;
+        }
         const bool running = status.value(QStringLiteral("scheduler_running")).toBool() ||
                              status.value(QStringLiteral("running")).toBool();
         if (running) {
             const qint64 pid = static_cast<qint64>(
                 status.value(QStringLiteral("daemon_process_pid")).toDouble(
                     status.value(QStringLiteral("pid")).toDouble()));
-            set_badge(QStringLiteral("DAEMON: ACTIVE"), colors::GREEN(), QStringLiteral(
-                "Local daemon is active%1 (source: openterminalcli daemon status). "
-                "It owns Kalshi WebSocket monitoring, paper evidence, and armed automation.")
-                .arg(pid > 0 ? QStringLiteral(" (PID %1)").arg(pid) : QString()));
+            run_live_cli({QStringLiteral("daemon"), QStringLiteral("jobs"), QStringLiteral("show"),
+                          QStringLiteral("job_36f7a95ecc1d")},
+                         [this, set_badge, pid](const QJsonObject& trial, const QString& trial_error) {
+                const bool trial_enabled = trial_error.isEmpty() &&
+                                           trial.value(QStringLiteral("enabled")).toBool();
+                const QString trial_status = trial.value(QStringLiteral("last_status")).toString();
+                const bool trial_ok = trial_enabled &&
+                    (trial_status == QStringLiteral("ok") || trial_status == QStringLiteral("running"));
+                run_live_cli({QStringLiteral("daemon"), QStringLiteral("jobs"),
+                              QStringLiteral("diagnose")},
+                             [this, set_badge, pid, trial, trial_enabled, trial_status, trial_ok]
+                             (const QJsonObject& health, const QString& health_error) {
+                    daemon_status_fetching_ = false;
+                    const int current_failures = health_error.isEmpty()
+                        ? health.value(QStringLiteral("current_failures")).toArray().size() : -1;
+                    const int stale_jobs = health_error.isEmpty()
+                        ? health.value(QStringLiteral("stale_jobs")).toArray().size() : -1;
+                    const bool jobs_ok = current_failures == 0 && stale_jobs == 0;
+                    const QString badge = trial_ok
+                        ? QStringLiteral("DAEMON: ACTIVE · HOURLY ✓")
+                        : QStringLiteral("DAEMON: ACTIVE · HOURLY !");
+                    const QString color = trial_ok && (jobs_ok || current_failures < 0)
+                        ? colors::GREEN() : colors::WARNING();
+                    QString tip = QStringLiteral(
+                        "Local daemon is active%1. Hourly BTC/gold/silver/WTI paper trials: %2; "
+                        "run count %3, failures %4, last run %5. This producer is paper-only and "
+                        "cannot reach order APIs.")
+                        .arg(pid > 0 ? QStringLiteral(" (PID %1)").arg(pid) : QString(),
+                             trial_enabled ? (trial_status.isEmpty() ? QStringLiteral("waiting")
+                                                                     : trial_status)
+                                           : QStringLiteral("missing or disabled"))
+                        .arg(trial.value(QStringLiteral("run_count")).toInt())
+                        .arg(trial.value(QStringLiteral("fail_count")).toInt())
+                        .arg(trial.value(QStringLiteral("last_run_at")).toString(
+                            QStringLiteral("not completed yet")));
+                    if (current_failures >= 0)
+                        tip += QStringLiteral(" Enabled current failures: %1; stale jobs: %2.")
+                            .arg(current_failures).arg(stale_jobs);
+                    set_badge(badge, color, tip);
+                });
+            });
         } else {
+            daemon_status_fetching_ = false;
             set_badge(QStringLiteral("DAEMON: OFF"), colors::TEXT_SECONDARY(), QStringLiteral(
                 "The local daemon is not running (source: openterminalcli daemon status)."));
         }
@@ -5415,6 +5529,9 @@ void KalshiScreen::update_calibrator_readout() {
         calibrator_report_ = QJsonObject();
         kxbtc15m_calibrator_report_ = QJsonObject();
         commodities_15m_calibrator_report_ = QJsonObject();
+        commodities_hourly_calibrator_report_ = QJsonObject();
+        commodities_daily_calibrator_report_ = QJsonObject();
+        kxbtc_daily_calibrator_report_ = QJsonObject();
         const auto load = [](const QString& name) {
             QJsonObject object;
             QFile file(cli::kalshi_evidence_path(name));
@@ -5428,29 +5545,28 @@ void KalshiScreen::update_calibrator_readout() {
         kxbtc15m_calibrator_report_ = load(QStringLiteral("kxbtc15m-calibrator.json"));
         commodities_15m_calibrator_report_ =
             load(QStringLiteral("commodities-15m-calibrator.json"));
+        commodities_hourly_calibrator_report_ =
+            load(QStringLiteral("commodities-hourly-calibrator.json"));
+        commodities_daily_calibrator_report_ =
+            load(QStringLiteral("commodities-daily-calibrator.json"));
+        kxbtc_daily_calibrator_report_ = load(QStringLiteral("kxbtc-daily-calibrator.json"));
     }
 
-    // On the BOT tab or while the cockpit is open, follow the open KXBTC15M
-    // race for this readout — no need to click a market to see the directional
-    // scoreboard the bot is scoring. Selection/charts stay put; only this line
-    // follows. Race/maker tabs keep showing the selected contract.
+    // Hourly KXBTCD is the primary crypto research horizon. KXBTC15M remains
+    // available when explicitly selected, but no longer hijacks this readout.
     const bool follow_context =
         (bot_cockpit_dialog_ && bot_cockpit_dialog_->isVisible()) ||
         (center_tabs_ && bot_tab_index_ >= 0 && center_tabs_->currentIndex() == bot_tab_index_);
     QString ticker = has_selection_ ? selected_.key.market_id : QString();
-    bool following_open_15m = false;
     if (follow_context) {
-        const QString follow =
-            prefer_open_kxbtc15m_ticker(kxbtc15m_calibrator_report_, ticker);
+        const QString follow = prefer_open_kxbtcd_ticker(calibrator_report_, ticker);
         if (!follow.isEmpty()) {
-            following_open_15m = follow != ticker;
             ticker = follow;
         }
     }
     if (ticker.isEmpty()) {
         calibrator_readout_->setText(follow_context
-                                         ? QStringLiteral("KXBTC15M · no open race in "
-                                                          "kxbtc15m-calibrator.json yet")
+                                         ? QStringLiteral("KXBTCD 1H · no open threshold contract")
                                          : QStringLiteral("CALIBRATOR · select a contract"));
         return;
     }
@@ -5459,8 +5575,14 @@ void KalshiScreen::update_calibrator_readout() {
     using KalshiBotDecision = services::prediction::kalshi_ns::KalshiBotDecision;
     const bool is_btc_15m = KalshiBotDecision::is_kxbtc15m_ticker(ticker);
     const bool is_commod_15m = KalshiBotDecision::is_commodity_15m_ticker(ticker);
+    const bool is_commod_hourly = KalshiBotDecision::is_commodity_hourly_ticker(ticker);
+    const bool is_commod_daily = KalshiBotDecision::is_commodity_daily_ticker(ticker);
+    const bool is_btc_daily = KalshiBotDecision::is_kxbtc_daily_ticker(ticker);
     const QJsonObject& report = is_btc_15m     ? kxbtc15m_calibrator_report_
                                 : is_commod_15m ? commodities_15m_calibrator_report_
+                                : is_commod_hourly ? commodities_hourly_calibrator_report_
+                                : is_commod_daily ? commodities_daily_calibrator_report_
+                                : is_btc_daily ? kxbtc_daily_calibrator_report_
                                                 : calibrator_report_;
     const QJsonObject readout =
         kalshi_data::KalshiEvidenceEngine::calibrator_readout(report, ticker, now);
@@ -5470,8 +5592,6 @@ void KalshiScreen::update_calibrator_readout() {
         // Prefix so the operator sees which scoreboard owns this contract.
         if (!headline.startsWith(QStringLiteral("KXBTC15M")))
             headline = QStringLiteral("KXBTC15M · %1").arg(headline);
-        if (following_open_15m)
-            headline = QStringLiteral("FOLLOW · %1 · %2").arg(ticker, headline);
         if (record.isEmpty())
             record = kxbtc15m_scoreboard_line(kxbtc15m_calibrator_report_);
         else
@@ -5486,6 +5606,16 @@ void KalshiScreen::update_calibrator_readout() {
             record = QStringLiteral("%1 · %2")
                          .arg(record,
                               commodities_15m_scoreboard_line(commodities_15m_calibrator_report_));
+    } else if (is_commod_hourly) {
+        headline = QStringLiteral("COMMOD1H · %1").arg(headline);
+        const QString score = commodities_hourly_scoreboard_line(commodities_hourly_calibrator_report_);
+        record = record.isEmpty() ? score : QStringLiteral("%1 · %2").arg(record, score);
+    } else if (is_commod_daily) {
+        headline = QStringLiteral("COMMOD1D · %1").arg(headline);
+        const QString score = kxbtc15m_scoreboard_line(commodities_daily_calibrator_report_);
+        record = record.isEmpty() ? score : QStringLiteral("%1 · %2").arg(record, score);
+    } else if (is_btc_daily) {
+        headline = QStringLiteral("BTC1D · %1").arg(headline);
     }
     calibrator_readout_->setText(record.isEmpty() ? headline
                                                   : headline + QLatin1Char('\n') + record);

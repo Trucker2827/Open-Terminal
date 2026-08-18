@@ -39,13 +39,6 @@ int scalar_int(const QString& sql, const QVariantList& args = {}) {
     return r.value().value(0).toInt();
 }
 
-qint64 scalar_i64(const QString& sql, const QVariantList& args = {}) {
-    auto r = Database::instance().execute(sql, args);
-    if (!r.is_ok() || !r.value().next() || r.value().value(0).isNull())
-        return 0;
-    return r.value().value(0).toLongLong();
-}
-
 QString money(double value) {
     const QString sign = value > 0.0 ? QStringLiteral("+") : QString();
     return QStringLiteral("%1$%2").arg(sign, QString::number(value, 'f', 2));
@@ -74,13 +67,26 @@ StrategyOpsMapPanel::StrategyOpsMapPanel(QWidget* parent) : QWidget(parent) {
 
 void StrategyOpsMapPanel::mouseMoveEvent(QMouseEvent* event) {
     hover_position_ = event->position();
-    const auto hit = strategy_cockpit_hit(hover_position_, size(), phase_, books_.size());
+    const auto hit = strategy_cockpit_hit(hover_position_, size(), phase_, visible_book_count());
     if (hit.view == StrategyCockpitView::None) {
         unsetCursor();
         setToolTip({});
     } else {
         setCursor(Qt::PointingHandCursor);
-        setToolTip(tr(hit.label));
+        const int book_index = hit.book_index < 0 ? -1 : visible_book_start() + hit.book_index;
+        if (book_index >= 0 && book_index < books_.size()) {
+            const auto& b = books_.at(book_index);
+            const QString age = b.data_age_ms < 0 ? QStringLiteral("—")
+                : tr("%1s").arg(b.data_age_ms / 1000);
+            setToolTip(tr("%1\nMarket: %2\nHorizon: %3\nAuthority: %4\nProducer: %5 (%6)\nData age: %7\nLedger: %8\nLast error: %9\nLast decision: %10\nSkip totals: %11")
+                .arg(b.strategy_id, b.market, b.horizon, b.authority, b.source,
+                     b.producer_status, age, b.ledger,
+                     b.last_error.isEmpty() ? QStringLiteral("—") : b.last_error,
+                     b.last_decision.isEmpty() ? QStringLiteral("—") : b.last_decision,
+                     b.skip_reasons.isEmpty() ? QStringLiteral("—") : b.skip_reasons));
+        } else {
+            setToolTip(tr(hit.label));
+        }
     }
     update();
     QWidget::mouseMoveEvent(event);
@@ -88,10 +94,11 @@ void StrategyOpsMapPanel::mouseMoveEvent(QMouseEvent* event) {
 
 void StrategyOpsMapPanel::mousePressEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
-        const auto hit = strategy_cockpit_hit(event->position(), size(), phase_, books_.size());
+        const auto hit = strategy_cockpit_hit(event->position(), size(), phase_, visible_book_count());
         if (hit.view != StrategyCockpitView::None) {
-            const QString kind = hit.book_index >= 0 && hit.book_index < books_.size()
-                ? books_.at(hit.book_index).kind : QString();
+            const int book_index = hit.book_index < 0 ? -1 : visible_book_start() + hit.book_index;
+            const QString kind = book_index >= 0 && book_index < books_.size()
+                ? books_.at(book_index).kind : QString();
             emit drilldownRequested(static_cast<int>(hit.view), kind);
             event->accept();
             return;
@@ -154,85 +161,58 @@ void StrategyOpsMapPanel::refresh() {
         if (!blockers.isEmpty()) latest_decision_blocker_ = blockers.first().toString();
     }
 
-    auto strategies = services::sandbox::list_strategies();
-    if (strategies.is_err()) {
-        status_text_ = QString::fromStdString(strategies.error());
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    const QString profile = ProfileManager::instance().active();
+    auto registry = services::sandbox::strategy_registry_snapshot(profile, now_ms);
+    if (registry.is_err()) {
+        status_text_ = QString::fromStdString(registry.error());
         last_refresh_ms_ = QDateTime::currentMSecsSinceEpoch();
         update();
         return;
     }
-
-    const QString profile = ProfileManager::instance().active();
-    auto board = services::sandbox::leaderboard(profile);
-    QHash<QString, services::sandbox::LeaderboardRow> board_by_id;
-    if (board.is_ok()) {
-        for (const auto& row : board.value())
-            board_by_id.insert(row.strategy_id, row);
-    }
-
-    for (const auto& row : strategies.value()) {
-        if (row.status == QStringLiteral("retired"))
-            continue;
-
-        const QJsonObject params = parse_params(row.params_json);
+    const QJsonObject registry_object = registry.value();
+    const QJsonObject registry_summary = registry_object.value(QStringLiteral("summary")).toObject();
+    for (const QJsonValue& value : registry_object.value(QStringLiteral("strategies")).toArray()) {
+        const QJsonObject row = value.toObject();
         BookNode b;
-        b.kind = row.kind;
-        b.source = params.value(QStringLiteral("journal_source")).toString(
-            params.value(QStringLiteral("source")).toString(QStringLiteral("edge journal")));
-        b.horizon = params.value(QStringLiteral("horizon")).toString();
-        if (b.horizon.isEmpty() && params.contains(QStringLiteral("horizon_sec")))
-            b.horizon = QStringLiteral("%1s").arg(params.value(QStringLiteral("horizon_sec")).toInt());
-        b.status = row.status;
-        b.hypothetical = params.value(QStringLiteral("hypothetical")).toBool(false);
-        b.price_forecast = params.value(QStringLiteral("price_forecast")).toBool(false);
-        b.chronos = row.kind.startsWith(QStringLiteral("chronos2"));
-
-        const auto lb = board_by_id.constFind(row.strategy_id);
-        if (lb != board_by_id.constEnd()) {
-            b.resolved = lb->resolved;
-            b.net_pnl = lb->net_pnl;
-            b.hit_rate = lb->hit_rate;
-            net_pnl_total_ += lb->net_pnl;
-            resolved_total_ += lb->resolved;
-        }
-
-        b.open = scalar_int(
-            QStringLiteral("SELECT COUNT(*) FROM sandbox_position WHERE strategy_id = ? AND state IN ('open','pending_fill')"),
-            {row.strategy_id});
-        open_positions_ += b.open;
-
-        const qint64 first_created = scalar_i64(
-            QStringLiteral("SELECT MIN(created_at) FROM sandbox_position WHERE strategy_id = ?"), {row.strategy_id});
-        const int total_positions = scalar_int(
-            QStringLiteral("SELECT COUNT(*) FROM sandbox_position WHERE strategy_id = ?"), {row.strategy_id});
-        const int active_days = first_created > 0
-            ? qMax(0, static_cast<int>((QDateTime::currentMSecsSinceEpoch() - first_created) / (24LL * 3600 * 1000)))
-            : 0;
-
-        services::sandbox::EligibilityInput in;
-        in.active_days = active_days;
-        in.resolved = b.resolved;
-        in.total_positions = total_positions;
-        in.net_pnl = b.net_pnl;
-        in.hypothetical = b.hypothetical;
-        if (lb != board_by_id.constEnd()) {
-            in.degraded = lb->degraded;
-            in.max_drawdown = lb->max_drawdown;
-            in.gross_notional = lb->gross_notional;
-        }
-        b.eligible = services::sandbox::evaluate_eligibility(in).eligible;
+        b.strategy_id = row.value(QStringLiteral("strategy_id")).toString();
+        b.kind = row.value(QStringLiteral("kind")).toString();
+        b.source = row.value(QStringLiteral("producer")).toString();
+        b.market = row.value(QStringLiteral("market")).toString();
+        b.horizon = row.value(QStringLiteral("horizon")).toString();
+        b.authority = row.value(QStringLiteral("authority")).toString();
+        b.ledger = row.value(QStringLiteral("ledger")).toString();
+        b.status = row.value(QStringLiteral("book_status")).toString();
+        b.producer_status = row.value(QStringLiteral("producer_status")).toString();
+        b.data_age_ms = row.value(QStringLiteral("data_age_ms")).toVariant().toLongLong();
+        b.last_error = row.value(QStringLiteral("last_error")).toString();
+        b.skip_reasons = QString::fromUtf8(QJsonDocument(
+            row.value(QStringLiteral("skip_reasons")).toObject()).toJson(QJsonDocument::Compact));
+        b.last_decision = QString::fromUtf8(QJsonDocument(
+            row.value(QStringLiteral("last_decision")).toObject()).toJson(QJsonDocument::Compact));
+        b.hypothetical = row.value(QStringLiteral("hypothetical")).toBool();
+        b.price_forecast = b.kind.contains(QStringLiteral("chronos2"));
+        b.chronos = b.kind.startsWith(QStringLiteral("chronos2"));
+        b.resolved = row.value(QStringLiteral("resolved")).toInt();
+        b.net_pnl = row.value(QStringLiteral("net_pnl")).toDouble();
+        b.hit_rate = row.value(QStringLiteral("hit_rate")).toDouble();
+        b.open = row.value(QStringLiteral("open")).toInt();
+        b.eligible = row.value(QStringLiteral("eligible")).toBool();
         b.no_edge = strategy_proof_state(b.hypothetical, b.eligible, b.resolved, b.net_pnl,
                                          services::sandbox::kMinResolvedSample) == StrategyProofState::NoEdge;
+        net_pnl_total_ += b.net_pnl;
+        resolved_total_ += b.resolved;
+        open_positions_ += b.open;
         if (b.eligible)
             ++eligible_books_;
         if (b.no_edge)
             ++no_edge_books_;
 
-        if (row.status == QStringLiteral("active"))
+        if (b.status == QStringLiteral("active"))
             ++active_books_;
         if (b.chronos)
             ++chronos_books_;
-        if (row.kind == QStringLiteral("spot"))
+        if (b.kind == QStringLiteral("spot"))
             ++spot_books_;
         if (b.hypothetical)
             ++hypothetical_books_;
@@ -253,7 +233,10 @@ void StrategyOpsMapPanel::refresh() {
     last_refresh_ms_ = QDateTime::currentMSecsSinceEpoch();
     status_text_ = books_.isEmpty()
         ? tr("No evidence books yet. Seed books from Evidence to start the machine.")
-        : tr("Unified decisions are journaled locally. Latest: %1%2")
+        : tr("Registry: %1 stale · %2 errors · %3 waiting. Latest decision: %4%5")
+              .arg(registry_summary.value(QStringLiteral("stale")).toInt())
+              .arg(registry_summary.value(QStringLiteral("errors")).toInt())
+              .arg(registry_summary.value(QStringLiteral("waiting")).toInt())
               .arg(latest_decision_verdict_, latest_decision_blocker_.isEmpty()
                     ? QString() : QStringLiteral(" — ") + latest_decision_blocker_);
     update();
@@ -298,8 +281,11 @@ void StrategyOpsMapPanel::draw_hud(QPainter& p, const QRectF& r) {
     const QString age = last_refresh_ms_ > 0
         ? tr("refreshed %1s ago").arg((QDateTime::currentMSecsSinceEpoch() - last_refresh_ms_) / 1000)
         : tr("waiting for first refresh");
+    const int pages = qMax(1, (books_.size() + 13) / 14);
+    const int page = books_.isEmpty() ? 0 : visible_book_start() / 14;
+    const QString page_status = pages > 1 ? tr("  |  registry page %1/%2 · rotates every 15s").arg(page + 1).arg(pages) : QString();
     p.drawText(QRectF(18, 40, r.width() - 36, 22), Qt::AlignLeft | Qt::AlignVCenter,
-               status_text_ + QStringLiteral("  |  ") + age);
+               status_text_ + QStringLiteral("  |  ") + age + page_status);
 
     struct Chip { QString label; QString value; QColor color; };
     const QVector<Chip> chips = {
@@ -378,21 +364,38 @@ void StrategyOpsMapPanel::draw_book_orbit(QPainter& p, const QRectF& r) {
     for (int ring = 0; ring < 3; ++ring)
         p.drawEllipse(center, radius * (0.72 + ring * 0.14), radius * (0.72 + ring * 0.14));
 
-    const int n = qMin(books_.size(), 14);
+    const int start = visible_book_start();
+    const int n = visible_book_count();
     for (int i = 0; i < n; ++i) {
-        const auto& b = books_.at(i);
+        const auto& b = books_.at(start + i);
         const qreal angle = -M_PI_2 + (2.0 * M_PI * i / qMax(1, n)) + phase_ * 0.08;
         const qreal pulse = 1.0 + 0.06 * std::sin(phase_ * 4.0 + i);
         const QPointF pos(center.x() + std::cos(angle) * radius,
                           center.y() + std::sin(angle) * radius * 0.68);
         const QColor c = color_for_book(b);
         draw_particle_line(p, center, pos, c, 0.08 * i);
-        const QString sub = b.horizon.isEmpty()
-            ? tr("%1 resolved").arg(b.resolved)
-            : tr("%1 | %2").arg(b.horizon, QString::number(b.resolved));
-        draw_node(p, pos, 33 * pulse, short_kind(b.kind), sub, c, b.status == QStringLiteral("active"));
+        const QString sub = tr("%1 · %2 · %3").arg(
+            b.market.isEmpty() ? QStringLiteral("—") : b.market,
+            b.horizon.isEmpty() ? QStringLiteral("—") : b.horizon,
+            b.producer_status.isEmpty() ? QStringLiteral("UNKNOWN") : b.producer_status);
+        draw_node(p, pos, 33 * pulse,
+                  b.strategy_id.isEmpty() ? short_kind(b.kind) : b.strategy_id,
+                  sub, c, b.status == QStringLiteral("active"));
     }
     p.restore();
+}
+
+int StrategyOpsMapPanel::visible_book_start() const {
+    constexpr int page_size = 14;
+    if (books_.size() <= page_size)
+        return 0;
+    const int pages = (books_.size() + page_size - 1) / page_size;
+    const qint64 page = (QDateTime::currentMSecsSinceEpoch() / 15000) % pages;
+    return static_cast<int>(page) * page_size;
+}
+
+int StrategyOpsMapPanel::visible_book_count() const {
+    return qMin(14, qMax(0, books_.size() - visible_book_start()));
 }
 
 void StrategyOpsMapPanel::draw_node(QPainter& p, const QPointF& c, qreal radius, const QString& title,
@@ -449,6 +452,12 @@ void StrategyOpsMapPanel::draw_particle_line(QPainter& p, const QPointF& a, cons
 }
 
 QColor StrategyOpsMapPanel::color_for_book(const BookNode& b) const {
+    if (b.producer_status == QLatin1String("ERROR"))
+        return QColor(ui::colors::NEGATIVE());
+    if (b.producer_status == QLatin1String("STALE") ||
+        b.producer_status == QLatin1String("WAITING") ||
+        b.producer_status == QLatin1String("NO PRODUCER"))
+        return QColor(ui::colors::AMBER());
     if (b.eligible)
         return QColor(ui::colors::POSITIVE());
     if (b.no_edge)

@@ -1082,6 +1082,46 @@ class KalshiBotCockpitTest : public QObject {
                  QString());
     }
 
+    void prefer_open_kxbtcd_makes_hourly_primary() {
+        const QJsonObject hourly = calibrator_report(
+            kNow, QJsonObject{{"KXBTCD-A", prediction(0.80, 0.40)},
+                              {"KXBTCD-B", prediction(0.55, 0.50)},
+                              {"KXBTC15M-X", prediction(0.99, 0.10)}});
+        QCOMPARE(prefer_open_kxbtcd_ticker(hourly), QStringLiteral("KXBTCD-A"));
+        QCOMPARE(prefer_open_kxbtcd_ticker(hourly, QStringLiteral("KXBTCD-B")),
+                 QStringLiteral("KXBTCD-B"));
+    }
+
+    void forward_trial_kpi_separates_paper_profit_from_forecast_trust() {
+        const QJsonObject state{{"updated_at", QDateTime::fromMSecsSinceEpoch(kNow - 1000,
+                                                                              Qt::UTC).toString(Qt::ISODateWithMs)},
+                                {"policy_sha256", "abcdef012345"},
+                                {"records", QJsonObject{{"a", QJsonObject{{"status", "completed"}, {"net_pnl", -2.0}}},
+                                                         {"b", QJsonObject{{"status", "open"}}}}}};
+        const QString line = forward_trial_kpi(state, QStringLiteral("GOLD-H"), kNow);
+        QVERIFY(line.contains(QStringLiteral("PAPER TESTING")));
+        QVERIFY(line.contains(QStringLiteral("age 1s")));
+        QVERIFY(line.contains(QStringLiteral("n=1 open=1 next=10")));
+        QVERIFY(line.contains(QStringLiteral("P&L $-2.00")));
+        QVERIFY(line.contains(QStringLiteral("abcdef01")));
+    }
+
+    void shared_research_status_normalizes_the_same_hourly_ledger() {
+        const QJsonObject state{{"updated_at_ms", double(kNow - 2'000)},
+                                {"policy_sha256", "abcdef012345"},
+                                {"summary", QJsonObject{{"completed", 12}, {"open", 2},
+                                                         {"net_pnl", 3.25}, {"max_drawdown", 1.5},
+                                                         {"win_rate", 0.75}}}};
+        const QJsonObject ledger =
+            openmarketterminal::services::prediction::kalshi_ns::research_paper_ledger(state, kNow);
+        QCOMPARE(ledger.value(QStringLiteral("status")).toString(), QStringLiteral("PAPER TESTING"));
+        QCOMPARE(ledger.value(QStringLiteral("completed")).toInt(), 12);
+        QCOMPARE(ledger.value(QStringLiteral("open")).toInt(), 2);
+        QCOMPARE(ledger.value(QStringLiteral("next_milestone")).toInt(), 30);
+        QCOMPARE(ledger.value(QStringLiteral("net_pnl")).toDouble(), 3.25);
+        QCOMPARE(ledger.value(QStringLiteral("policy_sha256")).toString(), QStringLiteral("abcdef012345"));
+    }
+
     void threshold_report_kxbtc15m_predictions_are_stripped_from_rain() {
         // Mimic a polluted calibrator.json that still carries a 15m ticker —
         // the cockpit must ignore it the same way kalshi bot does.

@@ -52,6 +52,11 @@ Result<QString> register_strategy(const QString& kind, const QString& symbols_cs
 // statuses; otherwise restricts to rows with that exact status.
 Result<QList<StrategyRow>> list_strategies(const QString& status_filter = {});
 
+// Shared GUI/CLI operational inventory. Every registered book is emitted,
+// including paused/retired and producer-waiting books, so implemented
+// strategies cannot disappear merely because they have no fills yet.
+Result<QJsonObject> strategy_registry_snapshot(const QString& profile, qint64 now_ms);
+
 // Updates status in place (this is metadata, not params — mutable by design).
 // status must be one of "active" | "paused" | "retired"; anything else errs
 // without touching the row.

@@ -715,8 +715,11 @@ set(ADS_VERSION "4.5.0" CACHE STRING "" FORCE)   # skip git_describe() in qtads 
 # cmake/modules to CMAKE_MODULE_PATH inside the if(NOT ADS_VERSION) branch.
 # Pre-set the path so the include succeeds regardless of which branch ran.
 # The _deps layout is stable: FetchContent always unpacks to <binary_dir>/_deps/<name_lower>-src.
+set(_OMT_CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_BINARY_DIR}/_deps/qtads-src/cmake/modules")
 FetchContent_MakeAvailable(QtADS)
+set(CMAKE_MODULE_PATH "${_OMT_CMAKE_MODULE_PATH}")
+unset(_OMT_CMAKE_MODULE_PATH)
 # ADS target name is version-stamped: qtadvanceddocking-qt6
 # Disable unity build — ADS uses anonymous namespaces internally
 set_target_properties(qtadvanceddocking-qt6 PROPERTIES UNITY_BUILD OFF)
