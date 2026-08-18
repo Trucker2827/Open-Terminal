@@ -1215,7 +1215,9 @@ void KalshiScreen::build_ui() {
                                                .arg(colors::CYAN(), colors::BG_BASE()));
     live_controls->addWidget(live_automation_button_);
     kill_live_button_ = new QPushButton(QStringLiteral("KILL AUTOMATED TRADING"), auto_cockpit);
-    kill_live_button_->setToolTip(QStringLiteral("Engage the global trading kill switch and stop the Kalshi session."));
+    kill_live_button_->setToolTip(QStringLiteral(
+        "Engage Settings → Security cli.kill_switch (every venue, paper and live). "
+        "Does not write kalshi-bot-stop.json — use STOP THE BOT on the BOT tab for that."));
     kill_live_button_->setStyleSheet(QStringLiteral(
         "QPushButton{background:transparent;color:%1;border:1px solid %1;padding:7px 12px;font-weight:900;}")
                                          .arg(colors::RED()));
@@ -1312,7 +1314,8 @@ void KalshiScreen::build_ui() {
                        "and %2 — so this panel and the CLI cannot disagree. The badge on the "
                        "status line is the mode of the LAST tick: PAPER, or LIVE when real money "
                        "went through the terminal's own submit path. Its one control is the "
-                       "kill switch (%3): it can stop the bot, and nothing else. It cannot arm, "
+                       "bot stop file (%3): it can stop the Kalshi bot tick, and nothing else. "
+                       "It is not Settings → Security cli.kill_switch. It cannot arm, "
                        "size, price, or place anything.")
             .arg(QString::fromLatin1(kKalshiBotLedgerFile), QString::fromLatin1(kKalshiBotGateFile),
                  QString::fromLatin1(kKalshiBotStopFile)),
